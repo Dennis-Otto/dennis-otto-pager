@@ -452,20 +452,35 @@ describe("buttons", () => {
     it("refuses an edit that is too long, or of a draft that is gone", async () => {
       const w = await world();
       await pressing(w, drafted, `edit:${ID}`);
-      const reply = { reply_to_message: { message_id: 100 } };
+      const reply = {
+        reply_to_message: { message_id: 100 },
+        message_thread_id: 77,
+      };
       expect(
         await handleUpdate(w.context, message("x".repeat(3001), reply)),
       ).toBe("an edit that is too long");
       expect(await w.context.store.get(ID)).toMatchObject({ draftVersion: 2 });
+      // The answer goes into the thread of the reply, the draft stays where it is.
+      expect(w.net.telegram("sendMessage").at(-1)?.body).toMatchObject({
+        text: expect.stringContaining("3001 characters"),
+        message_thread_id: 77,
+      });
       await pressing(w, drafted, `edit:${ID}`);
       const prompt = (await w.context.store.pendingEdit())?.prompt;
       await w.context.store.put({ ...drafted, state: "sent" });
       expect(
         await handleUpdate(
           w.context,
-          message("New", { reply_to_message: { message_id: prompt } }),
+          message("New", {
+            reply_to_message: { message_id: prompt },
+            message_thread_id: 78,
+          }),
         ),
       ).toBe("an edit of a draft that is gone");
+      expect(w.net.telegram("sendMessage").at(-1)?.body).toMatchObject({
+        text: "That draft is gone; nothing changed.",
+        message_thread_id: 78,
+      });
       await w.context.store.setPendingEdit({
         item: "i000000000000000",
         prompt: 9,
@@ -487,6 +502,22 @@ describe("messages", () => {
     expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
       "This is your pager.",
     );
+  });
+
+  it("answer in the thread of the message, and in the main view without one", async () => {
+    const w = await world();
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    expect(await handleUpdate(w.context, message("/help", topic))).toBe("help");
+    // General, the first thread, takes its messages without an id, as the Bot API asks.
+    await handleUpdate(w.context, message("/help", { message_thread_id: 1 }));
+    await handleUpdate(w.context, message("/help"));
+    const sent = w.net.telegram("sendMessage").map((call) => call.body);
+    expect(sent.map((body) => body.message_thread_id)).toEqual([
+      77,
+      undefined,
+      undefined,
+    ]);
+    expect(sent.filter((body) => "message_thread_id" in body)).toHaveLength(1);
   });
 
   it("send free text to the control repository and react to it", async () => {
@@ -513,6 +544,53 @@ describe("messages", () => {
     // It waits for its answer, which turns the 👀 into 👍, or the schedule into 😢.
     expect(await w.context.store.waiting(START + 1)).toEqual([500]);
     expect(await w.context.store.waiting(START)).toEqual([]);
+    // A text without a thread gets its answer in the main view.
+    expect(await w.context.store.thread(500)).toBeNull();
+  });
+
+  it("keep the thread of a free text for its answer, which the reaction needs not", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    expect(await handleUpdate(w.context, message("Status?", topic))).toBe(
+      "free text sent",
+    );
+    // The control repository gets what it got before: the thread stays with the pager.
+    expect(w.net.github("/dispatches")[0]?.body.client_payload).toEqual({
+      text: "Status?",
+      message: 500,
+      language: "en",
+    });
+    expect(w.net.telegram("setMessageReaction")[0]?.body).toEqual({
+      chat_id: CHAT,
+      message_id: 500,
+      reaction: [{ type: "emoji", emoji: "👀" }],
+    });
+    expect(await w.context.store.thread(500)).toBe(77);
+    expect(await w.context.store.waiting(START + 1)).toEqual([500]);
+    // A text from General gets its answer in the main view, which is General.
+    await handleUpdate(
+      w.context,
+      message("And now?", { message_id: 501, message_thread_id: 1 }),
+    );
+    expect(await w.context.store.thread(501)).toBeNull();
+    expect(await w.context.store.thread(9)).toBeNull();
+  });
+
+  it("explain a missing control repository in the thread of the text", async () => {
+    const w = await world();
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    expect(await handleUpdate(w.context, message("Status?", topic))).toBe(
+      "free text without a control repository",
+    );
+    expect(w.net.telegram("sendMessage")[0]?.body).toMatchObject({
+      message_thread_id: 77,
+    });
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
   });
 
   it("send the message that a free text answers along, as its context", async () => {

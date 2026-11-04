@@ -1,5 +1,6 @@
 // The answers of the control repository, signed over the time and the body, and the
 // schedule: "Later" that is over, and the reminder of the token of Claude.
+import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 
 import { headTag } from "../src/buttons.ts";
@@ -14,7 +15,7 @@ import {
   keys,
   type Release,
 } from "../src/store.ts";
-import { base, REPO, START, type World, world } from "./helpers.ts";
+import { base, json, REPO, START, type World, world } from "./helpers.ts";
 
 const ID = "i0123456789abcde";
 
@@ -543,6 +544,99 @@ describe("the reaction on a text of the maintainer", () => {
     expect(reactions(w).at(-1)).toEqual([501, "😢"]);
     expect(reactions(w)).toHaveLength(3);
     expect(await w.context.store.waiting(w.clock.now)).toEqual([]);
+  });
+});
+
+describe("the thread of an answer", () => {
+  const sent = (w: World) =>
+    w.net.telegram("sendMessage").map((call) => call.body);
+
+  it("goes into the thread of the text that it answers: a note, a proposal, a failure", async () => {
+    const w = await world();
+    const release: Release = {
+      ...base(await itemId(keys.release(REPO))),
+      kind: "release",
+      state: "ready",
+      number: 30,
+      version: "1.2.3",
+      sha: "abc",
+      url: `https://github.com/${REPO}/pull/30`,
+    };
+    await w.context.store.put(release);
+    await w.context.store.ask(500, START, 77);
+    await w.context.store.ask(501, START, 78);
+    await w.context.store.ask(502, START, 79);
+    await send(w, { type: "note", text: "All green.", message: 500 });
+    await send(w, {
+      type: "proposal",
+      text: "Merge it?",
+      action: "merge",
+      target: { kind: "release", repo: REPO },
+      message: 501,
+    });
+    await send(w, { type: "failed", text: "❌ No answer.", message: 502 });
+    expect(sent(w).map((body) => body.message_thread_id)).toEqual([77, 78, 79]);
+    // The ✅ Confirm button of the proposal comes along into its thread.
+    expect(sent(w)[1].reply_markup.inline_keyboard[0][0].text).toBe(
+      "✅ Confirm",
+    );
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("goes into the main view for no text, a late answer and a text from before threads", async () => {
+    const w = await world();
+    // A text kept by the version before threads: its time alone.
+    await env.PAGER.put("asked", JSON.stringify({ 500: START, 501: START }));
+    await w.context.store.ask(502, START, 77);
+    expect(await w.context.store.waiting(START + 1)).toEqual([500, 501, 502]);
+    await send(w, { type: "note", text: "Old job.", message: 500 });
+    await send(w, { type: "note", text: "By hand." });
+    // A late answer, after the schedule gave up on its text, has no thread left.
+    w.clock.now = START + ANSWER_WITHIN + 15 * 60 * 1000;
+    await runSchedule(w.context);
+    await send(
+      w,
+      { type: "note", text: "Late.", message: 502 },
+      { stamp: String(w.clock.now / 1000) },
+    );
+    expect(sent(w).map((body) => "message_thread_id" in body)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("falls back to the main view when Telegram doesn't find the thread", async () => {
+    const w = await world();
+    const warnings: unknown[][] = [];
+    vi.spyOn(console, "warn").mockImplementation((...parts: unknown[]) => {
+      warnings.push(parts);
+    });
+    await w.context.store.ask(500, START, 77);
+    // The thread is refused once, and the same message goes into the main view.
+    let refused = false;
+    w.net.on("POST", /sendMessage$/, () => {
+      if (refused) {
+        return json({ ok: true, result: { message_id: 101 } });
+      }
+      refused = true;
+      return json(
+        { ok: false, description: "Bad Request: message thread not found" },
+        400,
+      );
+    });
+    expect(
+      await send(w, { type: "note", text: "Secret plan.", message: 500 }),
+    ).toEqual({ status: 200, text: "said" });
+    const [first, second] = sent(w);
+    expect(first.message_thread_id).toBe(77);
+    expect(second).toEqual({ ...first, message_thread_id: undefined });
+    expect("message_thread_id" in second).toBe(false);
+    expect(warnings).toEqual([
+      ["Telegram sendMessage: thread 77 not found, sent to the main view"],
+    ]);
+    expect(JSON.stringify(warnings)).not.toContain("Secret plan");
+    vi.restoreAllMocks();
   });
 });
 

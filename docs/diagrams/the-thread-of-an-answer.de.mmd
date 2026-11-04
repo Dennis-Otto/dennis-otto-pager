@@ -1,0 +1,28 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Der Thread einer Antwort
+    accDescr: Dennis schreibt einen Text in einem Thread des Chats. Die Antwort auf /help oder ein Fehler geht sofort in diesen Thread. Freier Text geht an das Steuer-Repository, und der Pager behält seinen Thread, solange er wartet. Die Antwort des Steuer-Repositorys, eine Notiz, ein Fehlschlag oder ein Vorschlag mit seinem Knopf Bestätigen, geht in denselben Thread. General, ein Text von vor den Threads, eine späte Antwort und ein Thread, den Telegram nicht findet, bekommen ihre in der Hauptansicht.
+
+    dennis["Dennis schreibt einen Text in einem Thread"]
+    direct["`**/help** oder ein Fehler: Die Antwort geht sofort in den Thread`"]
+    kept["`**👀** Der Text geht an das Steuer-Repository, und der Pager behält seinen Thread`"]
+    answer["`**👍** Die Antwort oder ein Vorschlag mit ✅ Bestätigen geht in denselben Thread`"]
+    main["`**Hauptansicht**: General, ein Text von vor den Threads, eine späte Antwort oder ein Thread, den Telegram nicht findet`"]
+
+    dennis --> direct
+    dennis -- "freier Text" --> kept
+    kept -- "die signierte Antwort" --> answer
+    answer -- "kein Thread behalten, oder Telegram lehnt ihn ab" --> main
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class dennis you
+    class kept,direct bot
+    class answer done
+    class main warn

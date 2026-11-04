@@ -1,13 +1,14 @@
 /**
  * The updates of Telegram: a pressed button, or a text of the maintainer. Only the
  * chat whose id TELEGRAM_CHAT_ID names is served, and only its own user; every
- * other update is dropped without an answer.
+ * other update is dropped without an answer. An answer to a text goes into the
+ * thread that the text came from.
  */
 import { press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
-import { REACTIONS } from "./telegram.ts";
+import { REACTIONS, threadOf } from "./telegram.ts";
 
 interface Message {
   message_id: number;
@@ -15,6 +16,10 @@ interface Message {
   from?: { id?: number };
   text?: string;
   reply_to_message?: { message_id?: number; text?: string };
+  /** The thread that the message came from, in Threaded Mode. */
+  message_thread_id?: number;
+  /** Set as well in a thread; the id alone decides, as threadOf() says. */
+  is_topic_message?: boolean;
 }
 
 export interface Update {
@@ -71,6 +76,7 @@ async function edited(
   itemId: string,
   prompt: number,
 ): Promise<string> {
+  const thread = threadOf(message);
   const item = await context.store.get(itemId);
   await context.store.setPendingEdit(null);
   await context.telegram.remove(prompt);
@@ -78,12 +84,13 @@ async function edited(
     item?.kind !== "contribution" ||
     !["draft", "drafting"].includes(item.state)
   ) {
-    await context.telegram.say(context.t("edit.gone"));
+    await context.telegram.say(context.t("edit.gone"), thread);
     return "an edit of a draft that is gone";
   }
   if (text.length > MAX_DRAFT) {
     await context.telegram.say(
       context.t("edit.tooLong", { length: text.length, max: MAX_DRAFT }),
+      thread,
     );
     return "an edit that is too long";
   }
@@ -101,11 +108,13 @@ async function freeText(
   message: Message,
   text: string,
 ): Promise<string> {
+  const thread = threadOf(message);
   const repo = context.settings.controlRepository;
   const installation = await context.github.installation(repo);
   if (installation === null) {
     await context.telegram.say(
       context.t("chat.noControl", { repo: html(repo) }),
+      thread,
     );
     return "free text without a control repository";
   }
@@ -119,8 +128,9 @@ async function freeText(
     language: context.t.language,
   });
   await context.telegram.react(message.message_id, REACTIONS.taken);
-  // Its answer turns the 👀 into 👍, or the schedule into 😢 when none comes.
-  await context.store.ask(message.message_id, context.now());
+  // Its answer turns the 👀 into 👍, or the schedule into 😢 when none comes; the
+  // answer goes into the thread that the text came from, which the store keeps.
+  await context.store.ask(message.message_id, context.now(), thread);
   return "free text sent";
 }
 
@@ -149,7 +159,7 @@ export async function handleUpdate(
     return "a message without text";
   }
   if (/^\/(start|help)\b/.test(text)) {
-    await context.telegram.say(context.t("chat.help"));
+    await context.telegram.say(context.t("chat.help"), threadOf(message));
     return "help";
   }
   const pending = await context.store.pendingEdit();

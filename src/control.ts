@@ -6,14 +6,14 @@
  * says is shown, escaped, and never run: an action needs a button of the
  * allowlist, which a proposal only offers, and the maintainer presses. An answer to
  * a text of the maintainer turns the 👀 on that text into 👍, or 😢 when no answer
- * came to be.
+ * came to be, and goes into the thread that the text came from.
  */
 import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { type Context, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import { type Item, itemId, keys } from "./store.ts";
-import { type Keyboard, REACTIONS } from "./telegram.ts";
+import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
@@ -163,6 +163,18 @@ async function settle(
   await context.store.settle([message.message]);
 }
 
+/**
+ * The thread of the chat that an answer goes into: that of the text of the
+ * maintainer that it answers, which the store keeps while the text waits. An answer
+ * to no text, such as one of a job started by hand, and one to a text that went
+ * before the pager knew threads, go into the main view.
+ */
+async function threadFor(context: Context, message: Message): Promise<Thread> {
+  return message.message === undefined
+    ? null
+    : context.store.thread(message.message);
+}
+
 /** Whether a request carries a fresh signature of the control repository. */
 export async function signed(
   secret: string,
@@ -250,7 +262,11 @@ async function propose(
   if (line !== null) {
     lines.push(`<i>${html(line)}</i>`);
   }
-  await context.telegram.send(lines.join("\n\n"), keyboard);
+  await context.telegram.send(
+    lines.join("\n\n"),
+    keyboard,
+    await threadFor(context, message),
+  );
   await settle(context, message, true);
   return new Response(keyboard.length === 0 ? "said" : "proposed");
 }
@@ -286,6 +302,7 @@ export async function handleControl(
     const line = footer(message.usage, context.t);
     await context.telegram.say(
       `🤖 ${html(message.text, MAX_DRAFT)}${line === null ? "" : `\n\n<i>${html(line)}</i>`}`,
+      await threadFor(context, message),
     );
     await settle(context, message, message.type !== "failed");
     return new Response("said");

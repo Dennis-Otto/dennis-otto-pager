@@ -17,7 +17,11 @@ import worker from "../src/index.ts";
 import type { PagerEnv } from "../src/settings.ts";
 import { type Contribution, itemId, keys } from "../src/store.ts";
 import { TelegramError } from "../src/telegram.ts";
+import { languageOf, texts } from "../src/texts.ts";
 import { appKey, base, CHAT, json, Net, REPO, settings } from "./helpers.ts";
+
+/** The texts of the language that wrangler.jsonc sets. */
+const say = texts(languageOf((env as PagerEnv).LANGUAGE) ?? "en");
 
 let net: Net;
 let errors: string[];
@@ -196,9 +200,14 @@ describe("the webhook of GitHub", () => {
     const response = await call(await fromGitHub("issues", opened));
     expect(await response.text()).toBe("contribution shown");
     const sent = net.telegram("sendMessage")[0]?.body;
-    expect(sent.text).toContain("🙋 <b>Neues Issue</b>");
+    expect(env.LANGUAGE).toBe("de");
+    expect(sent.text).toContain(
+      say("message.issue", { repo: REPO, author: "", link: "" }).split(
+        ` ${REPO}`,
+      )[0],
+    );
     expect(sent.reply_markup.inline_keyboard[0][0].text).toBe(
-      "✍️ Antwort entwerfen",
+      say("button.draft"),
     );
   });
 
@@ -360,7 +369,10 @@ describe("the schedule", () => {
     await worker.scheduled(createScheduledController(), environment, running);
     await waitOnExecutionContext(running);
     expect(net.telegram("sendMessage")[0]?.body.text).toContain(
-      "Das Claude-Token in Dennis-Otto/dennis-otto-pager-control ist am 01.11.2026 abgelaufen.",
+      say("reminder.expired", {
+        repo: "Dennis-Otto/dennis-otto-pager-control",
+        date: say.date("2026-11-01"),
+      }),
     );
   });
 

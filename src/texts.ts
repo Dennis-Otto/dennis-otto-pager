@@ -216,7 +216,7 @@ const de: Catalog = {
   "blocker.checks": "seine Checks sind nicht alle grün ({state})",
 
   "answer.notInstalled":
-    "Die GitHub-App ist auf {repo} nicht installiert, und das braucht sie: Installier sie dort, wie docs/setup.md es beschreibt.",
+    "Die GitHub-App ist auf {repo} nicht installiert, und dieses Repository erledigt das: Installier sie dort, wie docs/setup.md es beschreibt.",
   "answer.releaseMoved":
     "Das Release hat sich seit dieser Nachricht geändert: Nimm seine neueste Nachricht.",
   "answer.releaseChanged":

@@ -9,10 +9,9 @@ requests when there is none.
 
 ## [0.2.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.0...v0.2.1) (2026-11-04)
 
-
 ### Bug fixes
 
-* keep the deploys on the namespace the first one created ([#7](https://github.com/Dennis-Otto/dennis-otto-pager/issues/7)) ([b657100](https://github.com/Dennis-Otto/dennis-otto-pager/commit/b65710071ad5f94a7b49d8efb27748995a4808e9))
+- Keep the deploys on the namespace the first one created.
 
 ## [0.2.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.1.0...v0.2.0) (2026-11-04)
 

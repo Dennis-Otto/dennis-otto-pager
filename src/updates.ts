@@ -2,13 +2,15 @@
  * The updates of Telegram: a pressed button, or a text of the maintainer. Only the
  * chat whose id TELEGRAM_CHAT_ID names is served, and only its own user; every
  * other update is dropped without an answer. An answer to a text goes into the
- * thread that the text came from.
+ * thread that the text came from, and a text in the topic of a thing goes to the
+ * control repository with that thing.
  */
 import { press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
 import { REACTIONS, threadOf } from "./telegram.ts";
+import { about } from "./topics.ts";
 
 interface Message {
   message_id: number;
@@ -20,6 +22,8 @@ interface Message {
   message_thread_id?: number;
   /** Set as well in a thread; the id alone decides, as threadOf() says. */
   is_topic_message?: boolean;
+  /** The service message of a topic that the maintainer opened. */
+  forum_topic_created?: object;
 }
 
 export interface Update {
@@ -118,13 +122,17 @@ async function freeText(
     );
     return "free text without a control repository";
   }
-  // The message that the text answers, if any, says what "it" is: the control
-  // repository reads it as data, as everything else.
+  // The message that the text answers, if any, says what "it" is, and so does the
+  // thing whose topic the text came from: the control repository reads both as
+  // data, as everything else. A topic that the maintainer opened, and General,
+  // have no thing: the text starts a conversation of its own.
   const answered = message.reply_to_message?.text?.trim() ?? "";
+  const item = thread === null ? null : await context.store.byTopic(thread);
   await context.github.dispatch(installation, repo, "pager-text", {
     text,
     message: message.message_id,
     ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
+    ...(item === null ? {} : { item: about(item, context.now(), context.t) }),
     language: context.t.language,
   });
   await context.telegram.react(message.message_id, REACTIONS.taken);
@@ -153,6 +161,10 @@ export async function handleUpdate(
   }
   if (message.chat?.id !== chat || message.from?.id !== chat) {
     return "a message of a stranger";
+  }
+  if (message.forum_topic_created !== undefined) {
+    // Its texts come with the id of the topic, and their answers go into it.
+    return "a topic of the maintainer";
   }
   const text = message.text?.trim() ?? "";
   if (text === "") {

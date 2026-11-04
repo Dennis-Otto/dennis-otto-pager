@@ -3,7 +3,8 @@
  * buttons, edit it as its thing changes, answer a button, react to a message. The
  * token of the bot is part of the address of every call, so no error and no log
  * names the address. In Threaded Mode, a message of the maintainer comes from a
- * thread, and the answer to it goes into the same.
+ * thread, and the answer to it goes into the same; each thing of the pager gets a
+ * topic of its own, which the pager opens, renames and, when it stays empty, deletes.
  */
 
 export type Fetch = (
@@ -56,6 +57,27 @@ export function threadOf(message: { message_thread_id?: unknown }): Thread {
     : null;
 }
 
+/** Where a message went: its id, and its thread, or null for the main view. */
+export interface Sent {
+  message: number;
+  thread: Thread;
+}
+
+/**
+ * The colors of the icon of a topic, the only six that the Bot API takes; a topic
+ * keeps the color that it was opened with.
+ */
+export const TOPIC_COLORS = {
+  blue: 0x6fb9f0,
+  yellow: 0xffd67e,
+  violet: 0xcb86db,
+  green: 0x8eee98,
+  rose: 0xff93b2,
+  red: 0xfb6f5f,
+} as const;
+
+export type TopicColor = (typeof TOPIC_COLORS)[keyof typeof TOPIC_COLORS];
+
 export class TelegramError extends Error {
   readonly method: string;
   readonly description: string;
@@ -65,6 +87,14 @@ export class TelegramError extends Error {
     this.method = method;
     this.description = description;
   }
+}
+
+/** Whether Telegram refused a thread that it doesn't find. */
+function threadNotFound(error: unknown): boolean {
+  return (
+    error instanceof TelegramError &&
+    error.description.includes("message thread not found")
+  );
 }
 
 interface Answer {
@@ -77,6 +107,8 @@ export class Telegram {
   private readonly token: string;
   private readonly chatId: number;
   private readonly fetch: Fetch;
+  /** Whether the chat has topics, which getMe says once per request. */
+  private topicMode: boolean | undefined;
 
   constructor(token: string, chatId: number, fetcher: Fetch) {
     this.token = token;
@@ -109,40 +141,76 @@ export class Telegram {
    * Send a message with buttons, into a thread or the main view; it notifies the
    * maintainer. Returns its id. A thread that Telegram doesn't find, such as one
    * that the maintainer deleted, or any in a chat where a rollout of Telegram
-   * refuses them, takes the message in the main view instead.
+   * refuses them, takes the message in the main view instead, as a reply to the
+   * message replyTo when one is given, such as the message of its thing.
    */
   async send(
     text: string,
     keyboard: Keyboard,
     thread: Thread = null,
+    replyTo: number | null = null,
   ): Promise<number> {
-    const parameters = {
-      chat_id: this.chatId,
-      text,
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-      reply_markup: { inline_keyboard: keyboard },
-    };
+    return (await this.post(text, keyboard, thread, replyTo)).message;
+  }
+
+  /** Send a message as send() does, and say where it went: into its thread, or the main view. */
+  async post(
+    text: string,
+    keyboard: Keyboard,
+    thread: Thread,
+    replyTo: number | null = null,
+  ): Promise<Sent> {
+    return this.deliver(
+      {
+        chat_id: this.chatId,
+        text,
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        reply_markup: { inline_keyboard: keyboard },
+      },
+      thread,
+      replyTo,
+    );
+  }
+
+  /**
+   * Send a message into its thread, or into the main view, as a reply to replyTo
+   * when one is given, when it has no thread or Telegram doesn't find it. In the
+   * thread, it needs no reply: the thread is what the message belongs to.
+   */
+  private async deliver(
+    parameters: object,
+    thread: Thread,
+    replyTo: number | null,
+  ): Promise<Sent> {
+    const main =
+      replyTo === null
+        ? parameters
+        : {
+            ...parameters,
+            reply_parameters: {
+              message_id: replyTo,
+              allow_sending_without_reply: true,
+            },
+          };
     if (thread === null) {
-      return this.sendMessage(parameters);
+      return { message: await this.sendMessage(main), thread: null };
     }
     try {
-      return await this.sendMessage({
+      const message = await this.sendMessage({
         ...parameters,
         message_thread_id: thread,
       });
+      return { message, thread };
     } catch (error) {
-      if (
-        !(error instanceof TelegramError) ||
-        !error.description.includes("message thread not found")
-      ) {
+      if (!threadNotFound(error)) {
         throw error;
       }
       // The log names the thread, never the text, which may quote a private repository.
       console.warn(
         `Telegram sendMessage: thread ${thread} not found, sent to the main view`,
       );
-      return this.sendMessage(parameters);
+      return { message: await this.sendMessage(main), thread: null };
     }
   }
 
@@ -228,15 +296,29 @@ export class Telegram {
 
   /**
    * Ask for a text in reply to a message of the pager, with Telegram's reply field,
-   * which shows the placeholder while it is empty.
+   * which shows the placeholder while it is empty: in the topic of its thing, or in
+   * the main view as a reply to the message of its thing.
    */
-  async prompt(text: string, placeholder: string): Promise<number> {
-    return this.sendMessage({
-      chat_id: this.chatId,
-      text,
-      parse_mode: "HTML",
-      reply_markup: { force_reply: true, input_field_placeholder: placeholder },
-    });
+  async prompt(
+    text: string,
+    placeholder: string,
+    thread: Thread = null,
+    replyTo: number | null = null,
+  ): Promise<number> {
+    const sent = await this.deliver(
+      {
+        chat_id: this.chatId,
+        text,
+        parse_mode: "HTML",
+        reply_markup: {
+          force_reply: true,
+          input_field_placeholder: placeholder,
+        },
+      },
+      thread,
+      replyTo,
+    );
+    return sent.message;
   }
 
   /** Send a plain message without buttons, into a thread or the main view. */
@@ -255,6 +337,96 @@ export class Telegram {
         chat_id: this.chatId,
         message_id: messageId,
         reaction: [{ type: "emoji", emoji }],
+      });
+    } catch (error) {
+      if (!(error instanceof TelegramError)) {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Whether the private chat of the bot has topics: Threaded Mode, which the
+   * maintainer switches on in @BotFather, makes getMe say has_topics_enabled. Asked
+   * once per request; a refused getMe counts as no topics.
+   */
+  async topics(): Promise<boolean> {
+    if (this.topicMode === undefined) {
+      try {
+        const me = (await this.call("getMe", {})) as {
+          has_topics_enabled?: unknown;
+        } | null;
+        this.topicMode = me?.has_topics_enabled === true;
+      } catch (error) {
+        if (!(error instanceof TelegramError)) {
+          throw error;
+        }
+        console.warn(`Telegram getMe: ${error.description}; no topics`);
+        this.topicMode = false;
+      }
+    }
+    return this.topicMode;
+  }
+
+  /**
+   * Open a topic in the chat, with a name and the color of its icon. Returns its
+   * thread, or null when the chat has no topics or Telegram refuses one: the thing
+   * then goes into the main view, as before topics.
+   */
+  async openTopic(name: string, color: TopicColor): Promise<number | null> {
+    if (!(await this.topics())) {
+      return null;
+    }
+    try {
+      const topic = (await this.call("createForumTopic", {
+        chat_id: this.chatId,
+        name,
+        icon_color: color,
+      })) as { message_thread_id?: unknown } | null;
+      return threadOf(topic ?? {});
+    } catch (error) {
+      if (!(error instanceof TelegramError)) {
+        throw error;
+      }
+      // The log leaves out the name, which may quote an issue of a private repository.
+      console.warn(
+        `Telegram createForumTopic: ${error.description}; sent to the main view`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Rename a topic, such as with ✅ once its thing is done. Returns whether it has
+   * the name now: a topic that is gone, or a refusal, keeps the old one, and the
+   * next change of its thing tries again.
+   */
+  async renameTopic(thread: number, name: string): Promise<boolean> {
+    try {
+      await this.call("editForumTopic", {
+        chat_id: this.chatId,
+        message_thread_id: thread,
+        name,
+      });
+      return true;
+    } catch (error) {
+      if (!(error instanceof TelegramError)) {
+        throw error;
+      }
+      if (error.description.includes("TOPIC_NOT_MODIFIED")) {
+        return true;
+      }
+      console.warn(`Telegram editForumTopic: ${error.description}`);
+      return false;
+    }
+  }
+
+  /** Delete a topic with its messages; one that is gone already is no error. */
+  async removeTopic(thread: number): Promise<void> {
+    try {
+      await this.call("deleteForumTopic", {
+        chat_id: this.chatId,
+        message_thread_id: thread,
       });
     } catch (error) {
       if (!(error instanceof TelegramError)) {

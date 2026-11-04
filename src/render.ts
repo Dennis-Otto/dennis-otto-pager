@@ -17,6 +17,20 @@ export function html(text: string, max = 300): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * The text of a message without its HTML, as the maintainer reads it, such as for
+ * the control repository: every tag goes, which render() makes alone, since it
+ * escapes what comes from GitHub, and the escaped characters come back.
+ */
+export function plain(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+}
+
 /** A link to an address of GitHub, or the text alone for any other address. */
 export function link(text: string, url: string): string {
   if (!url.startsWith("https://github.com/")) {

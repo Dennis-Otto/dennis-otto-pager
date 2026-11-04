@@ -17,6 +17,8 @@ Run the commands in Git Bash or another shell of Unix, in a checkout of this rep
 
     The chat id is personal: keep it out of the repository. It goes to Cloudflare as a secret in step 3.
 
+4. Give the chat topics, one per thing: open the Mini App of @BotFather, choose the bot, then *Bot Settings* → *Threads Settings*, switch on **Threaded Mode**, and leave **Disallow users to create new threads** off, so that you can open topics of your own. The pager then opens a topic for each new thing and names it, such as *🚨 repo-blueprint needs you*, and a text in it goes to the control repository with that thing; a topic that you open is a conversation of its own. Groups stay off: the pager serves your private chat only. Without Threaded Mode, the pager writes everything into the main view, and works as it does with topics; [How it works](how-it-works.md#a-topic-per-thing) says what happens when Telegram refuses a topic.
+
 ## 2. The Worker on Cloudflare
 
 Create the Worker with its first deployment, as [Releases and Cloudflare](releases.md#set-up-cloudflare-once) describes, and connect the repository to Workers Builds there:

@@ -51,11 +51,11 @@ The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` r
 | --- | --- | --- |
 | `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull`, `language` |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language` |
-| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), and `reply`: the first 1000 characters of the message that the text answers, if any; `language` |
+| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `item`: the thing whose topic the text came from, if any; `language` |
 
 `language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
-A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
+A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. So is a text in the topic of a thing, which carries the thing as `item`: its `id`, `kind`, `repo` and `state`, the `number` of a contribution or a release and the `version` of a release, `links` to where GitHub shows it (its issue or pull request, or the page of a bundle and its entries, 21 at most) and `text`, its message as the maintainer sees it, without HTML, 1500 characters at most. A workflow that doesn't know `item` passes it over, so either side may deploy first. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
 
 - the header `X-Pager-Timestamp`, the time in seconds since 1970, which may be five minutes off at most;
 - the header `X-Pager-Signature`, `sha256=` and the HMAC with SHA-256, under `CONTROL_SECRET`, of the timestamp, a dot and the body;
@@ -124,6 +124,38 @@ A text to the bot shows where it is with one reaction, which the pager changes a
 
 The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍, in the thread of its text.
 
+## A topic per thing
+
+Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createForumTopic`, once Threaded Mode is on for the bot in the Mini App of @BotFather ([Set up](setup.md#1-the-bot-of-telegram)). Then the first message of each thing opens a topic of its own, named after its repository, without its owner, and what the thing is, with a color per kind:
+
+| Thing | Name of its topic | Color |
+| --- | --- | --- |
+| Contribution | 🙋 demo#12 It breaks | blue |
+| Alarm | 🚨 demo needs you | red |
+| Code scanning | 🛡 Code scanning in demo | yellow |
+| Release | 📦 demo 1.2.3 | green |
+| Reminder | 🔔 Token of Claude | violet |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.dark.svg">
+  <img src="images/diagrams/a-topic-per-thing.svg" alt="A topic per thing: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the prompt of Edit, what Later brings back and the answers to what Dennis asks in the topic follow in it; his question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.">
+</picture>
+
+- **Everything about the thing is in its topic.** Its message with the buttons comes first, and its changes edit it in place, as before. A draft, a job that failed, the message that ⏰ Later brings back, the prompt of ✏️ Edit and the answers to texts written in the topic follow there.
+- **A text in the topic of a thing is about that thing.** It goes to the control repository with the thing as `item`, as the table above says, so a question such as *why?* needs no more words. A topic that the maintainer opens, and General, have no thing: a text there starts a conversation of its own, as before.
+- **One topic per thing, never one per change.** The bundle of what fails in a repository keeps its topic, also when it opens again after it turned green, and so does its code scanning. A new version of a release that is still shown keeps the topic of the one that it replaces, renamed; the next release, after one was published or ignored, gets its own.
+- **✅ once it is done.** A thing that is closed, or a release that is merged, gets ✅ in front of the name of its topic with `editForumTopic`, and a bundle that opens again loses it. Done topics stay, as the history of their things, as [decision 0005](decisions/0005-one-topic-per-thing-kept-when-done.md) explains: the maintainer deletes one by hand when it is no longer needed.
+- **Topics of the maintainer.** The service message `forum_topic_created` of a topic that the maintainer opens is passed over, and each text in it is answered in it. Telegram may send the first text of a topic opened on a phone without its thread: its answer then goes into the main view.
+
+Without topics, the pager writes into the main view, as before, and the thing works as it did:
+
+- `getMe` doesn't say `has_topics_enabled`, since Threaded Mode is off;
+- Telegram refuses `createForumTopic`;
+- Telegram opens the topic but refuses the message in it with `message thread not found`, as a rollout of Telegram did in [tdlib/telegram-bot-api#847](https://github.com/tdlib/telegram-bot-api/issues/847): the pager deletes the empty topic again;
+- the topic of a thing is gone, such as one that the maintainer deleted: the next message of the thing goes into the main view, and so do the ones after it.
+
+The prompt of ✏️ Edit then answers the message of its thing, so that it is clear what it is about, and a thing from before topics stays in the main view until it closes. Each of these cases logs a warning with Telegram's answer, never the name of the topic or a text.
+
 ## The thread of an answer
 
 Telegram's Bot API 9.3 gave the private chat of a bot threads, and with Threaded Mode on for the bot, in the Mini App of @BotFather, each new text of the maintainer can start a thread of its own. An answer to a text goes into the thread that the text came from, read from its `message_thread_id`: the answer to `/help`, an error such as a missing control repository or a draft that is gone, and the answer of the control repository, whether a note, a failure or a proposal with its ✅ Confirm button. The reactions need no thread, since they sit on the text itself.
@@ -140,7 +172,7 @@ The control repository never sees the thread: the pager keeps it with the text t
 - an answer to a text that went before the pager knew threads, and one that comes more than a day after its text: the pager keeps the thread of a text that it gave up on for a day, so a late answer still finds it;
 - an answer whose thread Telegram doesn't find, with `message thread not found`, such as one that the maintainer deleted: the pager sends it again without the thread and logs that, without its text.
 
-The messages of the things, such as a release or a failing check, stay in the main view, where they are.
+The messages of the things, such as a release or a failing check, go into their topics, as [a topic per thing](#a-topic-per-thing) says.
 
 ## Texts and languages
 
@@ -150,6 +182,6 @@ After a change of `LANGUAGE`, a message speaks the new language once its thing c
 
 ## State
 
-Workers KV holds one record per thing: its kind, state, repository, the id of its message and, for a contribution, the draft; a closed thing expires after 30 days. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
 Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

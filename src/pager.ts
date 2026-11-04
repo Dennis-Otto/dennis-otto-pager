@@ -1,7 +1,8 @@
 /**
  * The pager: what a signal of the rules does to the things that the maintainer
- * sees. One message per thing, edited in place as its state changes; a new message,
- * which notifies, only for a new thing or a bundle that opens again.
+ * sees. One message per thing, in a topic of its own, edited in place as its state
+ * changes; a new message, which notifies, only for a new thing or a bundle that
+ * opens again, which keeps its topic.
  */
 import { keyboard } from "./buttons.ts";
 import type { GitHub } from "./github.ts";
@@ -21,6 +22,7 @@ import {
 } from "./store.ts";
 import type { Telegram } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
+import { retitle, sendThing } from "./topics.ts";
 
 export interface Context {
   settings: Settings;
@@ -45,7 +47,8 @@ export const MERGEABLE_TRIES = 3;
 /**
  * Show a thing: edit its message, or send a new one when it has none, when it is
  * gone, or with fresh, which also deletes the old one, as "Later" does when its
- * time is up. Then keep its state.
+ * time is up. A new message goes into the thing's topic, and its first one opens
+ * that; the name of the topic follows the thing. Then keep its state.
  */
 export async function show(
   context: Context,
@@ -60,11 +63,12 @@ export async function show(
       ? await context.telegram.edit(old, text, buttons)
       : false;
   if (!shown) {
-    item.messageId = await context.telegram.send(text, buttons);
+    item.messageId = await sendThing(context, item, text, buttons);
     if (old !== null && fresh) {
       await context.telegram.remove(old);
     }
   }
+  await retitle(context, item);
   await context.store.put(item);
 }
 
@@ -76,6 +80,7 @@ function base(id: string, repo: string, installation: number) {
     messageId: null,
     note: null,
     snoozedUntil: null,
+    topic: null,
   };
 }
 
@@ -97,9 +102,11 @@ async function addEntry(
       kind,
       state: "open",
       entries: [entry],
+      // The bundles of a kind and a repository share one topic.
+      topic: known?.topic ?? null,
     } as Alarm | Alert;
-    // A bundle that opens again gets a new message, which notifies; the old one
-    // keeps its last state as history.
+    // A bundle that opens again gets a new message, which notifies, in the topic
+    // that it had; the old one keeps its last state as history.
     await show(context, item);
     return `${kind} opened`;
   }
@@ -213,9 +220,11 @@ async function releaseCheck(
       version,
       sha,
       url: pull.html_url ?? "",
-      // The same release, ready again after an update, keeps its message.
+      // The same release, ready again after an update, keeps its message; a new
+      // version keeps the topic of the one that it replaces, renamed.
       messageId: same?.messageId ?? replaced?.messageId ?? null,
       snoozedUntil: same?.snoozedUntil ?? null,
+      topic: same?.topic ?? replaced?.topic ?? null,
     };
     await show(context, item, replaced !== null);
     outcomes.push(`#${number} ready`);

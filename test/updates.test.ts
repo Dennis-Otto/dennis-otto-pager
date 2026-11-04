@@ -277,13 +277,20 @@ describe("buttons", () => {
           repo: REPO,
           kind: "alarm",
           entries: [{ label: "lint fails", url: "https://github.com/run" }],
+          language: "en",
         },
       });
       const drafting = await pressing(w, contribution(), `draft:${ID}`);
       expect(drafting.item?.state).toBe("drafting");
       expect(w.net.github("/dispatches")[1]?.body).toEqual({
         event_type: "pager-draft",
-        client_payload: { item: ID, repo: REPO, number: 12, pull: false },
+        client_payload: {
+          item: ID,
+          repo: REPO,
+          number: 12,
+          pull: false,
+          language: "en",
+        },
       });
       expect(w.net.github("/access_tokens")[0]?.body).toEqual({
         repositories: ["control"],
@@ -494,7 +501,11 @@ describe("messages", () => {
     );
     expect(w.net.github("/dispatches")[0]?.body).toEqual({
       event_type: "pager-text",
-      client_payload: { text: "What failed tonight?", message: 500 },
+      client_payload: {
+        text: "What failed tonight?",
+        message: 500,
+        language: "en",
+      },
     });
     expect(w.net.telegram("setMessageReaction")[0]?.body.reaction).toEqual([
       { type: "emoji", emoji: "👀" },
@@ -528,8 +539,13 @@ describe("messages", () => {
       text: "Merge it",
       message: 500,
       reply: answered.slice(0, 1000),
+      language: "en",
     });
-    expect(payloads[1]).toEqual({ text: "And this?", message: 500 });
+    expect(payloads[1]).toEqual({
+      text: "And this?",
+      message: 500,
+      language: "en",
+    });
   });
 
   it("send a text that answers no prompt as free text", async () => {

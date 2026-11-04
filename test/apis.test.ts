@@ -342,7 +342,7 @@ describe("Telegram", () => {
     const api = telegram(net);
     await api.remove(5);
     await api.answer("q", "x".repeat(300), true);
-    expect(await api.prompt("Write")).toBe(100);
+    expect(await api.prompt("Write", "Reply")).toBe(100);
     await api.say("Hello");
     await api.react(9, "👀");
     expect(net.telegram("deleteMessage")[0]?.body).toEqual({

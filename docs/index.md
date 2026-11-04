@@ -13,6 +13,8 @@ The pager writes only when something needs its maintainer, never to say that all
 | ✅ Confirm | Runs the one action that an answer to your text proposes, such as a merge, while its thing still offers it |
 | ⏰ Later, ✖ Ignore | Brings the thing back after four hours, or closes it |
 
+The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for this pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository.
+
 - [How it works](how-it-works.md): the rules of what counts, the buttons, the control repository and the state.
 - [Set up](setup.md): the bot, the Worker, the GitHub App, the secrets and the webhook, step by step.
 - [Releases and Cloudflare](releases.md): how a release goes live.

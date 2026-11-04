@@ -5,8 +5,11 @@
  *
  * Everything that an issue or a pull request says is data: these rules read the
  * kind of an event, its author, its branch and its state, and pass titles on only
- * to be shown, escaped.
+ * to be shown, escaped. What they hand on to be read, such as the label of an entry
+ * or why a release may not merge, is a phrase of src/texts.ts without a language:
+ * the pager words it in the language of its settings.
  */
+import type { Phrase } from "./texts.ts";
 
 /** The conclusions of a check or a workflow that count as a failure. */
 export const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
@@ -103,7 +106,7 @@ export type Signal = Where &
         url: string;
         author: string;
       }
-    | { type: "failing"; key: string; label: string; url: string }
+    | { type: "failing"; key: string; label: Phrase; url: string }
     | { type: "recovered"; key: string }
     | {
         type: "check";
@@ -116,7 +119,7 @@ export type Signal = Where &
     | { type: "release-updated"; number: number; sha: string }
     | { type: "release-merged"; number: number }
     | { type: "release-published"; tag: string }
-    | { type: "alert-open"; key: string; label: string; url: string }
+    | { type: "alert-open"; key: string; label: Phrase; url: string }
     | { type: "alert-closed"; key: string }
   );
 
@@ -163,24 +166,27 @@ export interface PullRequestState {
 export function releaseBlocker(
   pull: PullRequestState,
   defaultBranch: string,
-): string | null {
+): Phrase | null {
   if (pull.state !== "open") {
-    return "it isn't open";
+    return { key: "blocker.closed" };
   }
   if (!(pull.head?.ref ?? "").startsWith(RELEASE_BRANCH)) {
-    return "it isn't a release pull request";
+    return { key: "blocker.branch" };
   }
   if (pull.base?.ref !== defaultBranch) {
-    return `it doesn't go into ${defaultBranch}`;
+    return { key: "blocker.base", values: { branch: defaultBranch } };
   }
   if (releaseVersion(pull.title ?? "") === null) {
-    return "its title names no release";
+    return { key: "blocker.title" };
   }
   if (pull.draft === true) {
-    return "it is a draft";
+    return { key: "blocker.draft" };
   }
   if (pull.mergeable_state !== "clean") {
-    return `its checks aren't all green (${pull.mergeable_state ?? "unknown"})`;
+    return {
+      key: "blocker.checks",
+      values: { state: pull.mergeable_state ?? "unknown" },
+    };
   }
   return null;
 }
@@ -211,7 +217,7 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
           ...at,
           type: "failing",
           key: `issue:${number}`,
-          label: `A bot fails: ${issue?.title ?? ""}`,
+          label: { key: "entry.bot", values: { title: issue?.title ?? "" } },
           url: issue?.html_url ?? "",
         },
       };
@@ -337,7 +343,7 @@ function workflowRun(payload: Payload, at: Where): Outcome {
         ...at,
         type: "failing",
         key,
-        label: `The release fails: ${run?.name ?? path}`,
+        label: { key: "entry.release", values: { name: run?.name ?? path } },
         url: run?.html_url ?? "",
       },
     };
@@ -379,7 +385,10 @@ function codeScanning(payload: Payload, at: Where): Outcome {
       ...at,
       type: "alert-open",
       key,
-      label: `${severity}: ${what}${path === undefined ? "" : ` in ${path}`}`,
+      label:
+        path === undefined
+          ? { key: "entry.alert", values: { severity, what } }
+          : { key: "entry.alertAt", values: { severity, what, path } },
       url: alert?.html_url ?? "",
     },
   };

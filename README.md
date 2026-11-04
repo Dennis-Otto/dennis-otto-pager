@@ -30,6 +30,8 @@ Every message also has ⏰ **Later**, which brings it back after four hours, and
 
 Any other text to the bot goes to the private control repository, which answers with Claude Code and the maintainer's own subscription; reply to a message to ask about its thing. An answer that proposes an action, such as merging the release you asked about, comes with one ✅ **Confirm** button, and nothing acts without its press. Every answer, draft and fix shows what its run of Claude took from the weekly limit.
 
+The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de` for this pager, and English when it is empty. Every text that it sends follows it, the buttons and `/help` included, and so do the answers of the control repository; a draft of a reply keeps the language of its issue or pull request, and what comes from GitHub, such as a title, stays as it is.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/diagrams/how-the-pager-works.dark.svg">
   <img src="docs/images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.">

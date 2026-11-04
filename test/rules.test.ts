@@ -12,8 +12,16 @@ import {
   releaseBlocker,
   releaseVersion,
 } from "../src/rules.ts";
+import { texts } from "../src/texts.ts";
 
 const ME = "Dennis-Otto";
+const en = texts("en");
+
+/** Why a release may not merge, in English words, or null. */
+function why(...args: Parameters<typeof releaseBlocker>): string | null {
+  const blocker = releaseBlocker(...args);
+  return blocker === null ? null : en.phrase(blocker);
+}
 const repository = {
   full_name: "Dennis-Otto/demo",
   default_branch: "main",
@@ -239,7 +247,7 @@ describe("main failing", () => {
         ...at,
         type: "failing",
         key: "issue:5",
-        label: "A bot fails: Renovate fails",
+        label: { key: "entry.bot", values: { title: "Renovate fails" } },
         url: issue.html_url,
       },
     });
@@ -263,7 +271,7 @@ describe("main failing", () => {
         ...at,
         type: "failing",
         key: "issue:0",
-        label: "A bot fails: ",
+        label: { key: "entry.bot", values: { title: "" } },
         url: "",
       },
     });
@@ -305,7 +313,7 @@ describe("releases", () => {
         ...at,
         type: "failing",
         key: "workflow:.github/workflows/release.yml",
-        label: "The release fails: Release",
+        label: { key: "entry.release", values: { name: "Release" } },
         url: workflow.html_url,
       },
     });
@@ -338,7 +346,10 @@ describe("releases", () => {
       ),
     ).toMatchObject({
       signal: {
-        label: "The release fails: .github/workflows/verify-release.yml",
+        label: {
+          key: "entry.release",
+          values: { name: ".github/workflows/verify-release.yml" },
+        },
         url: "",
       },
     });
@@ -509,34 +520,28 @@ describe("releases", () => {
       head: { ref: "release-please--branches--main" },
       base: { ref: "main" },
     };
-    expect(releaseBlocker(ready, "main")).toBeNull();
-    expect(releaseBlocker({ ...ready, state: "closed" }, "main")).toBe(
-      "it isn't open",
-    );
-    expect(releaseBlocker({ ...ready, head: { ref: "feat/x" } }, "main")).toBe(
+    expect(why(ready, "main")).toBeNull();
+    expect(why({ ...ready, state: "closed" }, "main")).toBe("it isn't open");
+    expect(why({ ...ready, head: { ref: "feat/x" } }, "main")).toBe(
       "it isn't a release pull request",
     );
-    expect(releaseBlocker({ ...ready, head: {} }, "main")).toBe(
+    expect(why({ ...ready, head: {} }, "main")).toBe(
       "it isn't a release pull request",
     );
-    expect(releaseBlocker({ ...ready, base: { ref: "next" } }, "main")).toBe(
+    expect(why({ ...ready, base: { ref: "next" } }, "main")).toBe(
       "it doesn't go into main",
     );
-    expect(releaseBlocker({ ...ready, title: "chore: tidy" }, "main")).toBe(
+    expect(why({ ...ready, title: "chore: tidy" }, "main")).toBe(
       "its title names no release",
     );
     const { title: _title, ...untitled } = ready;
-    expect(releaseBlocker(untitled, "main")).toBe("its title names no release");
-    expect(releaseBlocker({ ...ready, draft: true }, "main")).toBe(
-      "it is a draft",
+    expect(why(untitled, "main")).toBe("its title names no release");
+    expect(why({ ...ready, draft: true }, "main")).toBe("it is a draft");
+    expect(why({ ...ready, mergeable_state: "blocked" }, "main")).toBe(
+      "its checks aren't all green (blocked)",
     );
-    expect(
-      releaseBlocker({ ...ready, mergeable_state: "blocked" }, "main"),
-    ).toBe("its checks aren't all green (blocked)");
     const { mergeable_state: _state, ...unknown } = ready;
-    expect(releaseBlocker(unknown, "main")).toBe(
-      "its checks aren't all green (unknown)",
-    );
+    expect(why(unknown, "main")).toBe("its checks aren't all green (unknown)");
   });
 });
 
@@ -565,7 +570,14 @@ describe("code scanning", () => {
         ...at,
         type: "alert-open",
         key: "alert:4",
-        label: "high: Cross-site scripting in src/index.ts",
+        label: {
+          key: "entry.alertAt",
+          values: {
+            severity: "high",
+            what: "Cross-site scripting",
+            path: "src/index.ts",
+          },
+        },
         url: alert.html_url,
       },
     });
@@ -582,7 +594,15 @@ describe("code scanning", () => {
         event({ action: "reopened", alert: bare, ref }),
         ME,
       ),
-    ).toMatchObject({ signal: { label: "critical: js/sqli", url: "" } });
+    ).toMatchObject({
+      signal: {
+        label: {
+          key: "entry.alert",
+          values: { severity: "critical", what: "js/sqli" },
+        },
+        url: "",
+      },
+    });
     const empty = { rule: { security_severity_level: "critical" } };
     expect(
       classify(
@@ -590,7 +610,15 @@ describe("code scanning", () => {
         event({ action: "created", alert: empty, ref }),
         ME,
       ),
-    ).toMatchObject({ signal: { key: "alert:0", label: "critical: " } });
+    ).toMatchObject({
+      signal: {
+        key: "alert:0",
+        label: {
+          key: "entry.alert",
+          values: { severity: "critical", what: "" },
+        },
+      },
+    });
   });
 
   it("closes an alert that was fixed or dismissed", () => {

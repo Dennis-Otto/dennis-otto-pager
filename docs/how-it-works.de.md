@@ -18,7 +18,7 @@ Der Pager ist ein Cloudflare Worker mit drei Türen und einem Zeitplan: `/github
 | `workflow_run` completed | `release.yml`, `build-release.yml` oder `verify-release.yml` ist gescheitert, außerhalb eines Pull Requests | Ein Eintrag im Alarm; ein Erfolg nimmt ihn heraus |
 | `issues` opened von einem Bot | Es trägt das Label `bot-failure` des Bot-Health-Bots | Ein Eintrag im Alarm; sein Schließen nimmt ihn heraus |
 | `code_scanning_alert` created oder reopened auf dem Standard-Branch | Der Schweregrad ist high oder critical | Ein Eintrag in der Code-Scanning-Nachricht des Repositorys; behoben oder verworfen nimmt ihn heraus |
-| `check_suite` completed auf einem Branch von release-please | GitHub nennt den Pull Request clean: offen, kein Entwurf, in den Standard-Branch, jeder Pflicht-Check grün und aktuell | Die Release-Nachricht mit 🔀 **Merge** |
+| `check_suite` completed auf einem Branch von release-please | GitHub nennt den Pull Request clean: offen, kein Entwurf, in den Standard-Branch, jeder Pflicht-Check grün und aktuell | Die Release-Nachricht mit 🔀 **Mergen** |
 | `pull_request` synchronize, closed und merged; `release` published | Es ist das Release, das die Nachricht zeigt | Dieselbe Nachricht: *aktualisiert*, *gemergt*, *✅ veröffentlicht* |
 
 Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und ein neuer Fehler danach öffnet eine neue Nachricht, die benachrichtigt.
@@ -29,19 +29,19 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 
 | Sache | Zustand | Knöpfe |
 | --- | --- | --- |
-| Beitrag | new | ✍️ Draft a reply, 🤖 Assistant again (nur Issues), ⏰ Later, ✖ Ignore |
-| Beitrag | drafting | ⏰ Later, ✖ Ignore |
-| Beitrag | draft | ✅ Send, ✏️ Edit, ⏰ Later, ✖ Ignore |
-| Alarm, Code Scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
-| Alarm, Code Scanning | fixing | ⏰ Later, ✖ Ignore |
-| Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
-| Erinnerung | open | ✅ Renewed, ⏰ Later |
+| Beitrag | new | ✍️ Antwort entwerfen, 🤖 Assistent nochmal (nur Issues), ⏰ Später, ✖ Ignorieren |
+| Beitrag | drafting | ⏰ Später, ✖ Ignorieren |
+| Beitrag | draft | ✅ Senden, ✏️ Bearbeiten, ⏰ Später, ✖ Ignorieren |
+| Alarm, Code Scanning | open | 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
+| Alarm, Code Scanning | fixing | ⏰ Später, ✖ Ignorieren |
+| Release | ready | 🔀 Mergen, ⏰ Später, ✖ Ignorieren |
+| Erinnerung | open | ✅ Erneuert, ⏰ Später |
 
-- **🔀 Merge** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
-- **✅ Send** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte; ein älterer Knopf derselben Sache lehnt ab. **✏️ Edit** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
-- **🤖 Assistant again** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
-- **✍️ Draft a reply** und **🛠 Start fix** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort sagt, wie viel er genommen hat; ein Job, der fehlschlägt, bringt seinen Knopf zurück.
-- **⏰ Later** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignore** schließt sie.
+- **🔀 Mergen** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
+- **✅ Senden** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte; ein älterer Knopf derselben Sache lehnt ab. **✏️ Bearbeiten** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
+- **🤖 Assistent nochmal** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
+- **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort sagt, wie viel er genommen hat; ein Job, der fehlschlägt, bringt seinen Knopf zurück.
+- **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie.
 
 ## Das Steuer-Repository
 
@@ -49,9 +49,11 @@ Der Workflow des privaten Repositorys `Dennis-Otto/dennis-otto-pager-control` f�
 
 | Ereignistyp | Gesendet von | Client Payload |
 | --- | --- | --- |
-| `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull` |
-| `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url` |
-| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat) und `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt |
+| `pager-draft` | ✍️ Antwort entwerfen | `item`, `repo`, `number`, `pull`, `language` |
+| `pager-fix` | 🛠 Fix starten | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url`, `language` |
+| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat) und `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt; `language` |
+
+`language` ist `LANGUAGE` des Workers, `en` oder `de`: Darin antwortet das Steuer-Repository dem Maintainer, die Notiz eines Fixes und der Grund eines gescheiterten Jobs eingeschlossen, während ein Antwortentwurf in der Sprache seines Issues oder Pull Requests bleibt.
 
 Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *merge it*, als Antwort auf die Nachricht eines Releases, meint dieses Release. Der Pager schickt keinen Text eines Issues: Der Workflow liest ihn selbst von GitHub, als Daten. Er antwortet mit einem `POST` an `/control`:
 
@@ -61,13 +63,13 @@ Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *mer
 
 Der Body ist eines von:
 
-- `{"type": "draft", "item": "<id>", "text": "<Antwort>"}`: der Entwurf einer Antwort auf einen Beitrag, höchstens 3000 Zeichen, gezeigt als neue Nachricht mit ✅ Send;
+- `{"type": "draft", "item": "<id>", "text": "<Antwort>"}`: der Entwurf einer Antwort auf einen Beitrag, höchstens 3000 Zeichen, gezeigt als neue Nachricht mit ✅ Senden;
 - `{"type": "note", "item": "<id>", "text": "<Notiz>"}`: eine Notiz unter einer Sache, etwa der Pull Request eines Fixes;
 - `{"type": "note", "text": "<Antwort>"}`: eine eigene Nachricht, etwa die Antwort auf freien Text;
-- `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Confirm;
+- `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Bestätigen;
 - `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann.
 
-Jeder Body kann `"usage": {"turns": <Zahl>, "seconds": <Zahl>}` tragen: was der Lauf von Claude vom Wochenlimit des Abos genommen hat. Die Nachricht zeigt es als *🧮 Claude: 4 turns, 52 s, from your weekly limit*.
+Jeder Body kann `"usage": {"turns": <Zahl>, "seconds": <Zahl>}` tragen: was der Lauf von Claude vom Wochenlimit des Abos genommen hat. Die Nachricht zeigt es als *🧮 Claude: 4 Runden, 52 s, von deinem Wochenlimit*, in der Sprache des Pagers.
 
 Ein Vorschlag nennt seine Sache so, wie das Steuer-Repository sie kennt, und der Pager schlägt sie nach:
 
@@ -78,7 +80,7 @@ Ein Vorschlag nennt seine Sache so, wie das Steuer-Repository sie kennt, und der
 | `fix` | `alarm`, `alert` | keine |
 | `later`, `ignore` | jede der vier | bei einem Beitrag |
 
-✅ Confirm trägt die Daten des eigenen Knopfs der Sache, ein Druck führt die Aktion also nur aus, solange die Sache sie noch anbietet, wie jeder Druck, und danach verschwindet der Knopf. Eine Sache, die der Pager nicht zeigt oder die die Aktion gerade nicht anbietet, bekommt die Antwort ohne Knopf. ✅ Send und ✏️ Edit lassen sich nicht vorschlagen: Sie bleiben bei der Nachricht des Entwurfs, die den Text zeigt, den sie posten.
+✅ Bestätigen trägt die Daten des eigenen Knopfs der Sache, ein Druck führt die Aktion also nur aus, solange die Sache sie noch anbietet, wie jeder Druck, und danach verschwindet der Knopf. Eine Sache, die der Pager nicht zeigt oder die die Aktion gerade nicht anbietet, bekommt die Antwort ohne Knopf. ✅ Senden und ✏️ Bearbeiten lassen sich nicht vorschlagen: Sie bleiben bei der Nachricht des Entwurfs, die den Text zeigt, den sie posten.
 
 ```sh
 body='{"type":"note","text":"Der Fix ist in #12."}'
@@ -89,8 +91,14 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 Kein Body lässt den Pager handeln: Was das Steuer-Repository schickt, wird angezeigt, maskiert, und nie ausgeführt, und jede Aktion braucht den Druck auf einen Knopf der Positivliste. Die Antwort geht an den Worker statt direkt an Telegram, wie [Entscheidung 0003](decisions/0003-the-control-repository-answers-the-worker.md) erklärt: Der Token des Bots bleibt bei Cloudflare, und der Worker hält den Zustand, den ein Entwurf, ein fehlgeschlagener Job und ein Vorschlag brauchen.
 
+## Texte und Sprachen
+
+Jeder Text, den der Pager schickt, kommt aus `src/texts.ts`, ein Katalog pro Sprache, Englisch und Deutsch, und `LANGUAGE` in `wrangler.jsonc` wählt einen: die Nachrichten und ihre Zustände, die Knöpfe, `/help`, die Antworten der Knöpfe, die Fehler, die er zeigt, und die Erinnerung an das Token. Ein Text nennt seine Teile in geschweiften Klammern, etwa `{repo}`, und was sie füllt, etwa der Titel eines Issues oder der Name eines Checks, geht so hinein, wie GitHub es sagt. Die Regeln geben weiter, was sie meinen, etwa warum ein Release noch nicht mergen darf, als Schlüssel des Katalogs mit seinen Werten, und der Pager formuliert es; die Logs bleiben auf Englisch. Beide Kataloge haben dieselben Schlüssel, was der Compiler prüft, und dieselben Platzhalter, Tags und Emojis, was `test/texts.test.ts` prüft: Ein neuer Text braucht einen Eintrag in beiden.
+
+Nach einer Änderung von `LANGUAGE` spricht eine Nachricht die neue Sprache, sobald sich ihre Sache ändert; was ihr Eintrag als Text hält, etwa ihre Notiz, die Einträge eines Bündels und die Erinnerung, behält die Worte, mit denen es geschrieben wurde.
+
 ## Zustand
 
-Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Later“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, und die Rückfrage einer Bearbeitung lebt einen Tag. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
+Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, und die Rückfrage einer Bearbeitung lebt einen Tag. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
-Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Send postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.
+Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.

@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.2.2](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.1...v0.2.2) (2026-11-04)
+
+
+### Bug fixes
+
+* the pager answers in the thread that the message came from ([#27](https://github.com/Dennis-Otto/dennis-otto-pager/issues/27)) ([22cc432](https://github.com/Dennis-Otto/dennis-otto-pager/commit/22cc432d08d6d0ab27eef8dda472489aa5ff98a0))
+
 ## [0.2.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.0...v0.2.1) (2026-11-04)
 
 ### Bug fixes

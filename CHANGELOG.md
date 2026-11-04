@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.2.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.1.0...v0.2.0) (2026-11-04)
+
+
+### Features
+
+* an answer of Claude names its model, effort and tokens, and the reaction shows it is done ([#17](https://github.com/Dennis-Otto/dennis-otto-pager/issues/17)) ([80e129e](https://github.com/Dennis-Otto/dennis-otto-pager/commit/80e129e813b3d08cd4c83e0d1ed14394272b75d6))
+
 ## 0.1.0 (2026-11-04)
 
 ### Features

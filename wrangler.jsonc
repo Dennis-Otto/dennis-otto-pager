@@ -3,13 +3,42 @@
 // in the dashboard of Cloudflare, its code and the date of the behavior of the
 // runtime that it relies on. Add its bindings, routes and variables here, and run
 // `npm run typecheck`, which writes their types anew. A secret goes to Cloudflare
-// with `npx wrangler secret put NAME`, never into this file or the repository.
+// with `npx wrangler secret put NAME`, never into this file or the repository:
+// docs/setup.md lists each secret of the pager.
 // https://developers.cloudflare.com/workers/wrangler/configuration/
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dennis-otto-pager",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  // The state of the pager: one small record per thing that it shows, and nothing
+  // secret. The first `npx wrangler deploy` creates the namespace and binds it.
+  "kv_namespaces": [{ "binding": "PAGER" }],
+  // The one Durable Object of the pager, src/serial.ts, which runs every change of
+  // that state one after another, in one place. It keeps nothing itself; SQLite is
+  // the storage that the Free plan of Workers offers for it.
+  "durable_objects": {
+    "bindings": [{ "name": "SERIAL", "class_name": "Serial" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Serial"] }],
+  // Every 15 minutes: the things that "Later" put aside come back when their time
+  // is up, and the reminder of the Claude token comes in time.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // What isn't secret. The chat id of Telegram is a secret all the same: it is
+  // personal, so it lives in Cloudflare only, as TELEGRAM_CHAT_ID.
+  "vars": {
+    // The GitHub account of the maintainer: what they open is no contribution from
+    // outside, and only their repositories are served.
+    "MAINTAINER_LOGIN": "Dennis-Otto",
+    // The private repository whose workflow drafts the replies, starts the fixes and
+    // reads the free text, as docs/how-it-works.md describes.
+    "CONTROL_REPOSITORY": "Dennis-Otto/dennis-otto-pager-control",
+    // How many hours "Later" puts a thing aside.
+    "LATER_HOURS": "4",
+    // The day on which the token of Claude in the control repository expires; the
+    // pager reminds three weeks before. Empty for no reminder.
+    "CLAUDE_TOKEN_EXPIRES": "2027-10-07"
+  },
   "observability": {
     "enabled": true
   }

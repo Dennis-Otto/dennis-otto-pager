@@ -1,0 +1,29 @@
+{
+  "name": "dennis-otto-pager",
+  "url": "https://github.com/Dennis-Otto/dennis-otto-pager",
+  "description": "Pages Dennis on Telegram when something in his repositories needs him, and acts on it with a button.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://dennis-otto-pager.example.workers.dev/github",
+    "active": true
+  },
+  "redirect_url": "http://127.0.0.1/done",
+  "default_permissions": {
+    "actions": "read",
+    "checks": "read",
+    "contents": "write",
+    "issues": "read",
+    "metadata": "read",
+    "pull_requests": "read",
+    "security_events": "read"
+  },
+  "default_events": [
+    "check_run",
+    "check_suite",
+    "code_scanning_alert",
+    "issues",
+    "pull_request",
+    "release",
+    "workflow_run"
+  ]
+}

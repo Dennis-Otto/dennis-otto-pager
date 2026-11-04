@@ -1,0 +1,11 @@
+# The secrets of `npm run dev`, which runs the Worker on your machine: copy this file
+# to .dev.vars, which git ignores, and fill in test values. The deployed Worker takes
+# them from Cloudflare instead (`npx wrangler secret put NAME`), as docs/setup.md says.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_CHAT_ID=
+GITHUB_WEBHOOK_SECRET=
+GITHUB_APP_ID=
+GITHUB_APP_PRIVATE_KEY=
+CONTROL_SECRET=
+GITHUB_USER_TOKEN=

@@ -1,0 +1,484 @@
+// The updates of Telegram: each button of the allowlist, the edit of a draft, free
+// text, and everything that comes from anyone but the maintainer.
+import { describe, expect, it } from "vitest";
+
+import { callbackData } from "../src/buttons.ts";
+import type { Alarm, Contribution, Item, Release } from "../src/store.ts";
+import { handleUpdate } from "../src/updates.ts";
+import {
+  base,
+  CHAT,
+  json,
+  REPO,
+  START,
+  type World,
+  withControl,
+  world,
+} from "./helpers.ts";
+
+const ID = "i0123456789abcde";
+
+function contribution(extra: Partial<Contribution> = {}): Contribution {
+  return {
+    ...base(ID),
+    kind: "contribution",
+    state: "new",
+    number: 12,
+    pull: false,
+    title: "It breaks",
+    url: "https://github.com/Dennis-Otto/demo/issues/12",
+    author: "octocat",
+    draft: null,
+    draftVersion: 0,
+    ...extra,
+  };
+}
+
+const alarm: Alarm = {
+  ...base(ID),
+  kind: "alarm",
+  state: "open",
+  entries: [
+    { key: "check:lint", label: "lint fails", url: "https://github.com/run" },
+  ],
+};
+
+const release: Release = {
+  ...base(ID),
+  kind: "release",
+  state: "ready",
+  number: 30,
+  version: "1.2.3",
+  sha: "abc",
+  url: "https://github.com/Dennis-Otto/demo/pull/30",
+};
+
+async function pressing(w: World, item: Item, data: string, from = CHAT) {
+  await w.context.store.put(item);
+  const outcome = await handleUpdate(w.context, {
+    callback_query: { id: "q1", from: { id: from }, data },
+  });
+  const answer = w.net.telegram("answerCallbackQuery").at(-1)?.body;
+  return { outcome, answer, item: await w.context.store.get(item.id) };
+}
+
+function message(text: string, extra: object = {}) {
+  return {
+    message: {
+      message_id: 500,
+      chat: { id: CHAT },
+      from: { id: CHAT },
+      text,
+      ...extra,
+    },
+  };
+}
+
+describe("buttons", () => {
+  it("put a thing aside with Later", async () => {
+    const w = await world();
+    const { answer, item } = await pressing(
+      w,
+      alarm,
+      callbackData("later", alarm),
+    );
+    expect(answer).toMatchObject({ text: "Back in 4 h.", show_alert: false });
+    expect(item?.snoozedUntil).toBe(START + 4 * 3600000);
+    expect(await w.context.store.due(START + 4 * 3600000)).toEqual([ID]);
+    expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
+      "⏰ Back in 4 h.",
+    );
+  });
+
+  it("ignore a thing, and close a reminder with Renewed", async () => {
+    const w = await world();
+    expect((await pressing(w, alarm, `ignore:${ID}`)).item?.state).toBe(
+      "ignored",
+    );
+    const reminder: Item = {
+      ...base(ID),
+      kind: "reminder",
+      state: "open",
+      text: "Renew",
+    };
+    const done = await pressing(w, reminder, `done:${ID}`);
+    expect(done.item?.state).toBe("done");
+    expect(done.answer.text).toBe("Done.");
+  });
+
+  it("refuse a button that the thing doesn't offer any more", async () => {
+    const w = await world();
+    const { answer, outcome } = await pressing(
+      w,
+      { ...alarm, state: "recovered" },
+      `fix:${ID}`,
+    );
+    expect(answer).toMatchObject({
+      text: "This button is out of date.",
+      show_alert: true,
+    });
+    expect(outcome).toBe("fix: This button is out of date.");
+  });
+
+  it("refuse an unknown button and a thing that is gone", async () => {
+    const w = await world();
+    expect(
+      await handleUpdate(w.context, {
+        callback_query: { id: "q", from: { id: CHAT }, data: "rm -rf" },
+      }),
+    ).toBe("an unknown button");
+    expect(
+      await handleUpdate(w.context, {
+        callback_query: { id: "q", from: { id: CHAT } },
+      }),
+    ).toBe("an unknown button");
+    expect(
+      await handleUpdate(w.context, {
+        callback_query: { id: "q", from: { id: CHAT }, data: `later:${ID}` },
+      }),
+    ).toBe("a button of a thing that is gone");
+    expect(w.net.telegram("answerCallbackQuery")).toHaveLength(3);
+  });
+
+  it("serve no one but the maintainer", async () => {
+    const w = await world();
+    const { outcome } = await pressing(w, alarm, `ignore:${ID}`, 1);
+    expect(outcome).toBe("a button of a stranger");
+    expect(await w.context.store.get(ID)).toMatchObject({ state: "open" });
+    expect(w.net.calls).toHaveLength(0);
+  });
+
+  describe("Merge", () => {
+    const pull = {
+      number: 30,
+      state: "open",
+      title: "chore: release 1.2.3",
+      mergeable_state: "clean",
+      head: { ref: "release-please--branches--main", sha: "abc" },
+      base: { ref: "main", repo: { default_branch: "main" } },
+    };
+
+    it("merges a release that is still green at the head it showed", async () => {
+      const w = await world();
+      w.net
+        .on("GET", "/repos/Dennis-Otto/demo/pulls/30", () => json(pull))
+        .on("PUT", "/repos/Dennis-Otto/demo/pulls/30/merge", () =>
+          json({ merged: true }),
+        );
+      const { answer, item } = await pressing(w, release, `merge:${ID}`);
+      expect(answer.text).toBe("Merging.");
+      expect(item?.state).toBe("merging");
+      expect(w.net.github("/pulls/30/merge")[0]?.body).toEqual({
+        merge_method: "squash",
+        sha: "abc",
+      });
+    });
+
+    it("refuses a release that changed since its message", async () => {
+      const w = await world();
+      w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () =>
+        json({ ...pull, head: { ...pull.head, sha: "new" } }),
+      );
+      const { answer, item } = await pressing(w, release, `merge:${ID}`);
+      expect(answer.show_alert).toBe(true);
+      expect(item).toMatchObject({ state: "updating", sha: "new" });
+      expect(w.net.github("/merge")).toHaveLength(0);
+      w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () =>
+        json({ number: 30 }),
+      );
+      const headless = await pressing(w, release, `merge:${ID}`);
+      expect(headless.item).toMatchObject({ sha: "" });
+    });
+
+    it("refuses a release that isn't green, and says why GitHub refused", async () => {
+      const w = await world();
+      w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () =>
+        json({ ...pull, mergeable_state: "behind", base: { ref: "main" } }),
+      );
+      const blocked = await pressing(w, release, `merge:${ID}`);
+      expect(blocked.answer.text).toBe(
+        "Not merged: its checks aren't all green (behind).",
+      );
+      w.net
+        .on("GET", "/repos/Dennis-Otto/demo/pulls/30", () => json(pull))
+        .on("PUT", "/repos/Dennis-Otto/demo/pulls/30/merge", () =>
+          json({ message: "Head branch was modified" }, 409),
+        );
+      const refused = await pressing(w, release, `merge:${ID}`);
+      expect(refused.answer).toMatchObject({
+        text: "GitHub refused: Head branch was modified",
+        show_alert: true,
+      });
+      expect(refused.item?.state).toBe("ready");
+    });
+  });
+
+  describe("Start fix and Draft a reply", () => {
+    it("send the thing to the control repository", async () => {
+      const w = await world();
+      withControl(w.net).on(
+        "POST",
+        "/repos/Dennis-Otto/control/dispatches",
+        () => new Response(null, { status: 204 }),
+      );
+      const fixing = await pressing(w, alarm, `fix:${ID}`);
+      expect(fixing.item?.state).toBe("fixing");
+      expect(w.net.github("/dispatches")[0]?.body).toEqual({
+        event_type: "pager-fix",
+        client_payload: {
+          item: ID,
+          repo: REPO,
+          kind: "alarm",
+          entries: [{ label: "lint fails", url: "https://github.com/run" }],
+        },
+      });
+      const drafting = await pressing(w, contribution(), `draft:${ID}`);
+      expect(drafting.item?.state).toBe("drafting");
+      expect(w.net.github("/dispatches")[1]?.body).toEqual({
+        event_type: "pager-draft",
+        client_payload: { item: ID, repo: REPO, number: 12, pull: false },
+      });
+      expect(w.net.github("/access_tokens")[0]?.body).toEqual({
+        repositories: ["control"],
+        permissions: { contents: "write" },
+      });
+    });
+
+    it("explain that the app isn't installed on the control repository", async () => {
+      const w = await world();
+      const fix = await pressing(w, alarm, `fix:${ID}`);
+      expect(fix.answer.text).toContain(
+        "isn't installed on Dennis-Otto/control",
+      );
+      expect(fix.item?.state).toBe("open");
+      const draft = await pressing(w, contribution(), `draft:${ID}`);
+      expect(draft.item?.state).toBe("new");
+    });
+  });
+
+  describe("Assistant again", () => {
+    it("starts the issue assistant past its rule, in the maintainer's name", async () => {
+      const w = await world();
+      w.net.on(
+        "POST",
+        /issue-assistant\.yml\/dispatches$/,
+        () => new Response(null, { status: 204 }),
+      );
+      const { answer, item } = await pressing(
+        w,
+        contribution(),
+        `assistant:${ID}`,
+      );
+      expect(answer.text).toBe("The issue assistant runs.");
+      expect(item?.note).toBe("🤖 The issue assistant answers again.");
+    });
+
+    it("explains a repository whose assistant doesn't take the override yet", async () => {
+      const w = await world();
+      w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+        json({ message: 'Unexpected inputs provided: ["override"]' }, 422),
+      );
+      const { answer } = await pressing(w, contribution(), `assistant:${ID}`);
+      expect(answer.text).toContain("doesn't take the override yet");
+      w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+        json({ message: "Not Found" }, 404),
+      );
+      expect(
+        (await pressing(w, contribution(), `assistant:${ID}`)).answer.text,
+      ).toBe("GitHub refused: Not Found");
+    });
+
+    it("lets a stranger's error through to the log", async () => {
+      const w = await world();
+      w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () => {
+        throw new TypeError("network");
+      });
+      await expect(
+        pressing(w, contribution(), `assistant:${ID}`),
+      ).rejects.toThrow("network");
+    });
+  });
+
+  describe("Send and Edit", () => {
+    const drafted = contribution({
+      state: "draft",
+      draft: "Thanks!",
+      draftVersion: 2,
+    });
+
+    it("posts exactly the draft that the message showed", async () => {
+      const w = await world();
+      w.net.on("POST", "/repos/Dennis-Otto/demo/issues/12/comments", () =>
+        json({ html_url: "https://github.com/c" }, 201),
+      );
+      const stale = await pressing(w, drafted, `send:${ID}:1`);
+      expect(stale.answer.text).toContain("out of date");
+      expect(w.net.github("/comments")).toHaveLength(0);
+      const sent = await pressing(w, drafted, `send:${ID}:2`);
+      expect(sent.item).toMatchObject({
+        state: "sent",
+        note: "Posted in your name.",
+      });
+      expect(w.net.github("/comments")[0]?.body).toEqual({ body: "Thanks!" });
+      const empty = await pressing(
+        w,
+        { ...drafted, draft: null },
+        `send:${ID}:2`,
+      );
+      expect(empty.answer.text).toContain("out of date");
+    });
+
+    it("refuses to send without the maintainer's token", async () => {
+      const w = await world({ userToken: null });
+      const { answer, item } = await pressing(w, drafted, `send:${ID}:2`);
+      expect(answer.text).toContain("GITHUB_USER_TOKEN isn't set");
+      expect(item?.state).toBe("draft");
+    });
+
+    it("takes a new text in reply to its prompt, as the next draft", async () => {
+      const w = await world();
+      const { answer } = await pressing(w, drafted, `edit:${ID}`);
+      expect(answer.text).toBe("Write the new text in reply.");
+      expect(await w.context.store.pendingEdit()).toEqual({
+        item: ID,
+        prompt: 100,
+      });
+      const outcome = await handleUpdate(
+        w.context,
+        message("  Thank you, fixed in 1.2.3.  ", {
+          reply_to_message: { message_id: 100 },
+        }),
+      );
+      expect(outcome).toBe("draft edited");
+      expect(await w.context.store.get(ID)).toMatchObject({
+        draft: "Thank you, fixed in 1.2.3.",
+        draftVersion: 3,
+        state: "draft",
+        messageId: 101,
+      });
+      expect(await w.context.store.pendingEdit()).toBeNull();
+      const deleted = w.net
+        .telegram("deleteMessage")
+        .map((call) => call.body.message_id);
+      expect(deleted).toEqual([100, 7, 500]);
+      const shown = w.net.telegram("sendMessage").at(-1)?.body;
+      expect(shown.text).toContain(
+        "<blockquote>Thank you, fixed in 1.2.3.</blockquote>",
+      );
+      expect(shown.reply_markup.inline_keyboard[0][0].callback_data).toBe(
+        `send:${ID}:3`,
+      );
+    });
+
+    it("refuses an edit that is too long, or of a draft that is gone", async () => {
+      const w = await world();
+      await pressing(w, drafted, `edit:${ID}`);
+      const reply = { reply_to_message: { message_id: 100 } };
+      expect(
+        await handleUpdate(w.context, message("x".repeat(3001), reply)),
+      ).toBe("an edit that is too long");
+      expect(await w.context.store.get(ID)).toMatchObject({ draftVersion: 2 });
+      await pressing(w, drafted, `edit:${ID}`);
+      const prompt = (await w.context.store.pendingEdit())?.prompt;
+      await w.context.store.put({ ...drafted, state: "sent" });
+      expect(
+        await handleUpdate(
+          w.context,
+          message("New", { reply_to_message: { message_id: prompt } }),
+        ),
+      ).toBe("an edit of a draft that is gone");
+      await w.context.store.setPendingEdit({
+        item: "i000000000000000",
+        prompt: 9,
+      });
+      expect(
+        await handleUpdate(
+          w.context,
+          message("New", { reply_to_message: { message_id: 9 } }),
+        ),
+      ).toBe("an edit of a draft that is gone");
+    });
+  });
+});
+
+describe("messages", () => {
+  it("answer /start and /help", async () => {
+    const w = await world();
+    expect(await handleUpdate(w.context, message("/start"))).toBe("help");
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "This is your pager.",
+    );
+  });
+
+  it("send free text to the control repository and react to it", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    expect(await handleUpdate(w.context, message("What failed tonight?"))).toBe(
+      "free text sent",
+    );
+    expect(w.net.github("/dispatches")[0]?.body).toEqual({
+      event_type: "pager-text",
+      client_payload: { text: "What failed tonight?", message: 500 },
+    });
+    expect(w.net.telegram("setMessageReaction")[0]?.body.reaction).toEqual([
+      { type: "emoji", emoji: "👀" },
+    ]);
+  });
+
+  it("send a text that answers no prompt as free text", async () => {
+    const w = await world();
+    await w.context.store.setPendingEdit({ item: ID, prompt: 9 });
+    expect(
+      await handleUpdate(
+        w.context,
+        message("Hello", { reply_to_message: { message_id: 8 } }),
+      ),
+    ).toBe("free text without a control repository");
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "isn't installed yet",
+    );
+  });
+
+  it("drop what comes from others, or without text", async () => {
+    const w = await world();
+    expect(await handleUpdate(w.context, {})).toBe(
+      "an update without a message",
+    );
+    expect(
+      await handleUpdate(w.context, {
+        message: {
+          message_id: 1,
+          chat: { id: CHAT },
+          from: { id: 1 },
+          text: "hi",
+        },
+      }),
+    ).toBe("a message of a stranger");
+    expect(
+      await handleUpdate(w.context, {
+        message: {
+          message_id: 1,
+          chat: { id: -100 },
+          from: { id: CHAT },
+          text: "hi",
+        },
+      }),
+    ).toBe("a message of a stranger");
+    expect(await handleUpdate(w.context, { message: { message_id: 1 } })).toBe(
+      "a message of a stranger",
+    );
+    expect(await handleUpdate(w.context, message("   "))).toBe(
+      "a message without text",
+    );
+    expect(
+      await handleUpdate(w.context, {
+        message: { message_id: 1, chat: { id: CHAT }, from: { id: CHAT } },
+      }),
+    ).toBe("a message without text");
+    expect(w.net.calls).toHaveLength(0);
+  });
+});

@@ -1,28 +1,65 @@
 /**
- * Dennis Otto Pager: A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.
+ * Dennis Otto Pager: a Telegram bot on a Cloudflare Worker that tells its maintainer
+ * only what needs them in their GitHub repositories, and acts on it with a button.
  *
- * The Worker, which Cloudflare runs for every request; replace it with the real code.
- * This module, which wrangler.jsonc names as the main one, exports only the handlers
- * of the Worker; the code that they call lives in modules of its own, such as greet.ts.
+ * The handlers of the Worker: the webhook of Telegram at /telegram, that of the
+ * GitHub App at /github, the answers of the control repository at /control, and the
+ * schedule. The Worker turns away what no route serves; the one Durable Object of
+ * src/serial.ts runs the rest, one change at a time. Each request proves where it
+ * comes from before anything else runs, and no log names a secret or what an issue
+ * says.
  */
-import { greet } from "./greet.ts";
+import type { Route } from "./routes.ts";
+import { type PagerEnv, readSettings, type Settings } from "./settings.ts";
+
+export { Serial } from "./serial.ts";
+
+const ROUTES: ReadonlySet<string> = new Set<Route>([
+  "/telegram",
+  "/github",
+  "/control",
+]);
+
+function configured(env: PagerEnv): Settings | null {
+  const read = readSettings(env);
+  if ("missing" in read) {
+    console.error("The pager misses settings:", read.missing.join(", "));
+    return null;
+  }
+  return read.settings;
+}
+
+/** The one Durable Object of the pager. */
+function serial(env: PagerEnv) {
+  return env.SERIAL.getByName("pager");
+}
 
 export default {
-  fetch(request) {
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: { allow: "GET, HEAD" },
-      });
-    }
+  async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname !== "/") {
+    if (url.pathname === "/" && ["GET", "HEAD"].includes(request.method)) {
+      return new Response("ok");
+    }
+    if (!ROUTES.has(url.pathname)) {
       return new Response("Not Found", { status: 404 });
     }
-    const name = url.searchParams.get("name") ?? "world";
-    if (name.trim() === "") {
-      return Response.json({ error: "name is empty" }, { status: 400 });
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", {
+        status: 405,
+        headers: { allow: "POST" },
+      });
     }
-    return Response.json({ message: greet(name) });
+    const settings = configured(env);
+    if (settings === null) {
+      return new Response("Service Unavailable", { status: 503 });
+    }
+    return serial(env).handle(settings, url.pathname as Route, request);
   },
-} satisfies ExportedHandler<Env>;
+
+  async scheduled(_controller, env, executionContext) {
+    const settings = configured(env);
+    if (settings !== null) {
+      executionContext.waitUntil(serial(env).schedule(settings));
+    }
+  },
+} satisfies ExportedHandler<PagerEnv>;

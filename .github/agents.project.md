@@ -9,3 +9,12 @@ This file belongs to the project: the blueprint wrote it once, and its updates l
 - The Worker is in `src/`, with its handlers in `src/index.ts`, its metadata and version in `package.json`, and its name, bindings and compatibility date in `wrangler.jsonc`; Cloudflare builds and deploys it with Workers Builds, as `docs/releases.md` describes, and its secrets live in Cloudflare, never in the repository.
 - `README.md` documents installation, configuration and use, `docs/` holds the pages of the website, and `CHANGELOG.md` lists the changes of every release.
 - The tests are in `test/`; `scripts/check.sh` runs every check.
+
+## The parts of the pager
+
+- `src/index.ts` has the three routes and the schedule; each request proves where it comes from first (`src/crypto.ts`), and `src/settings.ts` reads the variables of `wrangler.jsonc` and the secrets, which live in Cloudflare.
+- `src/rules.ts` is the one place that decides what counts: add or change a rule there, with its test in `test/rules.test.ts`, and keep `docs/how-it-works.md` and its German page in step. `github-app.json`, the manifest of the GitHub App, subscribes to exactly the events that the rules read, as `test/manifest.test.ts` checks.
+- `src/buttons.ts` is the allowlist of the buttons per kind and state; `src/actions.ts` runs them. A new action takes an entry in both, a test of its own and a row in the docs. Nothing that an issue, a pull request or the control repository says runs: it is shown, escaped by `src/render.ts`.
+- `src/pager.ts` turns signals into one message per thing, edited in place; `src/store.ts` keeps the state in Workers KV, without secrets. Mind the free plan of KV: write only when a thing changes.
+- `src/control.ts` takes the signed answers of the private control repository; the contract is in `docs/how-it-works.md`.
+- The tests run in workerd against the simulated Telegram and GitHub of `test/helpers.ts`, which records each call; nothing goes to the network.

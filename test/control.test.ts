@@ -456,10 +456,10 @@ describe("the answers of Claude", () => {
     });
     // The message of the thing escapes its note, the footer with it.
     expect((await w.context.store.get(ID))?.note).toBe(
-      "See #5.\n🧮 Opus 5.5 100%, Haiku 5.5 <1% · high · 48,313 tokens",
+      "See #5.\n🧮 Opus 5.5 >99%, Haiku 5.5 <1% · high · 48,313 tokens",
     );
     expect(w.net.telegram("editMessageText").at(-1)?.body.text).toContain(
-      "<i>See #5.\n🧮 Opus 5.5 100%, Haiku 5.5 &lt;1% · high · 48,313 tokens</i>",
+      "<i>See #5.\n🧮 Opus 5.5 &gt;99%, Haiku 5.5 &lt;1% · high · 48,313 tokens</i>",
     );
   });
 });

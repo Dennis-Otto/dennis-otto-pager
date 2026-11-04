@@ -128,10 +128,16 @@ function effortName(effort: string, t: Texts): string {
     : effort;
 }
 
-/** The share of a model in the tokens of a run, in whole percent. */
+/**
+ * The share of a model in the tokens of a run, in whole percent. Only called when
+ * several models worked, so no share reads 0 or 100: a tiny one is "<1", a huge one ">99".
+ */
 function share(tokens: number, total: number): string {
   const percent = (tokens * 100) / total;
-  return percent < 1 ? "<1" : String(Math.round(percent));
+  if (percent < 1) {
+    return "<1";
+  }
+  return percent > 99 ? ">99" : String(Math.round(percent));
 }
 
 /**

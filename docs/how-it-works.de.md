@@ -40,7 +40,7 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 - **🔀 Mergen** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
 - **✅ Senden** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte; ein älterer Knopf derselben Sache lehnt ab. **✏️ Bearbeiten** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
 - **🤖 Assistent nochmal** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
-- **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort sagt, wie viel er genommen hat; ein Job, der fehlschlägt, bringt seinen Knopf zurück.
+- **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort nennt sein Modell, seinen Aufwand und seine Tokens; ein Job, der fehlschlägt, bringt seinen Knopf zurück.
 - **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie.
 
 ## Das Steuer-Repository
@@ -67,9 +67,31 @@ Der Body ist eines von:
 - `{"type": "note", "item": "<id>", "text": "<Notiz>"}`: eine Notiz unter einer Sache, etwa der Pull Request eines Fixes;
 - `{"type": "note", "text": "<Antwort>"}`: eine eigene Nachricht, etwa die Antwort auf freien Text;
 - `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Bestätigen;
-- `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann.
+- `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann;
+- `{"type": "failed", "text": "<Grund>"}`: freier Text, dessen Antwort nicht zustande kam, gezeigt als eigene Nachricht.
 
-Jeder Body kann `"usage": {"turns": <Zahl>, "seconds": <Zahl>}` tragen: was der Lauf von Claude vom Wochenlimit des Abos genommen hat. Die Nachricht zeigt es als *🧮 Claude: 4 Runden, 52 s, von deinem Wochenlimit*, in der Sprache des Pagers.
+Eine Antwort auf freien Text, also eine Notiz oder ein Fehlschlag ohne `item` oder ein Vorschlag, trägt `"message": <ID>`, die `message` ihres `pager-text`. Der Pager macht dann aus dem 👀 auf diesem Text ein 👍, bei einem Fehlschlag ein 😢; ein Job, der von Hand im Actions-Tab startet, hat keinen Text und lässt sie weg.
+
+Jeder Body kann tragen, was der Lauf von Claude vom Wochenlimit des Abos genommen hat:
+
+```json
+"usage": {
+  "turns": 4,
+  "seconds": 52,
+  "effort": "high",
+  "models": [{"model": "claude-opus-5-5", "tokens": 48213}]
+}
+```
+
+`effort` ist das `--effort`, das der Workflow gesetzt hat: `low`, `medium`, `high`, `xhigh` oder `max`. `models` nennt jedes Modell, das gearbeitet hat, höchstens fünf, mit jedem Token, das es gelesen und geschrieben hat, den Cache eingeschlossen, aus dem `modelUsage` des Ergebnisses im Transkript der Claude Code Action. Die Nachricht zeigt es unter der Antwort, in einer Zeile, in der Sprache des Pagers:
+
+| Verbrauch | Englisch | Deutsch |
+| --- | --- | --- |
+| Ein Modell | *🧮 Opus 5.5 · high · 48,213 tokens* | *🧮 Opus 5.5 · Hoch · 48.213 Tokens* |
+| Zwei Modelle | *🧮 Opus 5.5 93%, Haiku 5.5 7% · extra high · 48,213 tokens* | *🧮 Opus 5.5 93 %, Haiku 5.5 7 % · Extra Hoch · 48.213 Tokens* |
+| Ohne `models` | *🧮 Claude: 4 turns, 52 s, from your weekly limit* | *🧮 Claude: 4 Runden, 52 s, von deinem Wochenlimit* |
+
+Ein Modell heißt mit seinem kurzen Namen, etwa *Opus 5.5* für `claude-opus-5-5`, *Haiku 3.5* für `claude-3-5-haiku-20241022` und *Fable 5.1* für `claude-fable-5-1`; eine ID anderer Form bleibt, wie sie ist. Der Aufwand heißt auf Deutsch *Niedrig*, *Mittel*, *Hoch*, *Extra Hoch* oder *Max*, und einer, den der Pager noch nicht kennt, bleibt, wie Claude Code ihn nennt.
 
 Ein Vorschlag nennt seine Sache so, wie das Steuer-Repository sie kennt, und der Pager schlägt sie nach:
 
@@ -91,6 +113,17 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 Kein Body lässt den Pager handeln: Was das Steuer-Repository schickt, wird angezeigt, maskiert, und nie ausgeführt, und jede Aktion braucht den Druck auf einen Knopf der Positivliste. Die Antwort geht an den Worker statt direkt an Telegram, wie [Entscheidung 0003](decisions/0003-the-control-repository-answers-the-worker.md) erklärt: Der Token des Bots bleibt bei Cloudflare, und der Worker hält den Zustand, den ein Entwurf, ein fehlgeschlagener Job und ein Vorschlag brauchen.
 
+## Die Reaktion auf einen Text
+
+Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert sie, während der Job läuft: Ein Bot darf eine Reaktion pro Nachricht setzen, aus der festen Liste von `ReactionTypeEmoji` in der Bot API von Telegram. Diese Liste hat kein ✅, deshalb steht 👍 für eine Antwort, das ihm am nächsten kommt, und 😢 für keine.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.de.dark.svg">
+  <img src="images/diagrams/the-reaction-on-a-text.de.svg" alt="Die Reaktion auf einen Text: Dennis schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.">
+</picture>
+
+Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍.
+
 ## Texte und Sprachen
 
 Jeder Text, den der Pager schickt, kommt aus `src/texts.ts`, ein Katalog pro Sprache, Englisch und Deutsch, und `LANGUAGE` in `wrangler.jsonc` wählt einen: die Nachrichten und ihre Zustände, die Knöpfe, `/help`, die Antworten der Knöpfe, die Fehler, die er zeigt, und die Erinnerung an das Token. Ein Text nennt seine Teile in geschweiften Klammern, etwa `{repo}`, und was sie füllt, etwa der Titel eines Issues oder der Name eines Checks, geht so hinein, wie GitHub es sagt. Die Regeln geben weiter, was sie meinen, etwa warum ein Release noch nicht mergen darf, als Schlüssel des Katalogs mit seinen Werten, und der Pager formuliert es; die Logs bleiben auf Englisch. Beide Kataloge haben dieselben Schlüssel, was der Compiler prüft, und dieselben Platzhalter, Tags und Emojis, was `test/texts.test.ts` prüft: Ein neuer Text braucht einen Eintrag in beiden.
@@ -99,6 +132,6 @@ Nach einer Änderung von `LANGUAGE` spricht eine Nachricht die neue Sprache, sob
 
 ## Zustand
 
-Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, und die Rückfrage einer Bearbeitung lebt einen Tag. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
+Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
 Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.

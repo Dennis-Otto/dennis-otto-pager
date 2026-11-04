@@ -7,6 +7,7 @@ import { press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
+import { REACTIONS } from "./telegram.ts";
 
 interface Message {
   message_id: number;
@@ -117,7 +118,9 @@ async function freeText(
     ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
     language: context.t.language,
   });
-  await context.telegram.react(message.message_id, "👀");
+  await context.telegram.react(message.message_id, REACTIONS.taken);
+  // Its answer turns the 👀 into 👍, or the schedule into 😢 when none comes.
+  await context.store.ask(message.message_id, context.now());
   return "free text sent";
 }
 

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { headTag } from "../src/buttons.ts";
 import { handleControl, WINDOW } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
-import { runSchedule } from "../src/schedule.ts";
+import { ANSWER_WITHIN, runSchedule } from "../src/schedule.ts";
 import {
   type Alarm,
   type Contribution,
@@ -165,6 +165,7 @@ describe("the control repository", () => {
 
 describe("the answers of Claude", () => {
   const usage = { turns: 3, seconds: 41 };
+  const opus = { model: "claude-opus-5-5", tokens: 48213 };
 
   it("refuses a wrong usage and a proposal outside the allowlist", async () => {
     const w = await world();
@@ -180,7 +181,38 @@ describe("the answers of Claude", () => {
       { type: "note", text: "x", usage: "many" },
       { type: "note", text: "x", usage: { turns: -1, seconds: 2 } },
       { type: "note", text: "x", usage: { turns: 1, seconds: 0.5 } },
-      { type: "failed", text: "x" },
+      { type: "note", text: "x", usage: { ...usage, effort: 5 } },
+      { type: "note", text: "x", usage: { ...usage, effort: "Extra High" } },
+      { type: "note", text: "x", usage: { ...usage, models: "opus" } },
+      { type: "note", text: "x", usage: { ...usage, models: [] } },
+      {
+        type: "note",
+        text: "x",
+        usage: { ...usage, models: Array(6).fill(opus) },
+      },
+      { type: "note", text: "x", usage: { ...usage, models: [null] } },
+      {
+        type: "note",
+        text: "x",
+        usage: { ...usage, models: [{ model: "<b>opus</b>", tokens: 1 }] },
+      },
+      {
+        type: "note",
+        text: "x",
+        usage: { ...usage, models: [{ model: "claude-opus-5-5", tokens: 0 }] },
+      },
+      {
+        type: "note",
+        text: "x",
+        usage: { ...usage, models: [{ model: "claude-opus-5-5", tokens: -2 }] },
+      },
+      { type: "note", text: "x", usage: { ...usage, models: [{ tokens: 5 }] } },
+      { type: "note", text: "x", message: 0 },
+      { type: "note", text: "x", message: -3 },
+      { type: "note", text: "x", message: "500" },
+      { type: "note", text: "x", message: 1.5 },
+      { type: "failed", item: 7, text: "x" },
+      { type: "draft", text: "x" },
       proposal("send", { kind: "contribution", repo: REPO, number: 1 }),
       proposal("edit", { kind: "contribution", repo: REPO, number: 1 }),
       proposal(5, { kind: "release", repo: REPO }),
@@ -212,6 +244,50 @@ describe("the answers of Claude", () => {
     expect(texts).toEqual([
       "🤖 All green.\n\n<i>🧮 Claude: 3 turns, 41 s, from your weekly limit</i>",
       "🤖 Once.\n\n<i>🧮 Claude: 1 turn, 9 s, from your weekly limit</i>",
+    ]);
+  });
+
+  it("names the model, the effort and the tokens in the footer, on one line", async () => {
+    const w = await world();
+    const footers = async (...usages: unknown[]) => {
+      for (const each of usages) {
+        await send(w, { type: "note", text: "Done.", usage: each });
+      }
+      return w.net
+        .telegram("sendMessage")
+        .map((call) => call.body.text.split("\n\n")[1]);
+    };
+    expect(
+      await footers(
+        { ...usage, effort: "high", models: [opus] },
+        { ...usage, effort: "xhigh", models: [opus] },
+        { ...usage, models: [opus] },
+        { ...usage, effort: "turbo", models: [opus] },
+        {
+          ...usage,
+          effort: "max",
+          models: [
+            { model: "claude-haiku-5-5-20261001", tokens: 3213 },
+            { model: "claude-opus-5-5", tokens: 45000 },
+          ],
+        },
+        {
+          ...usage,
+          effort: "low",
+          models: [
+            { model: "claude-sonnet-5-5[1m]", tokens: 120000 },
+            { model: "claude-3-5-haiku-20241022", tokens: 400 },
+            { model: "us.anthropic.claude-x", tokens: 1000000 },
+          ],
+        },
+      ),
+    ).toEqual([
+      "<i>🧮 Opus 5.5 · high · 48,213 tokens</i>",
+      "<i>🧮 Opus 5.5 · extra high · 48,213 tokens</i>",
+      "<i>🧮 Opus 5.5 · 48,213 tokens</i>",
+      "<i>🧮 Opus 5.5 · turbo · 48,213 tokens</i>",
+      "<i>🧮 Opus 5.5 93%, Haiku 5.5 7% · max · 48,213 tokens</i>",
+      "<i>🧮 us.anthropic.claude-x 89%, Sonnet 5.5 11%, Haiku 3.5 &lt;1% · low · 1,120,400 tokens</i>",
     ]);
   });
 
@@ -371,6 +447,102 @@ describe("the answers of Claude", () => {
     expect((await w.context.store.get(ID))?.note).toBe(
       "See #4.\n🧮 Claude: 3 turns, 41 s, from your weekly limit",
     );
+    const models = [opus, { model: "claude-haiku-5-5", tokens: 100 }];
+    await send(w, {
+      type: "note",
+      item: ID,
+      text: "See #5.",
+      usage: { ...usage, effort: "high", models },
+    });
+    // The message of the thing escapes its note, the footer with it.
+    expect((await w.context.store.get(ID))?.note).toBe(
+      "See #5.\n🧮 Opus 5.5 100%, Haiku 5.5 <1% · high · 48,313 tokens",
+    );
+    expect(w.net.telegram("editMessageText").at(-1)?.body.text).toContain(
+      "<i>See #5.\n🧮 Opus 5.5 100%, Haiku 5.5 &lt;1% · high · 48,313 tokens</i>",
+    );
+  });
+});
+
+describe("the reaction on a text of the maintainer", () => {
+  const reactions = (w: World) =>
+    w.net
+      .telegram("setMessageReaction")
+      .map((call) => [call.body.message_id, call.body.reaction[0].emoji]);
+
+  it("turns into 👍 when its answer or proposal came, and into 😢 when none came to be", async () => {
+    const w = await world();
+    for (const message of [500, 501, 502, 503]) {
+      await w.context.store.ask(message, START);
+    }
+    expect(
+      await send(w, { type: "note", text: "All green.", message: 500 }),
+    ).toEqual({ status: 200, text: "said" });
+    expect(
+      await send(w, {
+        type: "proposal",
+        text: "Merge it?",
+        action: "merge",
+        target: { kind: "release", repo: REPO },
+        message: 501,
+      }),
+    ).toEqual({ status: 200, text: "said" });
+    expect(
+      await send(w, {
+        type: "failed",
+        text: "❌ No answer: the weekly limit is reached.",
+        message: 502,
+      }),
+    ).toEqual({ status: 200, text: "said" });
+    expect(reactions(w)).toEqual([
+      [500, "👍"],
+      [501, "👍"],
+      [502, "😢"],
+    ]);
+    expect(w.net.telegram("sendMessage").at(-1)?.body.text).toBe(
+      "🤖 ❌ No answer: the weekly limit is reached.",
+    );
+    // Only the text without an answer still waits.
+    expect(await w.context.store.waiting(START + 1)).toEqual([503]);
+  });
+
+  it("stays as it is for an answer to no text, such as a job started by hand", async () => {
+    const w = await world();
+    await send(w, { type: "note", text: "Pong." });
+    await send(w, { type: "failed", text: "❌ No answer." });
+    expect(reactions(w)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("turns into 😢 on the schedule when no answer came within the hour", async () => {
+    const w = await world();
+    await w.context.store.ask(500, START);
+    await w.context.store.ask(501, START + 30 * 60 * 1000);
+    w.clock.now = START + ANSWER_WITHIN;
+    await runSchedule(w.context);
+    expect(reactions(w)).toEqual([]);
+    w.clock.now = START + ANSWER_WITHIN + 15 * 60 * 1000;
+    await runSchedule(w.context);
+    expect(reactions(w)).toEqual([[500, "😢"]]);
+    expect(await w.context.store.waiting(w.clock.now)).toEqual([501]);
+    // A late answer still says that it came.
+    await send(
+      w,
+      { type: "note", text: "Late.", message: 500 },
+      {
+        stamp: String(w.clock.now / 1000),
+      },
+    );
+    expect(reactions(w)).toEqual([
+      [500, "😢"],
+      [500, "👍"],
+    ]);
+    w.clock.now = START + 2 * ANSWER_WITHIN;
+    await runSchedule(w.context);
+    await runSchedule(w.context);
+    expect(reactions(w).at(-1)).toEqual([501, "😢"]);
+    expect(reactions(w)).toHaveLength(3);
+    expect(await w.context.store.waiting(w.clock.now)).toEqual([]);
   });
 });
 

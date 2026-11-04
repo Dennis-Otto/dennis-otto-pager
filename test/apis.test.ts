@@ -10,7 +10,7 @@ import {
   pemToPkcs8,
   pkcs1ToPkcs8,
 } from "../src/github.ts";
-import { Telegram, TelegramError } from "../src/telegram.ts";
+import { REACTIONS, Telegram, TelegramError } from "../src/telegram.ts";
 import { appKey, asPkcs1, json, Net, START } from "./helpers.ts";
 
 function decode(part: string): unknown {
@@ -379,6 +379,33 @@ describe("Telegram", () => {
       throw new TypeError("network");
     });
     await expect(telegram(broken).remove(5)).rejects.toThrow("network");
+  });
+
+  it("passes over a reaction on a message that is gone, but not a broken network", async () => {
+    const gone = new Net().on("POST", /setMessageReaction$/, () =>
+      json({ ok: false, description: "Bad Request: message not found" }, 400),
+    );
+    await telegram(gone).react(9, "👍");
+    expect(gone.telegram("setMessageReaction")).toHaveLength(1);
+    const broken = new Net().on("POST", /setMessageReaction$/, () => {
+      throw new TypeError("network");
+    });
+    await expect(telegram(broken).react(9, "😢")).rejects.toThrow("network");
+  });
+
+  it("reacts only with emojis that Telegram allows a bot", () => {
+    // The emojis of ReactionTypeEmoji in the Bot API 10.3 of 2026-08-24: Telegram
+    // refuses a reaction of a bot with any other.
+    const allowed = new Set(
+      "❤ 👍 👎 🔥 🥰 👏 😁 🤔 🤯 😱 🤬 😢 🎉 🤩 🤮 💩 🙏 👌 🕊 🤡 🥱 🥴 😍 🐳 ❤‍🔥 🌚 🌭 💯 🤣 ⚡ 🍌 🏆 💔 🤨 😐 🍓 🍾 💋 🖕 😈 😴 😭 🤓 👻 👨‍💻 👀 🎃 🙈 😇 😨 🤝 ✍ 🤗 🫡 🎅 🎄 ☃ 💅 🤪 🗿 🆒 💘 🙉 🦄 😘 💊 🙊 😎 👾 🤷‍♂ 🤷 🤷‍♀ 😡".split(
+        " ",
+      ),
+    );
+    expect(allowed.size).toBe(73);
+    expect(allowed.has("✅")).toBe(false);
+    for (const emoji of Object.values(REACTIONS)) {
+      expect(allowed.has(emoji), emoji).toBe(true);
+    }
   });
 
   it("takes the buttons off a message, and passes over one that is gone", async () => {

@@ -3,6 +3,7 @@
  * live in Cloudflare only, set with `npx wrangler secret put NAME` as
  * docs/setup.md lists them.
  */
+import { LANGUAGES, type Language, languageOf } from "./texts.ts";
 
 /** The secrets of the Worker, which `wrangler types` can't know. */
 export interface Secrets {
@@ -42,6 +43,8 @@ export interface Settings {
   controlRepository: string;
   laterHours: number;
   tokenExpires: string | null;
+  /** The language of every text that the pager sends. */
+  language: Language;
 }
 
 /** The secrets without which the pager can't serve anything. */
@@ -81,7 +84,11 @@ export function readSettings(
   if (expires !== null && Number.isNaN(Date.parse(`${expires}T00:00:00Z`))) {
     missing.push("CLAUDE_TOKEN_EXPIRES (a date such as 2027-10-07)");
   }
-  if (missing.length > 0) {
+  const language = languageOf(env.LANGUAGE);
+  if (language === null) {
+    missing.push(`LANGUAGE (${LANGUAGES.join(" or ")})`);
+  }
+  if (missing.length > 0 || language === null) {
     return { missing };
   }
   return {
@@ -98,6 +105,7 @@ export function readSettings(
       controlRepository: env.CONTROL_REPOSITORY,
       laterHours,
       tokenExpires: expires,
+      language,
     },
   };
 }

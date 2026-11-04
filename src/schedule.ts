@@ -41,10 +41,19 @@ async function remind(context: Context): Promise<string | null> {
     return null;
   }
   const repo = context.settings.controlRepository;
-  const when =
+  const { t } = context;
+  const date = t.date(expires);
+  const text =
     left > 0
-      ? `in ${left} days, on ${expires}`
-      : `on ${expires}: it has expired`;
+      ? t("reminder.soon", {
+          repo,
+          date,
+          days:
+            left === 1
+              ? t("reminder.days.one")
+              : t("reminder.days.many", { days: left }),
+        })
+      : t("reminder.expired", { repo, date });
   await show(context, {
     id,
     kind: "reminder",
@@ -54,7 +63,7 @@ async function remind(context: Context): Promise<string | null> {
     messageId: null,
     note: null,
     snoozedUntil: null,
-    text: `The token of Claude in ${repo} expires ${when}. Renew it: run "claude setup-token", then "gh secret set CLAUDE_CODE_OAUTH_TOKEN -R ${repo}", and change CLAUDE_TOKEN_EXPIRES in wrangler.jsonc.`,
+    text,
   });
   return id;
 }

@@ -34,26 +34,18 @@ export const MAX_DRAFT = 3000;
 /** The most of the message that a free text answers which goes along with it. */
 export const MAX_REPLY = 1000;
 
-const HELP = [
-  "👋 This is your pager. It writes only when something needs you, one message per thing, and edits that message as the thing changes.",
-  "",
-  "The buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Reply to a message of the pager to ask about its thing.",
-  "",
-  "Each answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
-].join("\n");
-
 async function pressed(
   context: Context,
   query: NonNullable<Update["callback_query"]>,
 ): Promise<string> {
   const parsed = parsePress(query.data ?? "");
   if (parsed === null) {
-    await context.telegram.answer(query.id, "This button is unknown.", true);
+    await context.telegram.answer(query.id, context.t("answer.unknown"), true);
     return "an unknown button";
   }
   const item = await context.store.get(parsed.id);
   if (item === null) {
-    await context.telegram.answer(query.id, "This thing is gone.", true);
+    await context.telegram.answer(query.id, context.t("answer.gone"), true);
     // Its own message went with it, so this is a proposal's: its button goes too.
     if (query.message?.message_id !== undefined) {
       await context.telegram.clear(query.message.message_id);
@@ -85,12 +77,12 @@ async function edited(
     item?.kind !== "contribution" ||
     !["draft", "drafting"].includes(item.state)
   ) {
-    await context.telegram.say("That draft is gone; nothing changed.");
+    await context.telegram.say(context.t("edit.gone"));
     return "an edit of a draft that is gone";
   }
   if (text.length > MAX_DRAFT) {
     await context.telegram.say(
-      `That text has ${text.length} characters; a reply here takes ${MAX_DRAFT} at most. Send a shorter one with ✏️ Edit.`,
+      context.t("edit.tooLong", { length: text.length, max: MAX_DRAFT }),
     );
     return "an edit that is too long";
   }
@@ -112,7 +104,7 @@ async function freeText(
   const installation = await context.github.installation(repo);
   if (installation === null) {
     await context.telegram.say(
-      `Free text goes to the workflow of ${html(repo)}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.`,
+      context.t("chat.noControl", { repo: html(repo) }),
     );
     return "free text without a control repository";
   }
@@ -123,6 +115,7 @@ async function freeText(
     text,
     message: message.message_id,
     ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
+    language: context.t.language,
   });
   await context.telegram.react(message.message_id, "👀");
   return "free text sent";
@@ -153,7 +146,7 @@ export async function handleUpdate(
     return "a message without text";
   }
   if (/^\/(start|help)\b/.test(text)) {
-    await context.telegram.say(HELP);
+    await context.telegram.say(context.t("chat.help"));
     return "help";
   }
   const pending = await context.store.pendingEdit();

@@ -151,13 +151,16 @@ export class Telegram {
     });
   }
 
-  /** Ask for a text in reply to a message of the pager, with Telegram's reply field. */
-  async prompt(text: string): Promise<number> {
+  /**
+   * Ask for a text in reply to a message of the pager, with Telegram's reply field,
+   * which shows the placeholder while it is empty.
+   */
+  async prompt(text: string, placeholder: string): Promise<number> {
     const result = (await this.call("sendMessage", {
       chat_id: this.chatId,
       text,
       parse_mode: "HTML",
-      reply_markup: { force_reply: true, input_field_placeholder: "Reply" },
+      reply_markup: { force_reply: true, input_field_placeholder: placeholder },
     })) as { message_id: number };
     return result.message_id;
   }

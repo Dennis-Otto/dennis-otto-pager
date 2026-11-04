@@ -1,14 +1,16 @@
 /**
  * The context of each request and of each run of the schedule: the settings, the
- * state and the two APIs, which the tests make with a simulated network and clock.
+ * state, the two APIs and the texts of its language, which the tests make with a
+ * simulated network and clock.
  */
 import { GitHub, GitHubError } from "./github.ts";
 import type { Context } from "./pager.ts";
 import type { PagerEnv, Settings } from "./settings.ts";
 import { Store } from "./store.ts";
 import { type Fetch, Telegram, TelegramError } from "./telegram.ts";
+import { texts } from "./texts.ts";
 
-/** The context of a request: the settings, the state and the two APIs. */
+/** The context of a request: the settings, the state, the two APIs and the texts. */
 export function makeContext(
   settings: Settings,
   env: PagerEnv,
@@ -29,6 +31,7 @@ export function makeContext(
       fetcher,
       now,
     ),
+    t: texts(settings.language),
     now,
     sleep,
     exclusive,

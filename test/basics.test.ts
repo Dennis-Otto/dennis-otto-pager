@@ -7,7 +7,7 @@ import {
   allowed,
   callbackData,
   keyboard,
-  LABELS,
+  label,
   parsePress,
 } from "../src/buttons.ts";
 import {
@@ -22,9 +22,11 @@ import {
 import { html, link, MAX_ENTRIES, render } from "../src/render.ts";
 import { type PagerEnv, readSettings } from "../src/settings.ts";
 import type { Contribution, Item } from "../src/store.ts";
+import { texts } from "../src/texts.ts";
 import { base, START } from "./helpers.ts";
 
 const ID = "i0123456789abcde";
+const en = texts("en");
 
 function contribution(extra: Partial<Contribution> = {}): Contribution {
   return {
@@ -124,6 +126,7 @@ describe("settings", () => {
         controlRepository: "Dennis-Otto/control",
         laterHours: 4,
         tokenExpires: "2027-10-07",
+        language: "en",
       },
     });
     const all = readSettings({
@@ -131,14 +134,19 @@ describe("settings", () => {
       CONTROL_SECRET: " control ",
       GITHUB_USER_TOKEN: "user",
       CLAUDE_TOKEN_EXPIRES: "",
+      LANGUAGE: " de ",
     } as unknown as PagerEnv);
     expect(all).toMatchObject({
       settings: {
         controlSecret: "control",
         userToken: "user",
         tokenExpires: null,
+        language: "de",
       },
     });
+    expect(
+      readSettings({ ...complete, LANGUAGE: "" } as unknown as PagerEnv),
+    ).toMatchObject({ settings: { language: "en" } });
   });
 
   it("names what is missing or wrong, never a value", () => {
@@ -156,12 +164,14 @@ describe("settings", () => {
         TELEGRAM_CHAT_ID: "me",
         LATER_HOURS: "0",
         CLAUDE_TOKEN_EXPIRES: "soon",
+        LANGUAGE: "fr",
       } as unknown as PagerEnv),
     ).toEqual({
       missing: [
         "TELEGRAM_CHAT_ID (a number)",
         "LATER_HOURS (hours, from 1 to 336)",
         "CLAUDE_TOKEN_EXPIRES (a date such as 2027-10-07)",
+        "LANGUAGE (en or de)",
       ],
     });
   });
@@ -223,14 +233,14 @@ describe("the buttons", () => {
     const item = contribution({ state: "draft", draftVersion: 3 });
     expect(callbackData("send", item)).toBe(`send:${ID}:3`);
     expect(callbackData("edit", item)).toBe(`edit:${ID}`);
-    expect(keyboard(item)).toEqual([
+    expect(keyboard(item, en)).toEqual([
       [
-        { text: LABELS.send, callback_data: `send:${ID}:3` },
-        { text: LABELS.edit, callback_data: `edit:${ID}` },
+        { text: label(en, "send"), callback_data: `send:${ID}:3` },
+        { text: label(en, "edit"), callback_data: `edit:${ID}` },
       ],
       [
-        { text: LABELS.later, callback_data: `later:${ID}` },
-        { text: LABELS.ignore, callback_data: `ignore:${ID}` },
+        { text: label(en, "later"), callback_data: `later:${ID}` },
+        { text: label(en, "ignore"), callback_data: `ignore:${ID}` },
       ],
     ]);
   });
@@ -255,7 +265,7 @@ describe("the buttons", () => {
       }),
     );
     for (const item of [contribution({ state: "draft", draftVersion: 99 })]) {
-      for (const row of keyboard(item)) {
+      for (const row of keyboard(item, en)) {
         for (const button of row) {
           expect(
             new TextEncoder().encode(button.callback_data).length,
@@ -292,17 +302,17 @@ describe("the text of a message", () => {
       draft: "Thanks <3",
       title: "<b>bold</b>",
     });
-    const text = render(item, START);
+    const text = render(item, START, en);
     expect(text).toContain("🙋 <b>New issue</b>");
     expect(text).toContain("#12 &lt;b&gt;bold&lt;/b&gt;");
     expect(text).toContain("<blockquote>Thanks &lt;3</blockquote>");
-    expect(render({ ...item, state: "sent" }, START)).not.toContain(
+    expect(render({ ...item, state: "sent" }, START, en)).not.toContain(
       "blockquote",
     );
-    expect(render({ ...item, state: "ignored" }, START)).toContain(
+    expect(render({ ...item, state: "ignored" }, START, en)).toContain(
       "✖ Ignored.",
     );
-    expect(render(contribution({ pull: true }), START)).toContain(
+    expect(render(contribution({ pull: true }), START, en)).toContain(
       "New pull request",
     );
   });
@@ -321,6 +331,7 @@ describe("the text of a message", () => {
     const hundred = render(
       many(100, (n) => `high: rule ${n}`),
       START,
+      en,
     );
     const listed = hundred.split("\n").filter((line) => line.startsWith("•"));
     expect(listed).toHaveLength(MAX_ENTRIES);
@@ -330,12 +341,14 @@ describe("the text of a message", () => {
     const long = render(
       many(100, (n) => `${n} ${"x".repeat(400)}`),
       START,
+      en,
     );
     expect(long.length).toBeLessThan(4096);
     expect(long).toMatch(/… and \d+ more<\/a>$/);
     const alarm = render(
       { ...many(21, (n) => `check ${n}`), kind: "alarm" } as Item,
       START,
+      en,
     );
     expect(alarm).toContain(
       '<a href="https://github.com/Dennis-Otto/demo/actions">… and 1 more</a>',
@@ -344,6 +357,7 @@ describe("the text of a message", () => {
       render(
         many(MAX_ENTRIES, (n) => `${n}`),
         START,
+        en,
       ),
     ).not.toContain("more");
   });
@@ -357,7 +371,7 @@ describe("the text of a message", () => {
       snoozedUntil: START + 2 * 3600000,
       entries: [{ key: "a", label: "lint fails", url: "https://github.com/x" }],
     };
-    expect(render(alarm, START)).toBe(
+    expect(render(alarm, START, en)).toBe(
       [
         "🚨 <b>Dennis-Otto/demo needs you</b>",
         '• <a href="https://github.com/x">lint fails</a>',
@@ -366,14 +380,18 @@ describe("the text of a message", () => {
         "⏰ Back in 2 h.",
       ].join("\n"),
     );
-    expect(render({ ...alarm, snoozedUntil: START + 60000 }, START)).toContain(
-      "Back in 1 h.",
-    );
-    expect(render({ ...alarm, snoozedUntil: START - 1 }, START)).not.toContain(
-      "Back in",
-    );
     expect(
-      render({ ...base(ID), kind: "alert", state: "open", entries: [] }, START),
+      render({ ...alarm, snoozedUntil: START + 60000 }, START, en),
+    ).toContain("Back in 1 h.");
+    expect(
+      render({ ...alarm, snoozedUntil: START - 1 }, START, en),
+    ).not.toContain("Back in");
+    expect(
+      render(
+        { ...base(ID), kind: "alert", state: "open", entries: [] },
+        START,
+        en,
+      ),
     ).toBe("🛡 <b>Code scanning in Dennis-Otto/demo</b>\n");
     const release: Item = {
       ...base(ID),
@@ -384,17 +402,18 @@ describe("the text of a message", () => {
       sha: "abc",
       url: "https://github.com/Dennis-Otto/demo/pull/30",
     };
-    expect(render(release, START)).toContain('"Merge" publishes it.');
-    expect(render({ ...release, state: "published" }, START)).toContain(
+    expect(render(release, START, en)).toContain('"Merge" publishes it.');
+    expect(render({ ...release, state: "published" }, START, en)).toContain(
       "✅ Published.",
     );
-    expect(render({ ...release, state: "merging" }, START)).toContain(
+    expect(render({ ...release, state: "merging" }, START, en)).toContain(
       "🔀 Merging…",
     );
     expect(
       render(
         { ...base(ID), kind: "reminder", state: "open", text: "Renew <it>" },
         START,
+        en,
       ),
     ).toBe("🔔 Renew &lt;it&gt;");
   });

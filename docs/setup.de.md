@@ -53,13 +53,13 @@ printf %s "$CONTROL_SECRET" | npx wrangler secret put CONTROL_SECRET
 printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/dennis-otto-pager-control
 ```
 
-**`GITHUB_USER_TOKEN`** handelt nur für zwei Knöpfe in deinem Namen: ✅ **Send**, das eine Antwort postet, die du freigegeben hast, und 🤖 **Assistant again**, das den Issue-Assistenten über seine Ein-Kommentar-Regel hinaus startet; der Issue-Assistent fragt GitHub nach der Rolle der Person, die ihn gestartet hat, und eine App hat keine. Leg ein [fein granuliertes Token](https://github.com/settings/personal-access-tokens/new) für dein Konto und deine Repositorys an, mit diesen Rechten und keinen anderen:
+**`GITHUB_USER_TOKEN`** handelt nur für zwei Knöpfe in deinem Namen: ✅ **Senden**, das eine Antwort postet, die du freigegeben hast, und 🤖 **Assistent nochmal**, das den Issue-Assistenten über seine Ein-Kommentar-Regel hinaus startet; der Issue-Assistent fragt GitHub nach der Rolle der Person, die ihn gestartet hat, und eine App hat keine. Leg ein [fein granuliertes Token](https://github.com/settings/personal-access-tokens/new) für dein Konto und deine Repositorys an, mit diesen Rechten und keinen anderen:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |
-| Issues | Read and write | ✅ Send bei einem Issue |
-| Pull requests | Read and write | ✅ Send bei einem Pull Request |
-| Actions | Read and write | 🤖 Assistant again |
+| Issues | Read and write | ✅ Senden bei einem Issue |
+| Pull requests | Read and write | ✅ Senden bei einem Pull Request |
+| Actions | Read and write | 🤖 Assistent nochmal |
 
 ```sh
 npx wrangler secret put GITHUB_USER_TOKEN
@@ -84,7 +84,7 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 | Actions | Read | Ein Release-Workflow, der scheitert |
 | Checks | Read | Ein Pflicht-Check, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
-| Contents | Read and write | 🔀 Merge eines Releases; die Ereignisse an das Steuer-Repository |
+| Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
 | Issues | Read | Ein neues Issue; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
 | Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests |
@@ -112,7 +112,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 ## 7. Das Steuer-Repository
 
-Das private Repository `Dennis-Otto/dennis-otto-pager-control` entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`; seine README nennt jeden Schritt. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Start fix** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
+Das private Repository `Dennis-Otto/dennis-otto-pager-control` entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`; seine README nennt jeden Schritt. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Fix starten** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
 
 ```sh
 gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https://dennis-otto-pager.ACCOUNT.workers.dev
@@ -125,4 +125,5 @@ Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass
 
 - **Das Token von Claude** im Steuer-Repository läuft ab; `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag, und der Pager erinnert drei Wochen vorher. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control` und ändere dann den Tag in einem Pull Request.
 - **Ein Geheimnis ist durchgesickert:** Setz ein neues mit `npx wrangler secret put NAME`; für die App erzeuge in ihren Einstellungen einen neuen privaten Schlüssel und setz `GITHUB_APP_PRIVATE_KEY`; für den Bot `/revoke` bei @BotFather, dann `TELEGRAM_BOT_TOKEN` und Schritt 5 noch einmal.
-- **Wie lange „Later“ wartet**, steht in `LATER_HOURS` in `wrangler.jsonc`.
+- **Wie lange „Später“ wartet**, steht in `LATER_HOURS` in `wrangler.jsonc`.
+- **Die Sprache** des Pagers steht in `LANGUAGE` in `wrangler.jsonc`: `de` für Deutsch, `en` oder leer für Englisch. Sie bestimmt jeden Text, den der Pager schickt, und der Worker gibt sie jedem Job an das Steuer-Repository mit, dessen Antworten ihr folgen. Eine Nachricht, die der Pager schon gezeigt hat, nimmt die neuen Worte, sobald sich ihre Sache ändert. Nach einer Änderung stell den Worker neu bereit, wie [Releases and Cloudflare](releases.md) beschreibt.

@@ -38,7 +38,10 @@
     "LATER_HOURS": "4",
     // The day on which the token of Claude in the control repository expires; the
     // pager reminds three weeks before. Empty for no reminder.
-    "CLAUDE_TOKEN_EXPIRES": "2027-10-07"
+    "CLAUDE_TOKEN_EXPIRES": "2027-10-07",
+    // The language of everything that the pager sends, and of the answers of the
+    // control repository to the maintainer: "en" or "de"; empty for English.
+    "LANGUAGE": "de"
   },
   "observability": {
     "enabled": true

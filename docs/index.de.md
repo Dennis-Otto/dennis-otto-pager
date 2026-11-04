@@ -6,12 +6,14 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 
 | Knopf | Was er tut |
 | --- | --- |
-| 🔀 Merge | Merged einen grünen Release-Pull-Request, was das Release veröffentlicht |
-| ✍️ Draft a reply, ✅ Send, ✏️ Edit | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird |
-| 🤖 Assistant again | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
-| 🛠 Start fix | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
-| ✅ Confirm | Führt die eine Aktion aus, die eine Antwort auf deinen Text vorschlägt, etwa ein Merge, solange ihre Sache sie noch anbietet |
-| ⏰ Later, ✖ Ignore | Bringt die Sache nach vier Stunden zurück oder schließt sie |
+| 🔀 Mergen | Merged einen grünen Release-Pull-Request, was das Release veröffentlicht |
+| ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird |
+| 🤖 Assistent nochmal | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
+| 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
+| ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort auf deinen Text vorschlägt, etwa ein Merge, solange ihre Sache sie noch anbietet |
+| ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
+
+Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für diesen Pager, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
 
 - [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository und der Zustand.
 - [Einrichten](setup.md): der Bot, der Worker, die GitHub-App, die Geheimnisse und der Webhook, Schritt für Schritt.

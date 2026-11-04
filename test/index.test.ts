@@ -17,7 +17,11 @@ import worker from "../src/index.ts";
 import type { PagerEnv } from "../src/settings.ts";
 import { type Contribution, itemId, keys } from "../src/store.ts";
 import { TelegramError } from "../src/telegram.ts";
+import { languageOf, texts } from "../src/texts.ts";
 import { appKey, base, CHAT, json, Net, REPO, settings } from "./helpers.ts";
+
+/** The texts of the language that wrangler.jsonc sets. */
+const say = texts(languageOf((env as PagerEnv).LANGUAGE) ?? "en");
 
 let net: Net;
 let errors: string[];
@@ -192,10 +196,19 @@ describe("the webhook of GitHub", () => {
     expect(await (await call(nameless)).text()).toBe("ignored: the event ");
   });
 
-  it("pages for what counts", async () => {
+  it("pages for what counts, in the language of wrangler.jsonc", async () => {
     const response = await call(await fromGitHub("issues", opened));
     expect(await response.text()).toBe("contribution shown");
-    expect(net.telegram("sendMessage")[0]?.body.text).toContain("New issue");
+    const sent = net.telegram("sendMessage")[0]?.body;
+    expect(env.LANGUAGE).toBe("de");
+    expect(sent.text).toContain(
+      say("message.issue", { repo: REPO, author: "", link: "" }).split(
+        ` ${REPO}`,
+      )[0],
+    );
+    expect(sent.reply_markup.inline_keyboard[0][0].text).toBe(
+      say("button.draft"),
+    );
   });
 
   it("answers 500 when it failed, so that GitHub can deliver it again", async () => {
@@ -356,7 +369,10 @@ describe("the schedule", () => {
     await worker.scheduled(createScheduledController(), environment, running);
     await waitOnExecutionContext(running);
     expect(net.telegram("sendMessage")[0]?.body.text).toContain(
-      "token of Claude",
+      say("reminder.expired", {
+        repo: "Dennis-Otto/dennis-otto-pager-control",
+        date: say.date("2026-11-01"),
+      }),
     );
   });
 

@@ -1,9 +1,11 @@
 /**
- * The text of each message, in the HTML of Telegram. Every text that comes from
- * GitHub or from the control repository is escaped, and every link has to point to
- * GitHub, so a title can't add markup or a link of its own.
+ * The text of each message, in the HTML of Telegram and the language of the
+ * settings. Every text that comes from GitHub or from the control repository is
+ * escaped, and every link has to point to GitHub, so a title can't add markup or a
+ * link of its own.
  */
 import type { Entry, Item } from "./store.ts";
+import type { Texts } from "./texts.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
 export function html(text: string, max = 300): string {
@@ -36,7 +38,7 @@ const MAX_ENTRIES_LENGTH = 3000;
  * and a message that is too long would fail every later change of the bundle. The
  * rest is a line with a link to where GitHub lists them all.
  */
-function entries(list: Entry[], all: string): string {
+function entries(list: Entry[], all: string, t: Texts): string {
   const lines: string[] = [];
   let length = 0;
   for (const entry of list) {
@@ -52,29 +54,39 @@ function entries(list: Entry[], all: string): string {
   }
   const more = list.length - lines.length;
   if (more > 0) {
-    lines.push(link(`… and ${more} more`, all));
+    lines.push(link(t("message.more", { count: more }), all));
   }
   return lines.join("\n");
 }
 
-const STATES: Record<string, string> = {
-  drafting: "✍️ The control repository drafts a reply…",
-  sent: "✅ Sent.",
-  ignored: "✖ Ignored.",
-  fixing: "🛠 A fix is under way in the control repository…",
-  recovered: "✅ Green again.",
-  resolved: "✅ Resolved.",
-  updating: "⏳ Updated: waiting for its checks again.",
-  merging: "🔀 Merging…",
-  merged: "🔀 Merged: the release is being published…",
-  done: "✅ Done.",
-};
+/** The states that a message names below what it shows. */
+const STATES = [
+  "drafting",
+  "sent",
+  "ignored",
+  "fixing",
+  "recovered",
+  "resolved",
+  "updating",
+  "merging",
+  "merged",
+  "done",
+] as const;
 
-function body(item: Item): string {
+type Named = (typeof STATES)[number];
+
+function named(state: Item["state"]): state is Named {
+  return (STATES as readonly string[]).includes(state);
+}
+
+function body(item: Item, t: Texts): string {
   switch (item.kind) {
     case "contribution": {
-      const what = item.pull ? "pull request" : "issue";
-      const head = `🙋 <b>New ${what}</b> in ${repoLink(item.repo)} by <b>${html(item.author, 100)}</b>\n${link(`#${item.number} ${item.title}`, item.url)}`;
+      const head = t(item.pull ? "message.pull" : "message.issue", {
+        repo: repoLink(item.repo),
+        author: html(item.author, 100),
+        link: link(`#${item.number} ${item.title}`, item.url),
+      });
       if (
         item.draft === null ||
         item.state === "sent" ||
@@ -82,19 +94,37 @@ function body(item: Item): string {
       ) {
         return head;
       }
-      return `${head}\n\n<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>${html(item.draft, 3500)}</blockquote>`;
+      return `${head}\n\n${t("message.draft", { draft: html(item.draft, 3500) })}`;
     }
     case "alarm":
-      return `🚨 <b>${html(item.repo)} needs you</b>\n${entries(item.entries, `https://github.com/${item.repo}/actions`)}`;
+      return t("message.alarm", {
+        repo: html(item.repo),
+        entries: entries(
+          item.entries,
+          `https://github.com/${item.repo}/actions`,
+          t,
+        ),
+      });
     case "alert":
-      return `🛡 <b>Code scanning in ${html(item.repo)}</b>\n${entries(item.entries, `https://github.com/${item.repo}/security/code-scanning`)}`;
+      return t("message.alert", {
+        repo: html(item.repo),
+        entries: entries(
+          item.entries,
+          `https://github.com/${item.repo}/security/code-scanning`,
+          t,
+        ),
+      });
     case "release": {
-      const head = `📦 <b>Release ${html(item.version, 50)}</b> of ${repoLink(item.repo)}: ${link(`#${item.number}`, item.url)}`;
+      const head = t("message.release", {
+        version: html(item.version, 50),
+        repo: repoLink(item.repo),
+        link: link(`#${item.number}`, item.url),
+      });
       if (item.state === "ready") {
-        return `${head}\nEvery check is green, and "Merge" publishes it.`;
+        return `${head}\n${t("message.ready")}`;
       }
       if (item.state === "published") {
-        return `${head}\n✅ Published.`;
+        return `${head}\n${t("message.published")}`;
       }
       return head;
     }
@@ -104,18 +134,17 @@ function body(item: Item): string {
 }
 
 /** The whole text of a thing's message: what it is, its state and its last note. */
-export function render(item: Item, now: number): string {
-  const lines = [body(item)];
-  const state = STATES[item.state];
-  if (state !== undefined) {
-    lines.push(state);
+export function render(item: Item, now: number, t: Texts): string {
+  const lines = [body(item, t)];
+  if (named(item.state)) {
+    lines.push(t(`state.${item.state}`));
   }
   if (item.note !== null) {
     lines.push(`<i>${html(item.note, 500)}</i>`);
   }
   if (item.snoozedUntil !== null && item.snoozedUntil > now) {
     const hours = Math.max(1, Math.round((item.snoozedUntil - now) / 3600000));
-    lines.push(`⏰ Back in ${hours} h.`);
+    lines.push(t("message.back", { hours }));
   }
   return lines.join("\n");
 }

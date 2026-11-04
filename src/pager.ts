@@ -1,0 +1,324 @@
+/**
+ * The pager: what a signal of the rules does to the things that the maintainer
+ * sees. One message per thing, edited in place as its state changes; a new message,
+ * which notifies, only for a new thing or a bundle that opens again.
+ */
+import { keyboard } from "./buttons.ts";
+import type { GitHub } from "./github.ts";
+import { render } from "./render.ts";
+import { releaseBlocker, releaseVersion, type Signal } from "./rules.ts";
+import type { Settings } from "./settings.ts";
+import {
+  type Alarm,
+  type Alert,
+  type Entry,
+  type Item,
+  isClosed,
+  itemId,
+  keys,
+  type Release,
+  type Store,
+} from "./store.ts";
+import type { Telegram } from "./telegram.ts";
+
+export interface Context {
+  settings: Settings;
+  store: Store;
+  telegram: Telegram;
+  github: GitHub;
+  now: () => number;
+  /** Wait, such as for GitHub to work out whether a pull request can merge. */
+  sleep: (milliseconds: number) => Promise<void>;
+}
+
+/** How often to ask again while GitHub still works out whether a pull request can merge. */
+export const MERGEABLE_TRIES = 3;
+
+/**
+ * Show a thing: edit its message, or send a new one when it has none, when it is
+ * gone, or with fresh, which also deletes the old one, as "Later" does when its
+ * time is up. Then keep its state.
+ */
+export async function show(
+  context: Context,
+  item: Item,
+  fresh = false,
+): Promise<void> {
+  const text = render(item, context.now());
+  const buttons = keyboard(item);
+  const old = item.messageId;
+  const shown =
+    old !== null && !fresh
+      ? await context.telegram.edit(old, text, buttons)
+      : false;
+  if (!shown) {
+    item.messageId = await context.telegram.send(text, buttons);
+    if (old !== null && fresh) {
+      await context.telegram.remove(old);
+    }
+  }
+  await context.store.put(item);
+}
+
+function base(id: string, repo: string, installation: number) {
+  return {
+    id,
+    repo,
+    installation,
+    messageId: null,
+    note: null,
+    snoozedUntil: null,
+  };
+}
+
+/** Add an entry to the bundle of a repository; a closed bundle opens anew. */
+async function addEntry(
+  context: Context,
+  kind: "alarm" | "alert",
+  repo: string,
+  installation: number,
+  entry: Entry,
+): Promise<string> {
+  const id = await itemId(
+    kind === "alarm" ? keys.alarm(repo) : keys.alert(repo),
+  );
+  const known = (await context.store.get(id)) as Alarm | Alert | null;
+  if (known === null || isClosed(known)) {
+    const item = {
+      ...base(id, repo, installation),
+      kind,
+      state: "open",
+      entries: [entry],
+    } as Alarm | Alert;
+    // A bundle that opens again gets a new message, which notifies; the old one
+    // keeps its last state as history.
+    await show(context, item);
+    return `${kind} opened`;
+  }
+  const index = known.entries.findIndex((each) => each.key === entry.key);
+  if (index >= 0) {
+    known.entries[index] = entry;
+  } else {
+    known.entries.push(entry);
+  }
+  await show(context, known);
+  return `${kind} updated`;
+}
+
+/** Take an entry out of the bundle; the last one closes it. */
+async function removeEntry(
+  context: Context,
+  kind: "alarm" | "alert",
+  repo: string,
+  key: string,
+): Promise<string> {
+  const id = await itemId(
+    kind === "alarm" ? keys.alarm(repo) : keys.alert(repo),
+  );
+  const known = (await context.store.get(id)) as Alarm | Alert | null;
+  if (known === null || isClosed(known)) {
+    return `no open ${kind}`;
+  }
+  const left = known.entries.filter((each) => each.key !== key);
+  if (left.length === known.entries.length) {
+    return `not part of the ${kind}`;
+  }
+  known.entries = left;
+  if (left.length === 0) {
+    known.state = known.kind === "alarm" ? "recovered" : "resolved";
+  }
+  await show(context, known);
+  return left.length === 0 ? `${kind} closed` : `${kind} updated`;
+}
+
+async function releaseItem(
+  context: Context,
+  repo: string,
+): Promise<Release | null> {
+  const known = await context.store.get(await itemId(keys.release(repo)));
+  return known?.kind === "release" ? known : null;
+}
+
+/** Look at each release pull request whose checks finished: is it ready to merge? */
+async function releaseCheck(
+  context: Context,
+  signal: Extract<Signal, { type: "release-check" }>,
+): Promise<string> {
+  const outcomes: string[] = [];
+  for (const number of signal.numbers) {
+    let pull = await context.github.pullRequest(
+      signal.installation,
+      signal.repo,
+      number,
+    );
+    // GitHub works out whether a pull request can merge only when it is asked, and
+    // answers "unknown" until then: ask again a moment later, as its docs advise.
+    for (
+      let tries = 1;
+      (pull.mergeable_state ?? "unknown") === "unknown" &&
+      tries < MERGEABLE_TRIES;
+      tries += 1
+    ) {
+      await context.sleep(2000 * tries);
+      pull = await context.github.pullRequest(
+        signal.installation,
+        signal.repo,
+        number,
+      );
+    }
+    const blocker = releaseBlocker(
+      pull,
+      pull.base?.repo?.default_branch ?? "main",
+    );
+    if (blocker !== null) {
+      outcomes.push(`#${number} not ready: ${blocker}`);
+      continue;
+    }
+    const version = releaseVersion(String(pull.title)) as string;
+    const sha = pull.head?.sha ?? "";
+    const known = await releaseItem(context, signal.repo);
+    const same = known !== null && known.version === version ? known : null;
+    if (same?.state === "ignored") {
+      outcomes.push(`#${number} ignored`);
+      continue;
+    }
+    if (
+      same !== null &&
+      (isClosed(same) || (same.state === "ready" && same.sha === sha))
+    ) {
+      outcomes.push(`#${number} shown already`);
+      continue;
+    }
+    const item: Release = {
+      ...base(
+        await itemId(keys.release(signal.repo)),
+        signal.repo,
+        signal.installation,
+      ),
+      kind: "release",
+      state: "ready",
+      number,
+      version,
+      sha,
+      url: pull.html_url ?? "",
+      // The same release, ready again after an update, keeps its message.
+      messageId: same?.messageId ?? null,
+      snoozedUntil: same?.snoozedUntil ?? null,
+    };
+    await show(context, item);
+    outcomes.push(`#${number} ready`);
+  }
+  return outcomes.join("; ");
+}
+
+async function releaseState(
+  context: Context,
+  repo: string,
+  change: (item: Release) => string | null,
+): Promise<string> {
+  const known = await releaseItem(context, repo);
+  if (known === null) {
+    return "no release shown";
+  }
+  const outcome = change(known);
+  if (outcome === null) {
+    return "release unchanged";
+  }
+  await show(context, known);
+  return outcome;
+}
+
+/** What a signal does to the things of the maintainer; returns what happened. */
+export async function apply(context: Context, signal: Signal): Promise<string> {
+  switch (signal.type) {
+    case "contribution": {
+      const id = await itemId(keys.contribution(signal.repo, signal.number));
+      if ((await context.store.get(id)) !== null) {
+        return "contribution shown already";
+      }
+      await show(context, {
+        ...base(id, signal.repo, signal.installation),
+        kind: "contribution",
+        state: "new",
+        number: signal.number,
+        pull: signal.pull,
+        title: signal.title,
+        url: signal.url,
+        author: signal.author,
+        draft: null,
+        draftVersion: 0,
+      });
+      return "contribution shown";
+    }
+    case "failing":
+      return addEntry(context, "alarm", signal.repo, signal.installation, {
+        key: signal.key,
+        label: signal.label,
+        url: signal.url,
+      });
+    case "recovered":
+      return removeEntry(context, "alarm", signal.repo, signal.key);
+    case "check": {
+      const required = await context.github.requiredChecks(
+        signal.installation,
+        signal.repo,
+        signal.branch,
+      );
+      if (!required.includes(signal.name)) {
+        return "a check that no rule requires";
+      }
+      const key = `check:${signal.name}`;
+      if (!signal.failed) {
+        return removeEntry(context, "alarm", signal.repo, key);
+      }
+      return addEntry(context, "alarm", signal.repo, signal.installation, {
+        key,
+        label: `${signal.name} fails on ${signal.branch}`,
+        url: signal.url,
+      });
+    }
+    case "alert-open":
+      return addEntry(context, "alert", signal.repo, signal.installation, {
+        key: signal.key,
+        label: signal.label,
+        url: signal.url,
+      });
+    case "alert-closed":
+      return removeEntry(context, "alert", signal.repo, signal.key);
+    case "release-check":
+      return releaseCheck(context, signal);
+    case "release-updated":
+      return releaseState(context, signal.repo, (item) => {
+        if (
+          item.number !== signal.number ||
+          item.sha === signal.sha ||
+          item.state !== "ready"
+        ) {
+          return null;
+        }
+        item.state = "updating";
+        item.sha = signal.sha;
+        return "release updating";
+      });
+    case "release-merged":
+      return releaseState(context, signal.repo, (item) => {
+        if (item.number !== signal.number || isClosed(item)) {
+          return null;
+        }
+        item.state = "merged";
+        return "release merged";
+      });
+    case "release-published":
+      return releaseState(context, signal.repo, (item) => {
+        if (
+          signal.tag.replace(/^v/, "") !== item.version ||
+          item.state === "published"
+        ) {
+          return null;
+        }
+        item.state = "published";
+        item.note = null;
+        return "release published";
+      });
+  }
+}

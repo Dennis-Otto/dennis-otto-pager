@@ -1,0 +1,30 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: So arbeitet der Pager
+    accDescr: GitHub schickt die Ereignisse der GitHub-App an den Worker auf Cloudflare, signiert mit dem Geheimnis ihres Webhooks. Die Regeln entscheiden, was Dennis braucht; alles andere endet dort. Was zählt, wird eine Nachricht in Telegram, die sich an Ort und Stelle ändert, mit Knöpfen. Ein Knopf führt eine Aktion der Positivliste auf GitHub aus, etwa das Mergen eines grünen Releases. Entwürfe, Fixes und freier Text gehen an den Workflow des privaten Steuer-Repositorys, der Claude Code mit Dennis' Abo ausführt und seine Antwort signiert zurückschickt, als Entwurf oder Notiz, die ein Knopf freigeben muss.
+
+    github["`**GitHub** schickt die Ereignisse der App, signiert`"]
+    rules{"`**Die Regeln** des Workers: braucht es Dennis?`"}
+    quiet["`Nein: hier endet es, ohne Nachricht`"]
+    message["`**Eine Nachricht** in Telegram, die sich an Ort und Stelle ändert`"]
+    dennis["Dennis drückt einen Knopf oder schreibt einen Text"]
+    action["`**Eine Aktion der Positivliste** auf GitHub, etwa ein grünes Release mergen`"]
+    control["`**Das private Steuer-Repository** entwirft eine Antwort, startet einen Fix oder liest den freien Text, mit Claude Code und Dennis' Abo`"]
+
+    github --> rules
+    rules --> quiet
+    rules --> message --> dennis
+    dennis --> action
+    dennis --> control
+    control -- "ein Entwurf oder eine Notiz, signiert" --> message
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class dennis you
+    class github,rules,message,control bot
+    class quiet,action done

@@ -2,6 +2,7 @@
 // schedule: "Later" that is over, and the reminder of the token of Claude.
 import { describe, expect, it, vi } from "vitest";
 
+import { headTag } from "../src/buttons.ts";
 import { handleControl, WINDOW } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
 import { runSchedule } from "../src/schedule.ts";
@@ -183,6 +184,9 @@ describe("the answers of Claude", () => {
       proposal("send", { kind: "contribution", repo: REPO, number: 1 }),
       proposal("edit", { kind: "contribution", repo: REPO, number: 1 }),
       proposal(5, { kind: "release", repo: REPO }),
+      proposal("constructor", { kind: "release", repo: REPO }),
+      proposal("__proto__", { kind: "release", repo: REPO }),
+      proposal("toString", { kind: "release", repo: REPO }),
       proposal("merge", { kind: "contribution", repo: REPO, number: 1 }),
       proposal("merge", { kind: "release", repo: "not a repo" }),
       proposal("merge", { kind: "release", repo: 7 }),
@@ -265,12 +269,19 @@ describe("the answers of Claude", () => {
     expect(sent[0]?.text).toBe(
       [
         "🤖 Its checks are &lt;green&gt;.",
-        `👉 🔀 Merge: <a href="https://github.com/${REPO}/pull/30">${REPO}#30</a>`,
+        `👉 🔀 Merge 1.2.3: <a href="https://github.com/${REPO}/pull/30">${REPO}#30</a>`,
         "<i>🧮 Claude: 3 turns, 41 s, from your weekly limit</i>",
       ].join("\n\n"),
     );
     expect(sent.map((body) => body.reply_markup.inline_keyboard)).toEqual([
-      [[{ text: "✅ Confirm", callback_data: `merge:${release.id}` }]],
+      [
+        [
+          {
+            text: "✅ Confirm",
+            callback_data: `merge:${release.id}:${headTag("abc")}`,
+          },
+        ],
+      ],
       [[{ text: "✅ Confirm", callback_data: `assistant:${issue.id}` }]],
       [[{ text: "✅ Confirm", callback_data: `fix:${alarm.id}` }]],
       [[{ text: "✅ Confirm", callback_data: `fix:${alert.id}` }]],

@@ -67,14 +67,29 @@ export function allowed(item: Item): Action[] {
 }
 
 /**
+ * A short number for the head commit of a release (32-bit FNV-1a), so that a Merge
+ * button names the head that it was offered at.
+ */
+export function headTag(sha: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < sha.length; index += 1) {
+    hash = Math.imul(hash ^ sha.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+/**
  * The data of a button, at most 64 bytes as Telegram allows: the action, the id of
- * the thing and, for "Send", the version of the draft that the message shows.
+ * the thing and, for "Send", the version of the draft that the message shows, for
+ * "Merge" the head of the release that it shows.
  */
 export function callbackData(action: Action, item: Item): string {
-  const version =
-    action === "send" && item.kind === "contribution"
-      ? `:${item.draftVersion}`
-      : "";
+  let version = "";
+  if (action === "send" && item.kind === "contribution") {
+    version = `:${item.draftVersion}`;
+  } else if (action === "merge" && item.kind === "release") {
+    version = `:${headTag(item.sha)}`;
+  }
   return `${action}:${item.id}${version}`;
 }
 

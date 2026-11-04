@@ -2,7 +2,7 @@
 // text, and everything that comes from anyone but the maintainer.
 import { describe, expect, it } from "vitest";
 
-import { callbackData } from "../src/buttons.ts";
+import { callbackData, headTag } from "../src/buttons.ts";
 import type { Alarm, Contribution, Item, Release } from "../src/store.ts";
 import { handleUpdate } from "../src/updates.ts";
 import {
@@ -138,6 +138,22 @@ describe("buttons", () => {
       }),
     ).toBe("a button of a thing that is gone");
     expect(w.net.telegram("answerCallbackQuery")).toHaveLength(3);
+    // A proposal's Confirm for a thing that is gone loses its button.
+    expect(
+      await handleUpdate(w.context, {
+        callback_query: {
+          id: "q",
+          from: { id: CHAT },
+          data: `later:${ID}`,
+          message: { message_id: 900 },
+        },
+      }),
+    ).toBe("a button of a thing that is gone");
+    expect(w.net.telegram("editMessageReplyMarkup")[0]?.body).toEqual({
+      chat_id: CHAT,
+      message_id: 900,
+      reply_markup: { inline_keyboard: [] },
+    });
   });
 
   it("serve no one but the maintainer", async () => {
@@ -165,13 +181,44 @@ describe("buttons", () => {
         .on("PUT", "/repos/Dennis-Otto/demo/pulls/30/merge", () =>
           json({ merged: true }),
         );
-      const { answer, item } = await pressing(w, release, `merge:${ID}`);
+      const { answer, item } = await pressing(
+        w,
+        release,
+        callbackData("merge", release),
+      );
+      expect(callbackData("merge", release)).toBe(
+        `merge:${ID}:${headTag("abc")}`,
+      );
       expect(answer.text).toBe("Merging.");
       expect(item?.state).toBe("merging");
       expect(w.net.github("/pulls/30/merge")[0]?.body).toEqual({
         merge_method: "squash",
         sha: "abc",
       });
+    });
+
+    it("refuses a button of another head, such as an old proposal's", async () => {
+      // Confirm was offered at 1.2.3; the release moved on to 1.3.0 under the same id.
+      const w = await world();
+      w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () =>
+        json({
+          ...pull,
+          title: "chore: release 1.3.0",
+          head: { ...pull.head, sha: "def" },
+        }),
+      );
+      const moved = { ...release, version: "1.3.0", sha: "def" };
+      const { answer, item } = await pressing(
+        w,
+        moved,
+        `merge:${ID}:${headTag("abc")}`,
+      );
+      expect(answer).toMatchObject({
+        text: "This release changed since this message: use its newest message.",
+        show_alert: true,
+      });
+      expect(item).toEqual(moved);
+      expect(w.net.github("/pulls/30")).toHaveLength(0);
     });
 
     it("refuses a release that changed since its message", async () => {

@@ -54,6 +54,10 @@ async function pressed(
   const item = await context.store.get(parsed.id);
   if (item === null) {
     await context.telegram.answer(query.id, "This thing is gone.", true);
+    // Its own message went with it, so this is a proposal's: its button goes too.
+    if (query.message?.message_id !== undefined) {
+      await context.telegram.clear(query.message.message_id);
+    }
     return "a button of a thing that is gone";
   }
   const reply = await press(context, item, parsed);

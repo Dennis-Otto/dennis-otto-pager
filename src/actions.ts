@@ -3,7 +3,7 @@
  * action checks again what it acts on, such as the head of a release pull request,
  * and writes only through the few calls of github.ts.
  */
-import { allowed, type Press } from "./buttons.ts";
+import { allowed, headTag, type Press } from "./buttons.ts";
 import { GitHubError } from "./github.ts";
 import { type Context, show } from "./pager.ts";
 import { releaseBlocker } from "./rules.ts";
@@ -41,7 +41,18 @@ async function toControl(
   return null;
 }
 
-async function merge(context: Context, item: Release): Promise<Reply> {
+async function merge(
+  context: Context,
+  item: Release,
+  head: number | null,
+): Promise<Reply> {
+  // A button of another head, such as the Confirm of a proposal for 1.2.3 after the
+  // release moved on to 1.3.0 under the same id, never merges what it didn't show.
+  if (head !== null && head !== headTag(item.sha)) {
+    return refused(
+      "This release changed since this message: use its newest message.",
+    );
+  }
   const pull = await context.github.pullRequest(
     item.installation,
     item.repo,
@@ -176,7 +187,7 @@ export async function press(
         await show(context, item);
         return done("Done.");
       case "merge":
-        return await merge(context, item as Release);
+        return await merge(context, item as Release, pressed.version);
       case "fix":
         return await fix(context, item as Alarm | Alert);
       case "draft":

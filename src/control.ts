@@ -75,7 +75,10 @@ function usageOf(value: unknown): Usage | null | undefined {
 }
 
 function targetOf(action: unknown, value: unknown): Target | null {
-  const kinds = PROPOSABLE[action as Action];
+  // Only an own key: "constructor" or "__proto__" would find the prototype's.
+  const kinds = Object.hasOwn(PROPOSABLE, action as string)
+    ? PROPOSABLE[action as Action]
+    : undefined;
   const target = value as Fields | null;
   const kind = target?.kind as Target["kind"];
   const repo = target?.repo;
@@ -217,7 +220,9 @@ async function propose(
       `<i>No button: ${whereIs(item)} doesn't offer ${label} now.</i>`,
     );
   } else {
-    lines.push(`👉 ${label}: ${whereIs(item)}`);
+    // A Merge names the version that its button merges, as the release's own message does.
+    const version = item.kind === "release" ? ` ${html(item.version, 50)}` : "";
+    lines.push(`👉 ${label}${version}: ${whereIs(item)}`);
     keyboard = [
       [
         {

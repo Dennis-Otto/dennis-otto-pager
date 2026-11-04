@@ -380,4 +380,22 @@ describe("Telegram", () => {
     });
     await expect(telegram(broken).remove(5)).rejects.toThrow("network");
   });
+
+  it("takes the buttons off a message, and passes over one that is gone", async () => {
+    const net = new Net();
+    await telegram(net).clear(8);
+    expect(net.telegram("editMessageReplyMarkup")[0]?.body).toEqual({
+      chat_id: 4242,
+      message_id: 8,
+      reply_markup: { inline_keyboard: [] },
+    });
+    const gone = new Net().on("POST", /editMessageReplyMarkup$/, () =>
+      json({ ok: false, description: "message to edit not found" }, 400),
+    );
+    await telegram(gone).clear(8);
+    const broken = new Net().on("POST", /editMessageReplyMarkup$/, () => {
+      throw new TypeError("network");
+    });
+    await expect(telegram(broken).clear(8)).rejects.toThrow("network");
+  });
 });

@@ -124,6 +124,24 @@ export class Telegram {
     }
   }
 
+  /**
+   * Take the buttons off a message, such as a proposal whose ✅ Confirm was pressed;
+   * a message that is gone, or has none, is no error.
+   */
+  async clear(messageId: number): Promise<void> {
+    try {
+      await this.call("editMessageReplyMarkup", {
+        chat_id: this.chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: [] },
+      });
+    } catch (error) {
+      if (!(error instanceof TelegramError)) {
+        throw error;
+      }
+    }
+  }
+
   /** End the spinner of a button, with a short text, or a dialog for an alert. */
   async answer(callbackId: string, text: string, alert = false): Promise<void> {
     await this.call("answerCallbackQuery", {

@@ -110,7 +110,16 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 - In den Einstellungen der GitHub-App, unter *Advanced*, ist die erste Zustellung ein `ping`, den der Worker mit `pong` beantwortet.
 - Eröffne von einem anderen Konto ein Issue in einem beobachteten Repository: Die Nachricht kommt mit ihren Knöpfen.
 
-Das Steuer-Repository, das die Antworten entwirft, die Fixes startet und den freien Text liest, hat seine eigene Einrichtung in dem privaten Repository `Dennis-Otto/dennis-otto-pager-control`; bis es läuft, schicken seine Knöpfe ihre Ereignisse und warten.
+## 7. Das Steuer-Repository
+
+Das private Repository `Dennis-Otto/dennis-otto-pager-control` entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`; seine README nennt jeden Schritt. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Start fix** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
+
+```sh
+gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https://dennis-otto-pager.ACCOUNT.workers.dev
+gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
+```
+
+Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass sie an das Steuer-Repository ging, und seine Antwort kommt in ein, zwei Minuten. Bis das Steuer-Repository eingerichtet ist, schicken seine Knöpfe ihre Ereignisse, und die Zusammenfassung seines Laufs zeigt die Antwort statt des Chats.
 
 ## Später
 

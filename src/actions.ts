@@ -85,7 +85,9 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
   }
   item.state = "fixing";
   await show(context, item);
-  return done("Sent to the control repository.");
+  return done(
+    "Sent to the control repository: Claude looks for a fix, from your weekly limit.",
+  );
 }
 
 async function draft(context: Context, item: Contribution): Promise<Reply> {
@@ -100,7 +102,9 @@ async function draft(context: Context, item: Contribution): Promise<Reply> {
   }
   item.state = "drafting";
   await show(context, item);
-  return done("The control repository drafts a reply.");
+  return done(
+    "The control repository drafts a reply with Claude, from your weekly limit.",
+  );
 }
 
 async function assistant(context: Context, item: Contribution): Promise<Reply> {

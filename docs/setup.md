@@ -110,7 +110,16 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 - In the settings of the GitHub App, under *Advanced*, the first delivery is a `ping`, which the Worker answers with `pong`.
 - Open an issue in a watched repository from another account: the message comes with its buttons.
 
-The control repository, which drafts the replies, starts the fixes and reads the free text, has its own set-up in the private repository `Dennis-Otto/dennis-otto-pager-control`; until it runs, its buttons send their events and wait.
+## 7. The control repository
+
+The private repository `Dennis-Otto/dennis-otto-pager-control` drafts the replies, starts the fixes and answers the free text, with Claude Code and `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`; its README has every step. Besides the token of Claude and `PAGER_CONTROL_SECRET` of step 3, it needs the address of the Worker, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix:
+
+```sh
+gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https://dennis-otto-pager.ACCOUNT.workers.dev
+gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
+```
+
+Then write a question to the bot, such as *What fails on main?*: the 👀 says that it went to the control repository, and its answer comes in a minute or two. Until the control repository is set up, its buttons send their events, and the summary of its run shows the answer instead of the chat.
 
 ## Later on
 

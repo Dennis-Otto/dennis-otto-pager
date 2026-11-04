@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: How the pager works
-    accDescr: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft or a note that a button has to approve.
+    accDescr: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.
 
     github["`**GitHub** sends the events of the app, signed`"]
     rules{"`**The rules** of the Worker: does it need Dennis?`"}
@@ -20,7 +20,7 @@ flowchart TB
     rules --> message --> dennis
     dennis --> action
     dennis --> control
-    control -- "a draft or a note, signed" --> message
+    control -- "a draft, a note or a proposal, signed" --> message
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
     classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px

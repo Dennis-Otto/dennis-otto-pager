@@ -4,6 +4,7 @@
  * after 30 days.
  */
 import { sha256Hex } from "./crypto.ts";
+import type { Thread } from "./telegram.ts";
 
 /** One part of a bundle, such as a failed check on main or a code-scanning alert. */
 export interface Entry {
@@ -104,6 +105,17 @@ export const keys = {
 
 const MONTH = 30 * 24 * 60 * 60;
 
+/**
+ * A text of the maintainer that waits for the answer of the control repository:
+ * when it went, and the thread of the chat that it came from, where the answer goes.
+ */
+export interface Asked {
+  since: number;
+  thread: Thread;
+  /** The schedule gave up on its answer: its 😢 came, and its thread stays for a late answer. */
+  late?: true;
+}
+
 /** A text that the maintainer is writing in reply to a prompt of the pager. */
 export interface PendingEdit {
   item: string;
@@ -159,40 +171,91 @@ export class Store {
 
   /**
    * The texts of the maintainer that went to the control repository and wait for
-   * its answer: the id of each message, and when it went. One record for them all,
-   * which the schedule reads once per run, and a write only when one comes or goes.
+   * its answer: the id of each message, when it went and its thread. One record for
+   * them all, which the schedule reads once per run, and a write only when one comes
+   * or goes. A text kept before the pager knew threads has only its time, and its
+   * answer goes into the main view, as it did then.
    */
-  private async asked(): Promise<Record<string, number>> {
-    return (await this.kv.get<Record<string, number>>("asked", "json")) ?? {};
+  private async asked(): Promise<Record<string, Asked>> {
+    const kept =
+      (await this.kv.get<Record<string, number | Asked>>("asked", "json")) ??
+      {};
+    return Object.fromEntries(
+      Object.entries(kept).map(([message, asked]) => [
+        message,
+        typeof asked === "number" ? { since: asked, thread: null } : asked,
+      ]),
+    );
   }
 
   /** Keep a text of the maintainer that waits for the answer of the control repository. */
-  async ask(message: number, now: number): Promise<void> {
+  async ask(
+    message: number,
+    now: number,
+    thread: Thread = null,
+  ): Promise<void> {
     const asked = await this.asked();
-    asked[message] = now;
+    asked[message] = { since: now, thread };
     await this.kv.put("asked", JSON.stringify(asked));
   }
 
-  /** The texts that wait for their answer since before a time. */
+  /** The texts that wait for their answer since before a time, other than those given up on. */
   async waiting(before: number): Promise<number[]> {
     return Object.entries(await this.asked())
-      .filter(([, since]) => since < before)
+      .filter(([, asked]) => asked.late === undefined && asked.since < before)
       .map(([message]) => Number(message));
   }
 
-  /** Forget the texts that got their answer, or none in time; a write only when one waited. */
+  /**
+   * Give up on the texts whose answer didn't come in time: they wait no longer, but
+   * keep their thread for an answer that comes late, until they went before forget,
+   * when the pager forgets them. A write only when one changes.
+   */
+  async giveUp(messages: number[], forget: number): Promise<void> {
+    const asked = await this.asked();
+    let changed = false;
+    for (const [message, entry] of Object.entries(asked)) {
+      if (entry.late !== undefined && entry.since < forget) {
+        delete asked[message];
+        changed = true;
+      } else if (
+        entry.late === undefined &&
+        messages.includes(Number(message))
+      ) {
+        asked[message] = { ...entry, late: true };
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.keepAsked(asked);
+    }
+  }
+
+  /** Write the record of the texts that wait, or delete it when none is left. */
+  private async keepAsked(asked: Record<string, Asked>): Promise<void> {
+    if (Object.keys(asked).length === 0) {
+      await this.kv.delete("asked");
+    } else {
+      await this.kv.put("asked", JSON.stringify(asked));
+    }
+  }
+
+  /**
+   * The thread that the answer to a text of the maintainer goes into: the one that
+   * the text came from, also when its answer is late, or null for the main view.
+   */
+  async thread(message: number): Promise<Thread> {
+    return (await this.asked())[message]?.thread ?? null;
+  }
+
+  /** Forget the texts that got their answer; a write only when one waited. */
   async settle(messages: number[]): Promise<void> {
     const asked = await this.asked();
     const left = Object.entries(asked).filter(
       ([message]) => !messages.includes(Number(message)),
     );
-    if (left.length === Object.keys(asked).length) {
-      return;
-    }
-    if (left.length === 0) {
-      await this.kv.delete("asked");
-    } else {
-      await this.kv.put("asked", JSON.stringify(Object.fromEntries(left)));
+    if (left.length !== Object.keys(asked).length) {
+      await this.keepAsked(Object.fromEntries(left));
     }
   }
 

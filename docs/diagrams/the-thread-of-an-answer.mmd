@@ -1,0 +1,28 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: The thread of an answer
+    accDescr: Dennis writes a text in a thread of the chat. The answer to /help or an error goes into that thread at once. Free text goes to the control repository, and the pager keeps its thread while it waits. The answer of the control repository, a note, a failure or a proposal with its Confirm button, goes into the same thread. General, a text from before threads, an answer more than a day late and a thread that Telegram doesn't find get theirs in the main view.
+
+    dennis["Dennis writes a text in a thread"]
+    direct["`**/help** or an error: the answer goes into the thread at once`"]
+    kept["`**👀** The text goes to the control repository, and the pager keeps its thread`"]
+    answer["`**👍** The answer, or a proposal with ✅ Confirm, goes into the same thread`"]
+    main["`**Main view**: General, a text from before threads, an answer more than a day late, or a thread that Telegram doesn't find`"]
+
+    dennis --> direct
+    dennis -- "free text" --> kept
+    kept -- "the signed answer" --> answer
+    answer -- "no thread kept, or Telegram refuses it" --> main
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class dennis you
+    class kept,direct bot
+    class answer done
+    class main warn

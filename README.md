@@ -30,6 +30,8 @@ Every message also has ⏰ **Later**, which brings it back after four hours, and
 
 Any other text to the bot goes to the private control repository, which answers with Claude Code and the maintainer's own subscription; reply to a message to ask about its thing. An answer that proposes an action, such as merging the release you asked about, comes with one ✅ **Confirm** button, and nothing acts without its press. Your text gets a 👀 when it goes, a 👍 when its answer comes and a 😢 when none came, and every answer, draft and fix ends with one line on its run of Claude: the model, the effort and the tokens, such as *🧮 Opus 5.5 · high · 48,213 tokens*.
 
+With Telegram's threads turned on for the bot, each answer stays in the thread of the text that it answers: `/help`, an error, the answer of the control repository and a proposal with its ✅ **Confirm** button. The messages of the things stay in the main view, where they are.
+
 The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de` for this pager, and English when it is empty. Every text that it sends follows it, the buttons and `/help` included, and so do the answers of the control repository; a draft of a reply keeps the language of its issue or pull request, and what comes from GitHub, such as a title, stays as it is.
 
 <picture>

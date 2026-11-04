@@ -70,7 +70,7 @@ Der Body ist eines von:
 - `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann;
 - `{"type": "failed", "text": "<Grund>"}`: freier Text, dessen Antwort nicht zustande kam, gezeigt als eigene Nachricht.
 
-Eine Antwort auf freien Text, also eine Notiz oder ein Fehlschlag ohne `item` oder ein Vorschlag, trägt `"message": <ID>`, die `message` ihres `pager-text`. Der Pager macht dann aus dem 👀 auf diesem Text ein 👍, bei einem Fehlschlag ein 😢; ein Job, der von Hand im Actions-Tab startet, hat keinen Text und lässt sie weg.
+Eine Antwort auf freien Text, also eine Notiz oder ein Fehlschlag ohne `item` oder ein Vorschlag, trägt `"message": <ID>`, die `message` ihres `pager-text`. Der Pager macht dann aus dem 👀 auf diesem Text ein 👍, bei einem Fehlschlag ein 😢; ein Job, der von Hand im Actions-Tab startet, hat keinen Text und lässt sie weg. Die Antwort geht in den Thread dieses Textes, wie [der Thread einer Antwort](#der-thread-einer-antwort) sagt.
 
 Jeder Body kann tragen, was der Lauf von Claude vom Wochenlimit des Abos genommen hat:
 
@@ -122,7 +122,25 @@ Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert
   <img src="images/diagrams/the-reaction-on-a-text.de.svg" alt="Die Reaktion auf einen Text: Dennis schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.">
 </picture>
 
-Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍.
+Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍, im Thread ihres Textes.
+
+## Der Thread einer Antwort
+
+Mit der Bot API 9.3 hat Telegram dem privaten Chat eines Bots Threads gegeben, und ist der Threaded Mode für den Bot an, in der Mini App von @BotFather, kann jeder neue Text des Maintainers einen eigenen Thread beginnen. Eine Antwort auf einen Text geht in den Thread, aus dem der Text kam, gelesen aus seiner `message_thread_id`: die Antwort auf `/help`, ein Fehler, etwa ein fehlendes Steuer-Repository oder ein Entwurf, den es nicht mehr gibt, und die Antwort des Steuer-Repositorys, ob Notiz, Fehlschlag oder Vorschlag mit seinem Knopf ✅ Bestätigen. Die Reaktionen brauchen keinen Thread, denn sie sitzen auf dem Text selbst.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-thread-of-an-answer.de.dark.svg">
+  <img src="images/diagrams/the-thread-of-an-answer.de.svg" alt="Der Thread einer Antwort: Dennis schreibt einen Text in einem Thread des Chats. Die Antwort auf /help oder ein Fehler geht sofort in diesen Thread. Freier Text geht an das Steuer-Repository, und der Pager behält seinen Thread, solange er wartet. Die Antwort des Steuer-Repositorys, eine Notiz, ein Fehlschlag oder ein Vorschlag mit seinem Knopf Bestätigen, geht in denselben Thread. General, ein Text von vor den Threads, eine Antwort, die mehr als einen Tag zu spät kommt, und ein Thread, den Telegram nicht findet, bekommen ihre in der Hauptansicht.">
+</picture>
+
+Das Steuer-Repository sieht den Thread nie: Der Pager behält ihn beim Text, der auf seine Antwort wartet, und die `message` der Antwort findet ihn wieder, so bleibt der Vertrag, wie er war. Manche Antworten gehen stattdessen in die Hauptansicht:
+
+- ein Text aus General, dem ersten Thread, dessen Nachrichten die Bot API ohne die ID eines Threads nimmt;
+- eine Antwort auf keinen Text, etwa die eines Jobs, der von Hand startete;
+- eine Antwort auf einen Text, der ging, bevor der Pager Threads kannte, und eine, die mehr als einen Tag nach ihrem Text kommt: Den Thread eines Textes, den er aufgegeben hat, behält der Pager einen Tag, so findet ihn auch eine späte Antwort;
+- eine Antwort, deren Thread Telegram nicht findet, mit `message thread not found`, etwa einen, den der Maintainer gelöscht hat: Der Pager schickt sie ohne den Thread noch einmal und schreibt das ins Log, ohne ihren Text.
+
+Die Nachrichten der Sachen, etwa eines Releases oder eines fehlschlagenden Checks, bleiben in der Hauptansicht, wo sie sind.
 
 ## Texte und Sprachen
 
@@ -132,6 +150,6 @@ Nach einer Änderung von `LANGUAGE` spricht eine Nachricht die neue Sprache, sob
 
 ## Zustand
 
-Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
+Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
 Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.

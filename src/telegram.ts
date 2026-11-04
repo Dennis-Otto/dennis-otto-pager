@@ -2,7 +2,8 @@
  * The Bot API of Telegram, for the one chat of the maintainer: send a message with
  * buttons, edit it as its thing changes, answer a button, react to a message. The
  * token of the bot is part of the address of every call, so no error and no log
- * names the address.
+ * names the address. In Threaded Mode, a message of the maintainer comes from a
+ * thread, and the answer to it goes into the same.
  */
 
 export type Fetch = (
@@ -30,6 +31,30 @@ export const REACTIONS = {
 } as const;
 
 export type Reaction = (typeof REACTIONS)[keyof typeof REACTIONS];
+
+/**
+ * A thread of the chat, by its id, or null for the main view. Since the Bot API 9.3,
+ * a private chat with a bot in Threaded Mode has threads, and each new message of
+ * the maintainer can start one of its own.
+ */
+export type Thread = number | null;
+
+/** General, the first thread of a chat, whose messages the Bot API takes without an id. */
+const GENERAL = 1;
+
+/**
+ * The thread that the answer to a message of the maintainer goes into: the one that
+ * the message came from, or null for General and for a chat without threads.
+ * The id alone decides, without is_topic_message: the chat of the pager is private,
+ * where a message has an id of a thread only in a thread, and a wrong one falls
+ * back to the main view in send().
+ */
+export function threadOf(message: { message_thread_id?: unknown }): Thread {
+  const thread = message.message_thread_id;
+  return Number.isSafeInteger(thread) && (thread as number) > GENERAL
+    ? (thread as number)
+    : null;
+}
 
 export class TelegramError extends Error {
   readonly method: string;
@@ -80,15 +105,51 @@ export class Telegram {
     return answer.result;
   }
 
-  /** Send a message with buttons; it notifies the maintainer. Returns its id. */
-  async send(text: string, keyboard: Keyboard): Promise<number> {
-    const result = (await this.call("sendMessage", {
+  /**
+   * Send a message with buttons, into a thread or the main view; it notifies the
+   * maintainer. Returns its id. A thread that Telegram doesn't find, such as one
+   * that the maintainer deleted, or any in a chat where a rollout of Telegram
+   * refuses them, takes the message in the main view instead.
+   */
+  async send(
+    text: string,
+    keyboard: Keyboard,
+    thread: Thread = null,
+  ): Promise<number> {
+    const parameters = {
       chat_id: this.chatId,
       text,
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
       reply_markup: { inline_keyboard: keyboard },
-    })) as { message_id: number };
+    };
+    if (thread === null) {
+      return this.sendMessage(parameters);
+    }
+    try {
+      return await this.sendMessage({
+        ...parameters,
+        message_thread_id: thread,
+      });
+    } catch (error) {
+      if (
+        !(error instanceof TelegramError) ||
+        !error.description.includes("message thread not found")
+      ) {
+        throw error;
+      }
+      // The log names the thread, never the text, which may quote a private repository.
+      console.warn(
+        `Telegram sendMessage: thread ${thread} not found, sent to the main view`,
+      );
+      return this.sendMessage(parameters);
+    }
+  }
+
+  private async sendMessage(parameters: object): Promise<number> {
+    const result = (await this.call("sendMessage", parameters)) as {
+      message_id: number;
+    };
     return result.message_id;
   }
 
@@ -170,18 +231,17 @@ export class Telegram {
    * which shows the placeholder while it is empty.
    */
   async prompt(text: string, placeholder: string): Promise<number> {
-    const result = (await this.call("sendMessage", {
+    return this.sendMessage({
       chat_id: this.chatId,
       text,
       parse_mode: "HTML",
       reply_markup: { force_reply: true, input_field_placeholder: placeholder },
-    })) as { message_id: number };
-    return result.message_id;
+    });
   }
 
-  /** Send a plain message without buttons. */
-  async say(text: string): Promise<void> {
-    await this.send(text, []);
+  /** Send a plain message without buttons, into a thread or the main view. */
+  async say(text: string, thread: Thread = null): Promise<void> {
+    await this.send(text, [], thread);
   }
 
   /**

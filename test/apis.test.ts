@@ -1,6 +1,6 @@
 // The two APIs against the simulated network: the JWT and the scoped tokens of the
 // GitHub App, each call of GitHub, and the Bot API of Telegram with its errors.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   appJwt,
@@ -10,7 +10,12 @@ import {
   pemToPkcs8,
   pkcs1ToPkcs8,
 } from "../src/github.ts";
-import { REACTIONS, Telegram, TelegramError } from "../src/telegram.ts";
+import {
+  REACTIONS,
+  Telegram,
+  TelegramError,
+  threadOf,
+} from "../src/telegram.ts";
 import { appKey, asPkcs1, json, Net, START } from "./helpers.ts";
 
 function decode(part: string): unknown {
@@ -288,6 +293,58 @@ describe("Telegram", () => {
       link_preview_options: { is_disabled: true },
       reply_markup: { inline_keyboard: keyboard },
     });
+  });
+
+  it("sends into a thread, and into the main view when Telegram doesn't find it", async () => {
+    const net = new Net();
+    expect(await telegram(net).send("Hi", [], 77)).toBe(100);
+    expect(net.telegram("sendMessage")[0]?.body.message_thread_id).toBe(77);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let tries = 0;
+    const gone = new Net().on("POST", /sendMessage$/, () =>
+      tries++ === 0
+        ? json(
+            { ok: false, description: "Bad Request: message thread not found" },
+            400,
+          )
+        : json({ ok: true, result: { message_id: 7 } }),
+    );
+    expect(await telegram(gone).send("Hi", [], 77)).toBe(7);
+    const [first, second] = gone.telegram("sendMessage").map((c) => c.body);
+    expect(first.message_thread_id).toBe(77);
+    expect(second).not.toHaveProperty("message_thread_id");
+    expect(second.text).toBe("Hi");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("passes on every other error of a message for a thread", async () => {
+    const busy = new Net().on("POST", /sendMessage$/, () =>
+      json({ ok: false, description: "Too Many Requests" }, 429),
+    );
+    await expect(telegram(busy).send("Hi", [], 77)).rejects.toThrow(
+      "Telegram sendMessage: Too Many Requests",
+    );
+    expect(busy.telegram("sendMessage")).toHaveLength(1);
+    const broken = new Net().on("POST", /sendMessage$/, () => {
+      throw new TypeError("network");
+    });
+    await expect(telegram(broken).send("Hi", [], 77)).rejects.toThrow(
+      "network",
+    );
+    expect(broken.telegram("sendMessage")).toHaveLength(1);
+  });
+
+  it("takes the thread of a message, with General and a wrong id as none", () => {
+    expect(threadOf({ message_thread_id: 77 })).toBe(77);
+    expect(threadOf({ message_thread_id: 2 })).toBe(2);
+    for (const thread of [undefined, 1, 0, -5, 1.5, "77", null, 2 ** 53]) {
+      expect(
+        threadOf({ message_thread_id: thread }),
+        String(thread),
+      ).toBeNull();
+    }
+    expect(threadOf({})).toBeNull();
   });
 
   it("edits in place, takes an unchanged message as done and a gone one as gone", async () => {

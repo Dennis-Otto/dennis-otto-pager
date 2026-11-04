@@ -30,6 +30,8 @@ Jede Nachricht hat außerdem ⏰ **Später**, das sie nach vier Stunden zurückb
 
 Jeder andere Text an den Bot geht an das private Steuer-Repository, das mit Claude Code und dem eigenen Abo des Maintainers antwortet; eine Antwort auf eine Nachricht fragt nach deren Sache. Eine Antwort, die eine Aktion vorschlägt, etwa das Mergen des Releases, nach dem du gefragt hast, kommt mit einem Knopf ✅ **Bestätigen**, und ohne dessen Druck geschieht nichts. Dein Text bekommt ein 👀, wenn er geht, ein 👍, wenn seine Antwort kommt, und ein 😢, wenn keine kam, und jede Antwort, jeder Entwurf und jeder Fix endet mit einer Zeile zu seinem Lauf von Claude: dem Modell, dem Aufwand und den Tokens, etwa *🧮 Opus 5.5 · Hoch · 48.213 Tokens*.
 
+Sind die Threads von Telegram für den Bot an, bleibt jede Antwort im Thread des Textes, auf den sie antwortet: `/help`, ein Fehler, die Antwort des Steuer-Repositorys und ein Vorschlag mit seinem Knopf ✅ **Bestätigen**. Die Nachrichten der Sachen bleiben in der Hauptansicht, wo sie sind.
+
 Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entscheidet, `de` für diesen Pager, Englisch, wenn es leer ist. Jeder Text, den er schickt, folgt ihr, die Knöpfe und `/help` eingeschlossen, und ebenso die Antworten des Steuer-Repositorys; ein Antwortentwurf bleibt in der Sprache seines Issues oder Pull Requests, und was von GitHub kommt, etwa ein Titel, bleibt, wie es ist. Diese Seite nennt die Knöpfe, wie sie mit `de` heißen.
 
 <picture>

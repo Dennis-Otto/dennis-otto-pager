@@ -49,9 +49,11 @@ The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` r
 
 | Event type | Sent by | Client payload |
 | --- | --- | --- |
-| `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull` |
-| `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url` |
-| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), and `reply`: the first 1000 characters of the message that the text answers, if any |
+| `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull`, `language` |
+| `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language` |
+| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), and `reply`: the first 1000 characters of the message that the text answers, if any; `language` |
+
+`language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
 A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
 
@@ -67,7 +69,7 @@ The body is one of:
 - `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
 - `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again.
 
-Each body may carry `"usage": {"turns": <number>, "seconds": <number>}`: what the run of Claude took from the weekly limit of the subscription. The message shows it as *🧮 Claude: 4 turns, 52 s, from your weekly limit*.
+Each body may carry `"usage": {"turns": <number>, "seconds": <number>}`: what the run of Claude took from the weekly limit of the subscription. The message shows it as *🧮 Claude: 4 turns, 52 s, from your weekly limit*, in the language of the pager.
 
 A proposal names its thing as the control repository knows it, and the pager looks it up:
 
@@ -88,6 +90,12 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 ```
 
 No body makes the pager act: whatever the control repository sends is shown, escaped, and never run, and every action needs the press of a button of the allowlist. The answer goes to the Worker rather than straight to Telegram, as [decision 0003](decisions/0003-the-control-repository-answers-the-worker.md) explains: the token of the bot stays in Cloudflare, and the Worker keeps the state that a draft, a failed job and a proposal need.
+
+## Texts and languages
+
+Every text that the pager sends comes from `src/texts.ts`, one catalog per language, English and German, and `LANGUAGE` in `wrangler.jsonc` chooses one: the messages and their states, the buttons, `/help`, the answers of the buttons, the errors that it shows and the reminder of the token. A text names its parts in braces, such as `{repo}`, and what fills them, such as the title of an issue or the name of a check, goes in as GitHub says it. The rules hand on what they mean, such as why a release may not merge yet, as a key of the catalog with its values, and the pager words it; the logs stay in English. Both catalogs have the same keys, which the compiler checks, and the same placeholders, tags and emojis, which `test/texts.test.ts` checks: a new text takes an entry in both.
+
+After a change of `LANGUAGE`, a message speaks the new language once its thing changes; what its record keeps as text, such as its note, the entries of a bundle and the reminder, keeps the words that it was written with.
 
 ## State
 

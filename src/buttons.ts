@@ -6,6 +6,7 @@
  */
 import type { Item } from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
+import type { Texts } from "./texts.ts";
 
 export const ACTIONS = [
   "merge",
@@ -21,17 +22,10 @@ export const ACTIONS = [
 
 export type Action = (typeof ACTIONS)[number];
 
-export const LABELS: Record<Action, string> = {
-  merge: "🔀 Merge",
-  assistant: "🤖 Assistant again",
-  fix: "🛠 Start fix",
-  draft: "✍️ Draft a reply",
-  send: "✅ Send",
-  edit: "✏️ Edit",
-  ignore: "✖ Ignore",
-  later: "⏰ Later",
-  done: "✅ Renewed",
-};
+/** The label of a button, in the language of the texts. */
+export function label(t: Texts, action: Action): string {
+  return t(`button.${action}`);
+}
 
 /** The actions that a thing offers in its current state, in the order of its buttons. */
 export function allowed(item: Item): Action[] {
@@ -114,9 +108,9 @@ export function parsePress(data: string): Press | null {
 }
 
 /** The keyboard of a thing: its allowed actions, two buttons a row. */
-export function keyboard(item: Item): Keyboard {
+export function keyboard(item: Item, t: Texts): Keyboard {
   const buttons = allowed(item).map((action) => ({
-    text: LABELS[action],
+    text: label(t, action),
     callback_data: callbackData(action, item),
   }));
   const rows: Keyboard = [];

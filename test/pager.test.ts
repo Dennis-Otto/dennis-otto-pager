@@ -9,8 +9,14 @@ import { json, REPO, type World, world } from "./helpers.ts";
 
 const at = { repo: REPO, installation: 9 };
 
-function failing(key: string, label = `${key} fails`): Signal {
-  return { ...at, type: "failing", key, label, url: "https://github.com/x" };
+function failing(key: string, title = `${key} fails`): Signal {
+  return {
+    ...at,
+    type: "failing",
+    key,
+    label: { key: "entry.bot", values: { title } },
+    url: "https://github.com/x",
+  };
 }
 
 async function stored(w: World, key: string): Promise<Item | null> {
@@ -57,7 +63,7 @@ describe("the alarm of a repository", () => {
     const alarm = await stored(w, keys.alarm(REPO));
     expect(alarm).toMatchObject({
       entries: [
-        { key: "check:lint", label: "lint fails again" },
+        { key: "check:lint", label: "A bot fails: lint fails again" },
         { key: "workflow:release" },
       ],
     });
@@ -124,7 +130,7 @@ describe("code-scanning alerts", () => {
       ...at,
       type: "alert-open",
       key,
-      label: `high: ${key}`,
+      label: { key: "entry.alert", values: { severity: "high", what: key } },
       url: "https://github.com/a",
     });
     expect(await apply(w.context, open("alert:1"))).toBe("alert opened");

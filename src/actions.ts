@@ -4,7 +4,7 @@
  * and writes only through the few calls of github.ts.
  */
 import { allowed, headTag, type Press } from "./buttons.ts";
-import { GitHubError } from "./github.ts";
+import { GitHubError, NoUserToken } from "./github.ts";
 import { type Context, show } from "./pager.ts";
 import { releaseBlocker } from "./rules.ts";
 import type {
@@ -33,11 +33,13 @@ async function toControl(
   const repo = context.settings.controlRepository;
   const installation = await context.github.installation(repo);
   if (installation === null) {
-    return refused(
-      `The GitHub App isn't installed on ${repo}, which does this: install it there, as docs/setup.md says.`,
-    );
+    return refused(context.t("answer.notInstalled", { repo }));
   }
-  await context.github.dispatch(installation, repo, eventType, payload);
+  // The answers of the control repository to the maintainer come in their language.
+  await context.github.dispatch(installation, repo, eventType, {
+    ...payload,
+    language: context.t.language,
+  });
   return null;
 }
 
@@ -49,9 +51,7 @@ async function merge(
   // A button of another head, such as the Confirm of a proposal for 1.2.3 after the
   // release moved on to 1.3.0 under the same id, never merges what it didn't show.
   if (head !== null && head !== headTag(item.sha)) {
-    return refused(
-      "This release changed since this message: use its newest message.",
-    );
+    return refused(context.t("answer.releaseMoved"));
   }
   const pull = await context.github.pullRequest(
     item.installation,
@@ -62,16 +62,16 @@ async function merge(
     item.state = "updating";
     item.sha = pull.head?.sha ?? "";
     await show(context, item);
-    return refused(
-      "The release changed since this message: it comes back once its checks are green.",
-    );
+    return refused(context.t("answer.releaseChanged"));
   }
   const blocker = releaseBlocker(
     pull,
     pull.base?.repo?.default_branch ?? "main",
   );
   if (blocker !== null) {
-    return refused(`Not merged: ${blocker}.`);
+    return refused(
+      context.t("answer.notMerged", { why: context.t.phrase(blocker) }),
+    );
   }
   await context.github.merge(
     item.installation,
@@ -81,7 +81,7 @@ async function merge(
   );
   item.state = "merging";
   await show(context, item);
-  return done("Merging.");
+  return done(context.t("answer.merging"));
 }
 
 async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
@@ -96,9 +96,7 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
   }
   item.state = "fixing";
   await show(context, item);
-  return done(
-    "Sent to the control repository: Claude looks for a fix, from your weekly limit.",
-  );
+  return done(context.t("answer.fixing"));
 }
 
 async function draft(context: Context, item: Contribution): Promise<Reply> {
@@ -113,9 +111,7 @@ async function draft(context: Context, item: Contribution): Promise<Reply> {
   }
   item.state = "drafting";
   await show(context, item);
-  return done(
-    "The control repository drafts a reply with Claude, from your weekly limit.",
-  );
+  return done(context.t("answer.drafting"));
 }
 
 async function assistant(context: Context, item: Contribution): Promise<Reply> {
@@ -123,15 +119,13 @@ async function assistant(context: Context, item: Contribution): Promise<Reply> {
     await context.github.issueAssistant(item.repo, item.number);
   } catch (error) {
     if (error instanceof GitHubError && error.status === 422) {
-      return refused(
-        `The issue assistant of ${item.repo} doesn't take the override yet: it comes with the release of the blueprint that brings the runs by hand of the issue assistant. Nothing was started.`,
-      );
+      return refused(context.t("answer.noOverride", { repo: item.repo }));
     }
     throw error;
   }
-  item.note = "🤖 The issue assistant answers again.";
+  item.note = context.t("note.assistant");
   await show(context, item);
-  return done("The issue assistant runs.");
+  return done(context.t("answer.assistant"));
 }
 
 async function send(
@@ -140,23 +134,22 @@ async function send(
   version: number | null,
 ): Promise<Reply> {
   if (version !== item.draftVersion || item.draft === null) {
-    return refused(
-      "This draft is out of date: send the one that the message shows now.",
-    );
+    return refused(context.t("answer.draftOutdated"));
   }
   await context.github.comment(item.repo, item.number, item.draft);
   item.state = "sent";
-  item.note = "Posted in your name.";
+  item.note = context.t("note.sent");
   await show(context, item);
-  return done("Sent.");
+  return done(context.t("answer.sent"));
 }
 
 async function edit(context: Context, item: Contribution): Promise<Reply> {
   const prompt = await context.telegram.prompt(
-    `✏️ Reply to this message with the new text of the reply to ${item.repo}#${item.number}. The message of the draft then shows your text, and "Send" posts it as it stands.`,
+    context.t("edit.prompt", { thing: `${item.repo}#${item.number}` }),
+    context.t("edit.placeholder"),
   );
   await context.store.setPendingEdit({ item: item.id, prompt });
-  return done("Write the new text in reply.");
+  return done(context.t("answer.edit"));
 }
 
 /** Run the action of a pressed button on its thing, if the thing still offers it. */
@@ -166,7 +159,7 @@ export async function press(
   pressed: Press,
 ): Promise<Reply> {
   if (!allowed(item).includes(pressed.action)) {
-    return refused("This button is out of date.");
+    return refused(context.t("answer.outdated"));
   }
   try {
     switch (pressed.action) {
@@ -174,18 +167,18 @@ export async function press(
         const hours = context.settings.laterHours;
         item.snoozedUntil = context.now() + hours * 3600000;
         await show(context, item);
-        return done(`Back in ${hours} h.`);
+        return done(context.t("answer.later", { hours }));
       }
       case "ignore":
         (item as Exclude<Item, Reminder>).state = "ignored";
         item.snoozedUntil = null;
         await show(context, item);
-        return done("Ignored.");
+        return done(context.t("answer.ignored"));
       case "done":
         (item as Reminder).state = "done";
         item.snoozedUntil = null;
         await show(context, item);
-        return done("Done.");
+        return done(context.t("answer.done"));
       case "merge":
         return await merge(context, item as Release, pressed.version);
       case "fix":
@@ -200,8 +193,11 @@ export async function press(
         return await edit(context, item as Contribution);
     }
   } catch (error) {
+    if (error instanceof NoUserToken) {
+      return refused(context.t("answer.noUserToken"));
+    }
     if (error instanceof GitHubError) {
-      return refused(`GitHub refused: ${error.detail}`);
+      return refused(context.t("answer.refused", { detail: error.detail }));
     }
     throw error;
   }

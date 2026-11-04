@@ -20,18 +20,24 @@ import {
   type Store,
 } from "./store.ts";
 import type { Telegram } from "./telegram.ts";
+import { type Texts, texts } from "./texts.ts";
 
 export interface Context {
   settings: Settings;
   store: Store;
   telegram: Telegram;
   github: GitHub;
+  /** Every text that goes to the maintainer, in the language of the settings. */
+  t: Texts;
   now: () => number;
   /** Wait, such as for GitHub to work out whether a pull request can merge. */
   sleep: (milliseconds: number) => Promise<void>;
   /** Run a change of the state after every change before it, as src/serial.ts does. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
 }
+
+/** The words of the log, which stays in English. */
+const english = texts("en");
 
 /** How often to ask again while GitHub still works out whether a pull request can merge. */
 export const MERGEABLE_TRIES = 3;
@@ -46,8 +52,8 @@ export async function show(
   item: Item,
   fresh = false,
 ): Promise<void> {
-  const text = render(item, context.now());
-  const buttons = keyboard(item);
+  const text = render(item, context.now(), context.t);
+  const buttons = keyboard(item, context.t);
   const old = item.messageId;
   const shown =
     old !== null && !fresh
@@ -173,7 +179,7 @@ async function releaseCheck(
       pull.base?.repo?.default_branch ?? "main",
     );
     if (blocker !== null) {
-      outcomes.push(`#${number} not ready: ${blocker}`);
+      outcomes.push(`#${number} not ready: ${english.phrase(blocker)}`);
       continue;
     }
     const version = releaseVersion(String(pull.title)) as string;
@@ -259,7 +265,7 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
     case "failing":
       return addEntry(context, "alarm", signal.repo, signal.installation, {
         key: signal.key,
-        label: signal.label,
+        label: context.t.phrase(signal.label),
         url: signal.url,
       });
     case "recovered":
@@ -279,14 +285,17 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       }
       return addEntry(context, "alarm", signal.repo, signal.installation, {
         key,
-        label: `${signal.name} fails on ${signal.branch}`,
+        label: context.t("entry.check", {
+          name: signal.name,
+          branch: signal.branch,
+        }),
         url: signal.url,
       });
     }
     case "alert-open":
       return addEntry(context, "alert", signal.repo, signal.installation, {
         key: signal.key,
-        label: signal.label,
+        label: context.t.phrase(signal.label),
         url: signal.url,
       });
     case "alert-closed":

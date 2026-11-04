@@ -149,6 +149,7 @@ export async function settings(
     controlRepository: "Dennis-Otto/control",
     laterHours: 4,
     tokenExpires: null,
+    language: "en",
     ...overrides,
   };
 }

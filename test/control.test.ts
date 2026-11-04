@@ -459,6 +459,11 @@ describe("the schedule", () => {
     expect(expired.net.telegram("sendMessage")[0]?.body.text).toContain(
       "on 2026-11-01: it has expired",
     );
+    const tomorrow = await world({ tokenExpires: "2026-11-05" });
+    await runSchedule(tomorrow.context);
+    expect(tomorrow.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "expires in 1 day, on 2026-11-05.",
+    );
     const none = await world();
     expect(await runSchedule(none.context)).toEqual([]);
   });

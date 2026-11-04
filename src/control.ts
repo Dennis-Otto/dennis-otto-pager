@@ -6,12 +6,13 @@
  * says is shown, escaped, and never run: an action needs a button of the
  * allowlist, which a proposal only offers, and the maintainer presses.
  */
-import { type Action, allowed, callbackData, LABELS } from "./buttons.ts";
+import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { type Context, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import { type Item, itemId, keys } from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
+import type { Texts } from "./texts.ts";
 import { MAX_DRAFT } from "./updates.ts";
 
 /** How old a signed request of the control repository may be, in seconds. */
@@ -141,17 +142,20 @@ function parse(body: string): Message | null {
 }
 
 /** The line that says what a run of Claude took from the weekly limit. */
-export function usageLine(usage: Usage | undefined): string | null {
+export function usageLine(usage: Usage | undefined, t: Texts): string | null {
   if (usage === undefined) {
     return null;
   }
-  const turns = usage.turns === 1 ? "1 turn" : `${usage.turns} turns`;
-  return `🧮 Claude: ${turns}, ${usage.seconds} s, from your weekly limit`;
+  const turns =
+    usage.turns === 1
+      ? t("usage.one")
+      : t("usage.many", { turns: usage.turns });
+  return t("usage.line", { turns, seconds: usage.seconds });
 }
 
 /** A note below a thing, with the usage of Claude on a line of its own. */
-function noted(text: string, usage: Usage | undefined): string {
-  const line = usageLine(usage);
+function noted(text: string, usage: Usage | undefined, t: Texts): string {
+  const line = usageLine(usage, t);
   return line === null ? text : `${text}\n${line}`;
 }
 
@@ -182,7 +186,7 @@ function keyOf(target: Target): string {
 }
 
 /** A link to the thing on GitHub, named as the maintainer knows it. */
-function whereIs(item: Item): string {
+function whereIs(item: Item, t: Texts): string {
   switch (item.kind) {
     case "contribution":
     case "release":
@@ -191,7 +195,7 @@ function whereIs(item: Item): string {
       return link(item.repo, `https://github.com/${item.repo}/actions`);
     default:
       return link(
-        `code scanning of ${item.repo}`,
+        t("proposal.codeScanning", { repo: item.repo }),
         `https://github.com/${item.repo}/security/code-scanning`,
       );
   }
@@ -206,33 +210,39 @@ async function propose(
   context: Context,
   message: Extract<Message, { type: "proposal" }>,
 ): Promise<Response> {
+  const { t } = context;
   const lines = [`🤖 ${html(message.text, MAX_DRAFT)}`];
   const { target } = message;
   const item = await context.store.get(await itemId(keyOf(target)));
-  const label = html(LABELS[message.action]);
+  const named = html(label(t, message.action));
   let keyboard: Keyboard = [];
   if (item === null) {
-    lines.push(
-      `<i>No button: the pager shows no ${target.kind} of ${html(target.repo)} for ${label}.</i>`,
-    );
+    const text = t("proposal.notShown", {
+      kind: t(`kind.${target.kind}`),
+      repo: html(target.repo),
+      label: named,
+    });
+    lines.push(`<i>${text}</i>`);
   } else if (!allowed(item).includes(message.action)) {
-    lines.push(
-      `<i>No button: ${whereIs(item)} doesn't offer ${label} now.</i>`,
-    );
+    const text = t("proposal.notOffered", {
+      thing: whereIs(item, t),
+      label: named,
+    });
+    lines.push(`<i>${text}</i>`);
   } else {
     // A Merge names the version that its button merges, as the release's own message does.
     const version = item.kind === "release" ? ` ${html(item.version, 50)}` : "";
-    lines.push(`👉 ${label}${version}: ${whereIs(item)}`);
+    lines.push(`👉 ${named}${version}: ${whereIs(item, t)}`);
     keyboard = [
       [
         {
-          text: "✅ Confirm",
+          text: t("button.confirm"),
           callback_data: callbackData(message.action, item),
         },
       ],
     ];
   }
-  const line = usageLine(message.usage);
+  const line = usageLine(message.usage, t);
   if (line !== null) {
     lines.push(`<i>${line}</i>`);
   }
@@ -268,7 +278,7 @@ export async function handleControl(
     return propose(context, message);
   }
   if (message.item === undefined) {
-    const line = usageLine(message.usage);
+    const line = usageLine(message.usage, context.t);
     await context.telegram.say(
       `🤖 ${html(message.text, MAX_DRAFT)}${line === null ? "" : `\n\n<i>${line}</i>`}`,
     );
@@ -279,7 +289,7 @@ export async function handleControl(
     return new Response("Not Found", { status: 404 });
   }
   if (message.type === "note") {
-    item.note = noted(message.text, message.usage);
+    item.note = noted(message.text, message.usage, context.t);
     await show(context, item);
     return new Response("noted");
   }
@@ -289,7 +299,7 @@ export async function handleControl(
       return new Response("Conflict", { status: 409 });
     }
     (item as { state: Item["state"] }).state = before;
-    item.note = noted(message.text, message.usage);
+    item.note = noted(message.text, message.usage, context.t);
     // A new message, which notifies: the maintainer waits for the job, and its
     // button is back, so that it can run again.
     await show(context, item, true);
@@ -309,7 +319,7 @@ export async function handleControl(
   item.draft = message.text;
   item.draftVersion += 1;
   item.state = "draft";
-  item.note = usageLine(message.usage);
+  item.note = usageLine(message.usage, context.t);
   // A new message, which notifies: the maintainer asked for the draft.
   await show(context, item, true);
   return new Response("drafted");

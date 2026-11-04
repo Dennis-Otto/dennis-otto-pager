@@ -192,10 +192,14 @@ describe("the webhook of GitHub", () => {
     expect(await (await call(nameless)).text()).toBe("ignored: the event ");
   });
 
-  it("pages for what counts", async () => {
+  it("pages for what counts, in the language of wrangler.jsonc", async () => {
     const response = await call(await fromGitHub("issues", opened));
     expect(await response.text()).toBe("contribution shown");
-    expect(net.telegram("sendMessage")[0]?.body.text).toContain("New issue");
+    const sent = net.telegram("sendMessage")[0]?.body;
+    expect(sent.text).toContain("🙋 <b>Neues Issue</b>");
+    expect(sent.reply_markup.inline_keyboard[0][0].text).toBe(
+      "✍️ Antwort entwerfen",
+    );
   });
 
   it("answers 500 when it failed, so that GitHub can deliver it again", async () => {
@@ -356,7 +360,7 @@ describe("the schedule", () => {
     await worker.scheduled(createScheduledController(), environment, running);
     await waitOnExecutionContext(running);
     expect(net.telegram("sendMessage")[0]?.body.text).toContain(
-      "token of Claude",
+      "Das Claude-Token in Dennis-Otto/dennis-otto-pager-control ist am 01.11.2026 abgelaufen.",
     );
   });
 

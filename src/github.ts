@@ -21,6 +21,16 @@ export class GitHubError extends Error {
   }
 }
 
+/** A call in the maintainer's name without GITHUB_USER_TOKEN, which never reaches GitHub. */
+export class NoUserToken extends GitHubError {
+  constructor() {
+    super(
+      401,
+      "GITHUB_USER_TOKEN isn't set, so nothing can act in the maintainer's name",
+    );
+  }
+}
+
 /** The DER length of n bytes. */
 function derLength(length: number): number[] {
   if (length < 0x80) {
@@ -293,10 +303,7 @@ export class GitHub {
 
   private user(): string {
     if (this.userToken === null) {
-      throw new GitHubError(
-        401,
-        "GITHUB_USER_TOKEN isn't set, so nothing can act in the maintainer's name",
-      );
+      throw new NoUserToken();
     }
     return this.userToken;
   }

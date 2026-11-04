@@ -20,15 +20,17 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 
 | Was auf GitHub passiert | Was die Nachricht anbietet |
 | --- | --- |
-| Jemand anderes als der Maintainer oder ein Bot eröffnet ein Issue oder einen Pull Request | ✍️ **Draft a reply**, ein Antwortentwurf in der Stimme des Maintainers, den ✅ **Send** genau so postet, wie er angezeigt wird; 🤖 **Assistant again** bei einem Issue |
-| Ein Pflicht-Check schlägt auf `main` fehl, ein Release-Workflow scheitert, oder der Bot-Health-Bot eröffnet ein Issue mit `bot-failure` | 🛠 **Start fix** |
-| Ein Code-Scanning-Alarm mit Schweregrad high oder critical erscheint auf `main` | 🛠 **Start fix** |
-| Ein Release-Pull-Request ist grün und aktuell | 🔀 **Merge**, das das Release veröffentlicht |
-| Das Token von Claude im Steuer-Repository läuft in drei Wochen ab | ✅ **Renewed** |
+| Jemand anderes als der Maintainer oder ein Bot eröffnet ein Issue oder einen Pull Request | ✍️ **Antwort entwerfen**: ein Entwurf in der Stimme des Maintainers, den ✅ **Senden** genau so postet, wie er angezeigt wird; 🤖 **Assistent nochmal** bei einem Issue |
+| Ein Pflicht-Check schlägt auf `main` fehl, ein Release-Workflow scheitert, oder der Bot-Health-Bot eröffnet ein Issue mit `bot-failure` | 🛠 **Fix starten** |
+| Ein Code-Scanning-Alarm mit Schweregrad high oder critical erscheint auf `main` | 🛠 **Fix starten** |
+| Ein Release-Pull-Request ist grün und aktuell | 🔀 **Mergen**, das das Release veröffentlicht |
+| Das Token von Claude im Steuer-Repository läuft in drei Wochen ab | ✅ **Erneuert** |
 
-Jede Nachricht hat außerdem ⏰ **Later**, das sie nach vier Stunden zurückbringt, und ✖ **Ignore**. Jede Sache bekommt **eine Nachricht**, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert, etwa *Merging… → Merged → ✅ Published*; was in einem Repository fehlschlägt, wird in einer Nachricht gebündelt, die von selbst wieder grün wird, sobald es behoben ist. Nur eine neue Sache benachrichtigt.
+Jede Nachricht hat außerdem ⏰ **Später**, das sie nach vier Stunden zurückbringt, und ✖ **Ignorieren**. Jede Sache bekommt **eine Nachricht**, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert, etwa *Wird gemergt … → Gemergt → ✅ Veröffentlicht*; was in einem Repository fehlschlägt, wird in einer Nachricht gebündelt, die von selbst wieder grün wird, sobald es behoben ist. Nur eine neue Sache benachrichtigt.
 
-Jeder andere Text an den Bot geht an das private Steuer-Repository, das mit Claude Code und dem eigenen Abo des Maintainers antwortet; eine Antwort auf eine Nachricht fragt nach deren Sache. Eine Antwort, die eine Aktion vorschlägt, etwa das Mergen des Releases, nach dem du gefragt hast, kommt mit einem Knopf ✅ **Confirm**, und ohne dessen Druck geschieht nichts. Jede Antwort, jeder Entwurf und jeder Fix zeigt, was sein Lauf von Claude vom Wochenlimit genommen hat.
+Jeder andere Text an den Bot geht an das private Steuer-Repository, das mit Claude Code und dem eigenen Abo des Maintainers antwortet; eine Antwort auf eine Nachricht fragt nach deren Sache. Eine Antwort, die eine Aktion vorschlägt, etwa das Mergen des Releases, nach dem du gefragt hast, kommt mit einem Knopf ✅ **Bestätigen**, und ohne dessen Druck geschieht nichts. Jede Antwort, jeder Entwurf und jeder Fix zeigt, was sein Lauf von Claude vom Wochenlimit genommen hat.
+
+Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entscheidet, `de` für diesen Pager, Englisch, wenn es leer ist. Jeder Text, den er schickt, folgt ihr, die Knöpfe und `/help` eingeschlossen, und ebenso die Antworten des Steuer-Repositorys; ein Antwortentwurf bleibt in der Sprache seines Issues oder Pull Requests, und was von GitHub kommt, etwa ein Titel, bleibt, wie es ist. Diese Seite nennt die Knöpfe, wie sie mit `de` heißen.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/diagrams/how-the-pager-works.de.dark.svg">
@@ -41,7 +43,7 @@ Jeder andere Text an den Bot geht an das private Steuer-Repository, das mit Clau
 
 - **Nur der Maintainer:** Der Worker bedient nur den Chat, dessen ID `TELEGRAM_CHAT_ID` nennt, und nur dessen Nutzer; jede Anfrage beweist zuerst, woher sie kommt: der geheime Header von Telegram, die HMAC-Signatur von GitHub, die Signatur des Steuer-Repositorys mit ihrer Zeit.
 - **Knöpfe statt Befehle:** Ein Knopf führt eine Aktion einer festen Positivliste aus, und nur, solange seine Sache sie noch anbietet; ein Merge prüft erneut, dass das Release an dem Stand grün ist, den die Nachricht zeigte. Was ein Issue oder ein Pull Request sagt, sind Daten: Es wird angezeigt, maskiert, und nie ausgeführt.
-- **Geringste Rechte:** Die GitHub-App verlangt, was der Pager nutzt, und nichts sonst, und jedes ihrer Tokens gilt für ein Repository und die Rechte eines Aufrufs. Zwei Dinge handeln im Namen des Maintainers, mit seinem eigenen Token: eine Antwort, die er mit ✅ **Send** freigegeben hat, und der Issue-Assistent über seine Ein-Kommentar-Regel hinaus.
+- **Geringste Rechte:** Die GitHub-App verlangt, was der Pager nutzt, und nichts sonst, und jedes ihrer Tokens gilt für ein Repository und die Rechte eines Aufrufs. Zwei Dinge handeln im Namen des Maintainers, mit seinem eigenen Token: eine Antwort, die er mit ✅ **Senden** freigegeben hat, und der Issue-Assistent über seine Ein-Kommentar-Regel hinaus.
 - **Kein Geheimnis im Repository oder in den Logs:** Die Geheimnisse liegen in Cloudflare, der Zustand in Workers KV enthält kein Geheimnis, und die Logs nennen die Antworten der APIs, nie ein Token oder den Text eines Issues.
 - **Telegram ist bei Chats mit einem Bot nicht Ende-zu-Ende-verschlüsselt:** Telegram kann die Nachrichten lesen, die Titel von Issues und Antwortentwürfe zeigen. Freier Text und Entwürfe laufen nur im **privaten** Steuer-Repository, mit Claude Code und dem eigenen Abo des Maintainers, weil die Logs von Actions in einem öffentlichen Repository öffentlich sind.
 

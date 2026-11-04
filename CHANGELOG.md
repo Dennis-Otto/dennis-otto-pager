@@ -7,6 +7,12 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.2.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.0...v0.2.1) (2026-11-04)
+
+### Bug fixes
+
+- Keep the deploys on the namespace the first one created.
+
 ## [0.2.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.1.0...v0.2.0) (2026-11-04)
 
 ### Features

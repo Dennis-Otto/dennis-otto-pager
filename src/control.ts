@@ -165,8 +165,8 @@ async function settle(
 
 /**
  * The thread of the chat that an answer goes into: that of the text of the
- * maintainer that it answers, which the store keeps while the text waits. An answer
- * to no text, such as one of a job started by hand, and one to a text that went
+ * maintainer that it answers, which the store keeps while the text waits and for a
+ * day after the schedule gave up on it. An answer to no text, such as one of a job started by hand, and one to a text that went
  * before the pager knew threads, go into the main view.
  */
 async function threadFor(context: Context, message: Message): Promise<Thread> {

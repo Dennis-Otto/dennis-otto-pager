@@ -20,16 +20,22 @@ export const REMIND_DAYS = 21;
  */
 export const ANSWER_WITHIN = 60 * 60 * 1000;
 
-/** Give up on the texts whose answer didn't come in time: their 👀 becomes 😢. */
+/**
+ * How long the pager keeps the thread of a text that it gave up on, in milliseconds,
+ * so that an answer that comes late still goes into it.
+ */
+export const KEEP_LATE = DAY;
+
+/**
+ * Give up on the texts whose answer didn't come in time: their 👀 becomes 😢, and
+ * their thread stays for a day, for an answer that comes late.
+ */
 async function giveUp(context: Context): Promise<void> {
   const late = await context.store.waiting(context.now() - ANSWER_WITHIN);
-  if (late.length === 0) {
-    return;
-  }
   for (const message of late) {
     await context.telegram.react(message, REACTIONS.failed);
   }
-  await context.store.settle(late);
+  await context.store.giveUp(late, context.now() - KEEP_LATE);
 }
 
 async function bringBack(context: Context): Promise<string[]> {

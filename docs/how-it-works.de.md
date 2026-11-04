@@ -122,7 +122,7 @@ Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert
   <img src="images/diagrams/the-reaction-on-a-text.de.svg" alt="Die Reaktion auf einen Text: Dennis schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.">
 </picture>
 
-Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍.
+Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍, im Thread ihres Textes.
 
 ## Der Thread einer Antwort
 
@@ -130,14 +130,14 @@ Mit der Bot API 9.3 hat Telegram dem privaten Chat eines Bots Threads gegeben, u
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-thread-of-an-answer.de.dark.svg">
-  <img src="images/diagrams/the-thread-of-an-answer.de.svg" alt="Der Thread einer Antwort: Dennis schreibt einen Text in einem Thread des Chats. Die Antwort auf /help oder ein Fehler geht sofort in diesen Thread. Freier Text geht an das Steuer-Repository, und der Pager behält seinen Thread, solange er wartet. Die Antwort des Steuer-Repositorys, eine Notiz, ein Fehlschlag oder ein Vorschlag mit seinem Knopf Bestätigen, geht in denselben Thread. General, ein Text von vor den Threads, eine späte Antwort und ein Thread, den Telegram nicht findet, bekommen ihre in der Hauptansicht.">
+  <img src="images/diagrams/the-thread-of-an-answer.de.svg" alt="Der Thread einer Antwort: Dennis schreibt einen Text in einem Thread des Chats. Die Antwort auf /help oder ein Fehler geht sofort in diesen Thread. Freier Text geht an das Steuer-Repository, und der Pager behält seinen Thread, solange er wartet. Die Antwort des Steuer-Repositorys, eine Notiz, ein Fehlschlag oder ein Vorschlag mit seinem Knopf Bestätigen, geht in denselben Thread. General, ein Text von vor den Threads, eine Antwort, die mehr als einen Tag zu spät kommt, und ein Thread, den Telegram nicht findet, bekommen ihre in der Hauptansicht.">
 </picture>
 
 Das Steuer-Repository sieht den Thread nie: Der Pager behält ihn beim Text, der auf seine Antwort wartet, und die `message` der Antwort findet ihn wieder, so bleibt der Vertrag, wie er war. Manche Antworten gehen stattdessen in die Hauptansicht:
 
 - ein Text aus General, dem ersten Thread, dessen Nachrichten die Bot API ohne die ID eines Threads nimmt;
 - eine Antwort auf keinen Text, etwa die eines Jobs, der von Hand startete;
-- eine Antwort auf einen Text, der ging, bevor der Pager Threads kannte, und eine späte, nachdem der Zeitplan ihren Text aufgegeben hat;
+- eine Antwort auf einen Text, der ging, bevor der Pager Threads kannte, und eine, die mehr als einen Tag nach ihrem Text kommt: Den Thread eines Textes, den er aufgegeben hat, behält der Pager einen Tag, so findet ihn auch eine späte Antwort;
 - eine Antwort, deren Thread Telegram nicht findet, mit `message thread not found`, etwa einen, den der Maintainer gelöscht hat: Der Pager schickt sie ohne den Thread noch einmal und schreibt das ins Log, ohne ihren Text.
 
 Die Nachrichten der Sachen, etwa eines Releases oder eines fehlschlagenden Checks, bleiben in der Hauptansicht, wo sie sind.

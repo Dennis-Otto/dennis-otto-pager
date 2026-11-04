@@ -5,13 +5,13 @@ config:
 ---
 flowchart TB
     accTitle: The thread of an answer
-    accDescr: Dennis writes a text in a thread of the chat. The answer to /help or an error goes into that thread at once. Free text goes to the control repository, and the pager keeps its thread while it waits. The answer of the control repository, a note, a failure or a proposal with its Confirm button, goes into the same thread. General, a text from before threads, a late answer and a thread that Telegram doesn't find get theirs in the main view.
+    accDescr: Dennis writes a text in a thread of the chat. The answer to /help or an error goes into that thread at once. Free text goes to the control repository, and the pager keeps its thread while it waits. The answer of the control repository, a note, a failure or a proposal with its Confirm button, goes into the same thread. General, a text from before threads, an answer more than a day late and a thread that Telegram doesn't find get theirs in the main view.
 
     dennis["Dennis writes a text in a thread"]
     direct["`**/help** or an error: the answer goes into the thread at once`"]
     kept["`**👀** The text goes to the control repository, and the pager keeps its thread`"]
     answer["`**👍** The answer, or a proposal with ✅ Confirm, goes into the same thread`"]
-    main["`**Main view**: General, a text from before threads, a late answer, or a thread that Telegram doesn't find`"]
+    main["`**Main view**: General, a text from before threads, an answer more than a day late, or a thread that Telegram doesn't find`"]
 
     dennis --> direct
     dennis -- "free text" --> kept

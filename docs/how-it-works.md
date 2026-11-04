@@ -122,7 +122,7 @@ A text to the bot shows where it is with one reaction, which the pager changes a
   <img src="images/diagrams/the-reaction-on-a-text.svg" alt="The reaction on a text: Dennis writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.">
 </picture>
 
-The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍.
+The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍, in the thread of its text.
 
 ## The thread of an answer
 
@@ -130,14 +130,14 @@ Telegram's Bot API 9.3 gave the private chat of a bot threads, and with Threaded
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-thread-of-an-answer.dark.svg">
-  <img src="images/diagrams/the-thread-of-an-answer.svg" alt="The thread of an answer: Dennis writes a text in a thread of the chat. The answer to /help or an error goes into that thread at once. Free text goes to the control repository, and the pager keeps its thread while it waits. The answer of the control repository, a note, a failure or a proposal with its Confirm button, goes into the same thread. General, a text from before threads, a late answer and a thread that Telegram doesn't find get theirs in the main view.">
+  <img src="images/diagrams/the-thread-of-an-answer.svg" alt="The thread of an answer: Dennis writes a text in a thread of the chat. The answer to /help or an error goes into that thread at once. Free text goes to the control repository, and the pager keeps its thread while it waits. The answer of the control repository, a note, a failure or a proposal with its Confirm button, goes into the same thread. General, a text from before threads, an answer more than a day late and a thread that Telegram doesn't find get theirs in the main view.">
 </picture>
 
 The control repository never sees the thread: the pager keeps it with the text that waits for its answer, and the `message` of the answer finds it again, so the contract stays as it was. Some answers go into the main view instead:
 
 - a text from General, the first thread, whose messages the Bot API takes without the id of a thread;
 - an answer to no text, such as one of a job started by hand;
-- an answer to a text that went before the pager knew threads, and a late one, after the schedule gave up on its text;
+- an answer to a text that went before the pager knew threads, and one that comes more than a day after its text: the pager keeps the thread of a text that it gave up on for a day, so a late answer still finds it;
 - an answer whose thread Telegram doesn't find, with `message thread not found`, such as one that the maintainer deleted: the pager sends it again without the thread and logs that, without its text.
 
 The messages of the things, such as a release or a failing check, stay in the main view, where they are.

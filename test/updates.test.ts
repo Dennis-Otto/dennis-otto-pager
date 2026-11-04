@@ -510,6 +510,9 @@ describe("messages", () => {
     expect(w.net.telegram("setMessageReaction")[0]?.body.reaction).toEqual([
       { type: "emoji", emoji: "👀" },
     ]);
+    // It waits for its answer, which turns the 👀 into 👍, or the schedule into 😢.
+    expect(await w.context.store.waiting(START + 1)).toEqual([500]);
+    expect(await w.context.store.waiting(START)).toEqual([]);
   });
 
   it("send the message that a free text answers along, as its context", async () => {

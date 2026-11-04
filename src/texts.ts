@@ -112,6 +112,13 @@ const en = {
   "usage.one": "1 turn",
   "usage.many": "{turns} turns",
   "usage.line": "🧮 Claude: {turns}, {seconds} s, from your weekly limit",
+  "usage.tokens": "{tokens} tokens",
+  "usage.share": "{model} {share}%",
+  "effort.low": "low",
+  "effort.medium": "medium",
+  "effort.high": "high",
+  "effort.xhigh": "extra high",
+  "effort.max": "max",
 
   "proposal.codeScanning": "code scanning of {repo}",
   "proposal.notShown":
@@ -160,6 +167,8 @@ export interface Texts {
   phrase(phrase: Phrase): string;
   /** A day, such as 2027-10-07, as the language writes it. */
   date(day: string): string;
+  /** A whole number, such as 48213, as the language writes it: 48,213 or 48.213. */
+  number(value: number): string;
   readonly language: Language;
 }
 
@@ -262,6 +271,13 @@ const de: Catalog = {
   "usage.one": "1 Runde",
   "usage.many": "{turns} Runden",
   "usage.line": "🧮 Claude: {turns}, {seconds} s, von deinem Wochenlimit",
+  "usage.tokens": "{tokens} Tokens",
+  "usage.share": "{model} {share} %",
+  "effort.low": "Niedrig",
+  "effort.medium": "Mittel",
+  "effort.high": "Hoch",
+  "effort.xhigh": "Extra Hoch",
+  "effort.max": "Max",
 
   "proposal.codeScanning": "Code Scanning von {repo}",
   "proposal.notShown":
@@ -287,6 +303,9 @@ const DATES: Readonly<Record<Language, (day: string) => string>> = {
   en: (day) => day,
   de: (day) => day.split("-").reverse().join("."),
 };
+
+/** The sign between the thousands of a number in each language. */
+const THOUSANDS: Readonly<Record<Language, string>> = { en: ",", de: "." };
 
 /**
  * A text with its placeholders filled. One pass over the text of the catalog, so a
@@ -317,6 +336,8 @@ export function texts(language: Language): Texts {
     phrase: (phrase: Phrase) =>
       fill(catalog[phrase.key], "values" in phrase ? phrase.values : {}),
     date: DATES[language],
+    number: (value: number) =>
+      String(value).replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS[language]),
     language,
   }) as Texts;
 }

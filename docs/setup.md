@@ -119,7 +119,7 @@ gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https:
 gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
 ```
 
-Then write a question to the bot, such as *What fails on main?*: the 👀 says that it went to the control repository, and its answer comes in a minute or two. Until the control repository is set up, its buttons send their events, and the summary of its run shows the answer instead of the chat.
+Then write a question to the bot, such as *What fails on main?*: the 👀 says that it went to the control repository, and its answer comes in a minute or two and turns it into 👍. A 😢 says that no answer came to be: the job failed, or it didn't answer within an hour, and the run of the workflow in the Actions tab of the control repository says why. Until the control repository is set up, its buttons send their events, and the summary of its run shows the answer instead of the chat.
 
 ## Later on
 

@@ -119,7 +119,7 @@ gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https:
 gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
 ```
 
-Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass sie an das Steuer-Repository ging, und seine Antwort kommt in ein, zwei Minuten. Bis das Steuer-Repository eingerichtet ist, schicken seine Knöpfe ihre Ereignisse, und die Zusammenfassung seines Laufs zeigt die Antwort statt des Chats.
+Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass sie an das Steuer-Repository ging, und seine Antwort kommt in ein, zwei Minuten und macht ein 👍 daraus. Ein 😢 sagt, dass keine Antwort zustande kam: Der Job schlug fehl oder antwortete nicht binnen einer Stunde, und der Lauf des Workflows im Actions-Tab des Steuer-Repositorys sagt, warum. Bis das Steuer-Repository eingerichtet ist, schicken seine Knöpfe ihre Ereignisse, und die Zusammenfassung seines Laufs zeigt die Antwort statt des Chats.
 
 ## Später
 

@@ -1,0 +1,1394 @@
+# The explanations of the PR coach: for each check, what it found when it fails, why
+# that matters and how to fix it, with the commands to run. The coach shows them in the
+# summary of a check that failed, as its annotation and in one comment on the pull
+# request, also on a pull request from a fork; scripts/check.sh shows those of its
+# steps on your machine too. See "When a check fails" in CONTRIBUTING.md.
+#
+# [check."NAME"] explains a check by the name that GitHub shows, where a * stands for
+# any text, as in check (*); [step."NAME"] a step of scripts/check.sh by the name that
+# it prints. Each has a title (a step is its own), problem, why and fix, which may wrap
+# over several lines, and may have commands, one per line, in which {repo} stands for
+# the repository as OWNER/NAME and {base} for the branch that the pull request goes
+# into, and docs, a link or a file of the repository with its anchor.
+#
+# Each also says in autofix how it fixes itself, so that a pull request fixes what a
+# command can fix: the commands that fix what it finds, a list in which {blueprint}
+# stands for python3 and the blueprint.py of the repository and {python} for python3
+# alone, or a sentence with the reason why no command can. The job of a check that
+# fails runs its commands, those of a check of scripts/check.sh the commands of each
+# step, and the fix bot commits their fixes after the checks, or suggests them on a
+# pull request from a fork. See "Pull requests fix themselves" in CONTRIBUTING.md.
+#
+# The blueprint keeps this file current: https://github.com/Dennis-Otto/repo-blueprint
+# Explain the checks and steps of this project alone in .github/checks.project.toml,
+# whose explanations win over these.
+
+# ---------------------------------------------------------------- the checks
+
+[check."check (*)"]
+title = "The checks of scripts/check.sh"
+problem = """One of the checks of `scripts/check.sh` failed, such as the format, the
+lint or the types of the code, its tests and their coverage, the package or the
+website. The summary of the check names the step that stopped it. When that step
+comes before the checks, such as the one that installs the tools or pulls an image,
+a download failed or hung until the step ran out of its time: that usually passes
+when the job runs again, which the flaky-test bot does once by itself."""
+why = """These are the checks that run on your machine as well, so a change that passes
+them here passes them everywhere, and every commit of `main` stays ready for a
+release."""
+fix = """Each step says how to fix what it found. Run the checks on your machine, fix
+what the first step that fails reports, and push again:"""
+commands = ["bash scripts/check.sh"]
+docs = "CONTRIBUTING.md#checks"
+autofix = """Its steps fix themselves: each step of `scripts/check.sh` has an
+autofix of its own."""
+
+[check.lint]
+title = "The linters"
+problem = """A step of the check failed before its linters ran, such as the checkout of
+the pull request. When a linter fails, the PR coach explains that linter instead:
+the workflows, the licenses, the Markdown, the issue assistant, the sign-off or the
+files of the blueprint."""
+why = """The linters run in one job, which takes one runner instead of one each; they
+report only once the job got that far."""
+fix = """Run the check again; if it fails at the same step, the log of the check says
+why."""
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """A step that fails before the linters needs a look at its log; each linter
+fixes itself with the autofix of its own explanation."""
+
+[check.workflow-lint]
+title = "The workflows"
+problem = """A workflow in `.github/workflows/` breaks a rule of actionlint, such as an
+expression with a mistake, an input or an output that doesn't exist, or a shell script
+that ShellCheck flags."""
+why = """A broken workflow fails only when it runs, often after the merge, on `main` or
+in a release; actionlint finds the mistake in the pull request."""
+fix = """Fix each line that the annotations of the check name. actionlint runs on your
+machine with Docker:"""
+commands = ['docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest']
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """A mistake of a workflow needs a person, who knows what the workflow should
+do, and the bot never writes a workflow."""
+
+[check.allowed-actions]
+title = "The allowed actions"
+problem = """A workflow runs an action or a reusable workflow that the list of the allowed
+actions, `[actions.selected]` of `.github/repository.toml`, lacks: one that the workflow
+names, or one that such an action runs in turn at the commit of its pin, often since an
+update of the action. Or a step runs an image of Docker with `docker://`, or GitHub
+refused the file of an action, so what it runs in turn is unknown."""
+why = """GitHub starts a workflow only when the list allows every action that it runs, also
+in turn. One that the list lacks stops the whole workflow with a startup failure, on
+`main` after the merge or in every repository after a release of the blueprint, and no
+check of the workflow reports it."""
+fix = """Add the pattern that each annotation names, such as `owner/repo@*`, to
+`patterns_allowed` of `[actions.selected]` in `.github/repository.project.toml` (in the
+blueprint itself, in `template/.github/repository.toml.jinja` and
+`.github/repository.toml`). Run an image in a `run:` step with `docker run` instead of
+`docker://`. When GitHub refused a file, run the check again. The check runs on your
+machine with the GitHub CLI (in the blueprint itself, the tool is `blueprint.py` without
+`.github/`):"""
+commands = ["python3 .github/blueprint.py settings actions"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """Whether an action may run is a decision of trust that a person makes for the
+project, and the bot never widens the list of the allowed actions."""
+
+[check.reuse]
+title = "The license of every file"
+problem = """A file doesn't say clearly under which license it stands: its SPDX header
+names a license whose text `LICENSES/` lacks, or one that is no identifier of SPDX, a
+text in `LICENSES/` is one that no file names, or no entry of `REUSE.toml` covers the
+file."""
+why = """Everyone who uses the project must be able to tell the license and the
+copyright of each file, as the REUSE specification of the FSFE describes."""
+fix = """Add the text of a license that a header names, write the identifier as SPDX
+has it, or remove the text that no file names; `REUSE.toml` gives every other file
+its license with `path = "**"`. The REUSE tool lists each problem and downloads the
+text of each license that a file names:"""
+commands = ["pipx run reuse lint", "pipx run reuse download --all"]
+docs = "https://reuse.software/tutorial/"
+autofix = """No command can: `REUSE.toml` gives every file the license and the copyright
+of the project, so what the check finds is a header of a file's own, and under which
+license a file stands is the decision of a person. Its fix is a text added to
+`LICENSES/` or deleted from it, and the bot adds or deletes no file of `LICENSES/`."""
+
+[check.markdown]
+title = "The Markdown of the documents"
+problem = """A Markdown document breaks a rule of markdownlint, such as a heading without
+a blank line around it, a list with the wrong indent or a line that ends with spaces;
+the annotations name each line."""
+why = """The documents read the same on GitHub, on the website and in an editor, and a
+diff shows only what changed."""
+fix = """Fix each line that the check names, or let markdownlint fix what it can on your
+machine, with the rules of `.markdownlint.jsonc`:"""
+commands = ['npx markdownlint-cli2 --fix "**/*.md"']
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = ['npx markdownlint-cli2 --fix "**/*.md"']
+
+[check.diagrams]
+title = "The diagrams"
+problem = """A page has a `mermaid` block, which the GitHub app shows as code, or a
+picture in `docs/images/diagrams/` differs from what its source in `docs/diagrams/`
+draws or says in its `alt`; the summary of the check lists the files."""
+why = """The GitHub app, HACS, the stores of the projects and the e-mails of GitHub draw
+no Mermaid, so only a picture of its source shows a diagram to every reader, and the
+picture has to show what its source says."""
+fix = """On a branch of this repository with the release app, the diagram bot commits
+the fix in a minute. Otherwise, and from a fork, turn the blocks into sources and draw
+their pictures with Docker, then commit what changed:"""
+commands = ["bash scripts/diagrams.sh --extract"]
+docs = "CONTRIBUTING.md#diagrams"
+autofix = """The diagram bot draws the pictures with Docker, in a job of its own, and
+commits them onto a branch of this repository."""
+
+[check.docs]
+title = "The website"
+problem = """The website doesn't build strictly, or a check of the built website failed.
+The build fails when a link or an anchor leads nowhere, a page is missing from the
+navigation of `mkdocs.yml`, MkDocs warns about a page, or a page shows a picture
+from `main` of the repository that git doesn't track. After the build, lychee
+checks every link and anchor of the built pages, also those written in HTML, such as
+`<a href="…">` in a card, and the links of `llms.txt`, the map of the website for AI
+assistants, and `blueprint.py site-check` what the hooks of the website promise, such
+as a sitemap in every folder of pages, the 404 page in the default language and that
+map, that no page loads more than 1,200 KB at once, as it names a page that
+does with what it loads the most, that every page shows each picture of its
+Markdown, the parts of the README included, with no empty paragraph where a plugin
+took one out, and that the page of the automation shows each workflow in a fold and
+the search finds its text; `scripts/check-site.sh` adds the checks of the project. axe-core opens
+the pages that differ from `main` in Chrome, and every page when a stylesheet, a script
+or `mkdocs.yml` differs, in both schemes, at the width of a desktop and of a phone, and
+names each serious or critical violation of WCAG 2.2 A or AA, also a page that scrolls
+sideways on a phone with the widest element that overflows, that
+`.github/a11y-accepted.toml` doesn't accept, at the Markdown of its page, or at
+`mkdocs.yml` for a page without one. When the log names a font or a script that Material
+couldn't download, its server had a hiccup: that usually passes when the job runs again,
+and a build that finds them in the cache of the week, which a push to `main` saves,
+downloads nothing."""
+why = """A strict build keeps every link of the documentation working; a warning
+today is a broken page for a reader tomorrow. The checks of the built website see what
+the build doesn't: the links that a page writes in HTML, what a new version of
+Material or of its plugins changes in the pages, and a page that takes a phone on a
+slow network more than a few seconds to load. A reader with a screen reader, the
+keyboard alone or a larger contrast can't use what axe-core finds: text too faint to
+read, a link told apart by its color alone, a control without a name. A reader on a
+phone, or with a page enlarged to 400 %, loses the end of each line of a page that
+scrolls sideways."""
+fix = """Fix what the log of the check names: the page and the link that leads nowhere,
+or the file of the website that breaks a promise of its hooks. The hooks write
+`llms.txt` from the menu of `mkdocs.yml`, with the pages that it lists; a file of your
+own in its place, `docs/llms.txt`, starts with a title, holds lists of links alone in
+its sections and links pages that the website has, no decision record. A picture that a page
+shows from `main`, which the website serves from the checkout, needs its file
+committed with `git add`, or its address corrected. A page that loads too
+much shows a smaller picture, or the pictures of a diagram in place of its ```mermaid
+block, which loads Mermaid, about 1 MB: `bash scripts/diagrams.sh --extract` makes
+them. A page that lacks a picture of its Markdown, or has an empty paragraph,
+lost it in the build: build the website with the lock of its tools and look for the
+plugin or the hook that takes it out, as mkdocs-glightbox did with selectolax 1.0.0
+and 1.0.1. A violation of accessibility has a link in the summary that explains its
+fix. A page that scrolls sideways lets what is wide wrap, or puts it in a frame that
+scrolls on its own, with `overflow-x: auto` and `tabindex="0"`. A violation that has to stay goes into `.github/a11y-accepted.toml`, with its page, its
+rule and the reason, and an entry without a reason stops the check. Install the tools of
+the website as the section Website of CONTRIBUTING.md shows, and build and check it as
+the check does (in the blueprint itself, the tool is `blueprint.py` without `.github/`);
+with them, `bash scripts/check.sh` builds it as well:"""
+commands = [
+  ".venv-docs/bin/mkdocs build --strict",
+  "python3 .github/blueprint.py site-check site",
+  "npm ci --prefix .github/a11y --ignore-scripts",
+  "node .github/a11y/check.mjs site",
+]
+docs = "CONTRIBUTING.md#website"
+autofix = """A link or a page that leads nowhere needs a person, who knows where it
+should lead, and so does a new violation of accessibility: a person fixes it, or says why
+it stays. Only the first run on `main` after an update, with the line `baseline = true`
+of `.github/a11y-accepted.toml`, writes what the website already has into that file, and
+the fix bot brings it."""
+
+[check.dco]
+title = "The sign-off of every commit"
+problem = """A commit lacks the line `Signed-off-by: Your Name <you@example.com>` with
+the name and the email of its author, as the check names them."""
+why = """With the sign-off, you certify the Developer Certificate of Origin: that you may
+contribute the change under the license of the project. The project can't take a
+change without it."""
+fix = """Sign off the commits of the branch and push them again. `git commit -s` signs
+off the next commits; for those that you made already, amend the last one, or rebase
+all of them with a sign-off onto the `main` of this repository, also from a fork, and
+push the branch with `--force-with-lease`:"""
+commands = [
+  "git commit --amend --signoff --no-edit",
+  "git fetch https://github.com/{repo}.git main",
+  "git rebase --signoff FETCH_HEAD",
+  "git push --force-with-lease",
+]
+docs = "CONTRIBUTING.md#requirements-for-changes"
+autofix = """Only the author of a commit can certify the Developer Certificate of
+Origin; no bot signs off for them."""
+
+[check."signed commits"]
+title = "The signature of every commit"
+problem = """A commit of the pull request has no signature that GitHub verified, and
+the rules of the branch that it goes into require one. The check names each commit with
+the reason that GitHub gives, such as `unsigned` for a commit without a signature, or
+`unknown_key` and `bad_email` when GitHub can't match its key or its email to the
+account of its author."""
+why = """GitHub blocks the merge with *Commits must have verified signatures* until
+every commit is signed, whatever the other checks say, and nobody merges past that
+block. A signature shows who made a commit, so that nobody can push one in the name of
+somebody else."""
+fix = """Sign the commits of your branch and push them again: rebase them with a
+signature onto the branch of this repository that the pull request goes into, also from
+a fork, and push with `--force-with-lease`. `-S` signs a commit, while `-s` adds only
+the sign-off of the Developer Certificate of Origin, so a commit needs both. If git
+can't sign yet, set it up first, here with an SSH key: the same key must be on your
+account on GitHub as a *signing key*, which is a type of its own beside an
+authentication key, and the email of the commit must be verified on your account:"""
+commands = [
+  "# Once, if git can't sign yet:",
+  "git config gpg.format ssh",
+  "git config user.signingkey ~/.ssh/id_ed25519.pub",
+  "git config commit.gpgsign true",
+  "# Then, for the commits that you made already:",
+  "git fetch origin",
+  "git fetch https://github.com/{repo}.git {base}",
+  "git switch your-branch",
+  "git rebase -S FETCH_HEAD",
+  "git push --force-with-lease",
+]
+docs = "https://docs.github.com/en/authentication/managing-commit-signature-verification"
+autofix = """Only the key of the author of a commit can sign it; a bot that signed it
+again would claim the commit as its own."""
+
+[check.ownership]
+title = "The files of the blueprint"
+problem = """The pull request changes files that the blueprint keeps current, and the
+repository variable `BLUEPRINT_OWNERSHIP` is set to `fail`, so the check stops it. The
+annotations name each file, and `.github/blueprint/owned.txt` lists them all."""
+why = """The next update of the blueprint merges these files line by line and marks a
+conflict where both changed the same lines. An update with conflicts waits for a person,
+and so the updates of this repository stop until someone resolves them."""
+fix = """Make the change beside these files: settings in
+`.github/repository.project.toml`, a check in `scripts/check-project.sh` with its
+explanation in `.github/checks.project.toml`, notes for coding agents in
+`.github/agents.project.md`, text about the releases of this project between the two
+marked lines of `CONTRIBUTING.md`, and a workflow in a file of its own. What every
+repository needs belongs in the blueprint: the report of the PR coach links a new issue there,
+filled in with these files. Then undo the change of each file:"""
+commands = [
+  "git fetch https://github.com/{repo}.git main",
+  "git checkout FETCH_HEAD -- FILE",
+]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/faq.md#which-files-may-a-project-change"
+autofix = """Only the author knows where the change belongs instead; undoing it by
+itself would lose what the pull request is for."""
+
+[check.issue-assistant]
+title = "The set-up of the issue assistant"
+problem = """The labels, issue forms, workflows or notice of the issue assistant differ
+from the templates of the release that the repository uses; the log lists each
+difference."""
+why = """The issue assistant labels, answers and closes the issues by these files; one
+that differs breaks it, often without a word."""
+fix = """Take each file that the log names back from the templates of the issue
+assistant, as the log shows them. The next update of the blueprint brings them as
+well."""
+docs = "https://github.com/Dennis-Otto/issue-assistant"
+autofix = """Whether a file of the issue assistant goes back to its template is the
+decision of a maintainer; the next update of the blueprint brings it back."""
+
+[check."conventional title"]
+title = "The title of the pull request"
+problem = """The title of the pull request is no Conventional Commit, such as
+`feat(settings): add a dark mode` or `fix: keep the token secret`."""
+why = """The pull request becomes one commit named after its title. The release bot
+reads these titles to choose the next version, `fix` a patch, `feat` a minor and `!`
+a major one, and to write the changelog."""
+fix = """Edit the title of the pull request: a type, which is feat, fix, docs, perf,
+refactor, test, ci, build, chore, style or revert, a scope in parentheses if you like,
+`!` for a breaking change, a colon and what the change does. The check runs again by
+itself. On a branch of this repository, the fix bot corrects a title that names its type
+and differs only in its form, such as `Feat: add a dark mode`."""
+docs = "CONTRIBUTING.md#workflow"
+autofix = """No command changes a title. After the check, `fix own` of the fix bot sets
+the title that the PR coach suggests, on a branch of this repository, when the title
+names its own type and only its form differs. The type and the breaking mark decide the
+version, so a title that names no type, or a word for one, stays a suggestion, as every
+title does on a pull request from a fork."""
+
+[check.changelog]
+title = "The entry in the changelog"
+problem = """A pull request of the type `feat`, `fix` or `perf` changes something for
+users but brings no entry of the changelog, or a fragment in `changelog.d/` is one that
+the release can't take in; an annotation names each problem."""
+why = """The entries become the notes of the next release, where users read what changed
+for them, and the release stops at a fragment that it can't take in."""
+fix = """Describe the change in the words of a user in a new file of `changelog.d/`, named
+after your branch without its type, such as `changelog.d/dark-mode.md` for the branch
+`feat/dark-mode`, below a heading such as `### Features` or `### Bug fixes`, and push; a
+fragment that fails says what to change. A fragment that `main` has already is the
+entry of another pull request and doesn't count; give yours a name of its own. An
+entry under `## Unreleased` in `CHANGELOG.md` counts as well, but conflicts with every
+pull request that adds one at the same place. A change that users don't notice takes
+another type in the title, such as `refactor:`, `docs:` or `test:`. On a branch of this
+repository, the fix bot commits a draft from the title; say in its place what changes for
+users."""
+docs = "CONTRIBUTING.md#the-changelog"
+autofix = """A heading of a fragment that surely means a kind of change, such as `### Fixes`
+for `### Fixed`, the fix bot renames, since the step *Changelog fragments* of
+`scripts/check.sh` checks every fragment as well. No command writes an entry: after the
+check, `fix own` of the fix bot commits a draft from the title onto a branch of this
+repository, once for each pull request, as one new file of `changelog.d/` that it names
+and writes itself; the words for users stay the author's, and the PR coach asks to read
+them. A title with HTML, a mention or a link gets no draft, and a pull request from a fork
+none, since no bot may push to it."""
+
+[check.codeql]
+title = "The CodeQL analysis"
+problem = """CodeQL couldn't analyze the code, or couldn't upload what it found. Its
+findings are a check of their own, CodeQL; this one fails when the analysis itself
+breaks. A private repository without code scanning, where `CODE_SCANNING` is `off`,
+doesn't run CodeQL, whose terms allow it on private code only with GitHub Code
+Security or Advanced Security: there this check passes with a notice."""
+why = """The rules of `main` require that every language is analyzed, so that no security
+problem goes unseen."""
+fix = """Read the log of the check. A failure of the analysis is rarely caused by the
+change: run the check again, and if it fails again, open an issue with the log."""
+docs = "https://docs.github.com/en/code-security/code-scanning"
+autofix = """An analysis that breaks needs a look at its log; the change rarely causes
+it."""
+
+[check.CodeQL]
+title = "Security alerts of CodeQL"
+problem = """CodeQL found a security problem in the code that the pull request changes,
+such as untrusted input that reaches a command, a query or a page unescaped."""
+why = """A vulnerability that merges reaches every user with the next release; here it
+is a line to change. The rules of `main` stop the merge while the pull request adds a
+security alert of high or critical severity, or an error; an alert that `main` has
+already doesn't."""
+fix = """Open the alert from the details of the check: it shows where the data comes
+from, where it goes and how to fix it. Fix the code and push. If the alert is wrong,
+a maintainer dismisses it with the reason."""
+docs = "https://docs.github.com/en/code-security/code-scanning/managing-code-scanning-alerts/about-code-scanning-alerts"
+autofix = """A security problem needs a person, who knows where the data may go."""
+
+[check."taint report (php)"]
+title = "The upload of the taint analysis"
+problem = """The paths that the taint analysis of `check (php)` found couldn't reach
+code scanning; the log of the check says why. The analysis itself ran in
+`check (php)`, which shows its findings in its log."""
+why = """Code scanning shows each path at the lines of the pull request and keeps the
+alerts of `main` in the Security tab."""
+fix = """Run the check again; if it fails again, open an issue with the log."""
+docs = "https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github"
+autofix = """An upload that fails needs a look at its log; the change rarely causes
+it."""
+
+[check.Psalm]
+title = "Security alerts of Psalm"
+problem = """The taint analysis of Psalm found untrusted input that reaches a sink in
+the code that the pull request changes, such as a path of a file, a query or a
+request to another server, unescaped."""
+why = """A vulnerability that merges reaches every user with the next release; here it
+is a line to change."""
+fix = """Open the alert from the details of the check: it shows each line of the path,
+from the input to the sink. Validate or escape the input on that path, then push; the
+step *Psalm taint analysis* of `check (php)` says how."""
+docs = "https://psalm.dev/docs/security_analysis/"
+autofix = """A security problem needs a person, who knows where the data may go."""
+
+[check.dependency-review]
+title = "The review of the dependencies"
+problem = """The pull request adds or updates a dependency with a known vulnerability, or
+one under a license that `.github/dependency-review.yml` doesn't allow; the summary of
+the check names each one with its advisory."""
+why = """A dependency with a vulnerability ships it to every user, and a license that
+doesn't fit can forbid the use of the project."""
+fix = """Update the dependency to a version that fixes the advisory, or choose another
+one. An advisory that doesn't affect the project goes into
+`.github/dependency-review.yml` with the reason, in the same pull request."""
+docs = "https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/about-dependency-review"
+autofix = """Which version or which other dependency fits the project is the decision
+of a person."""
+
+[check.gitleaks]
+title = "The secret scan"
+problem = """Gitleaks found what looks like a secret, such as a token, a key or a
+password, in a commit of the pull request; the log names the file, the line and the
+commit."""
+why = """Git keeps every commit, also after a later commit removes the secret, and a
+secret that is public can be abused within minutes."""
+fix = """Revoke the secret where it was issued first: it is public now. If it is no
+secret, add the fingerprint from the log to `.gitleaksignore` instead. Then remove it
+from every commit of the branch, for example with an interactive rebase onto the `main`
+of this repository, and push the branch with `--force-with-lease`:"""
+commands = [
+  "git fetch https://github.com/{repo}.git main",
+  "git rebase --interactive FETCH_HEAD",
+  "git push --force-with-lease",
+]
+docs = "https://github.com/gitleaks/gitleaks#gitleaksignore"
+autofix = """A secret has to be revoked where it was issued, which only its owner can
+do."""
+
+[check.action]
+title = "The test of the action"
+problem = """The action, run the way its users run it, failed or gave an output that
+the test doesn't expect."""
+why = """The test runs the action as a workflow of its users does; what fails here fails
+for them."""
+fix = """Read the log of the check: it shows the inputs, the output and the error. Run
+the tests of the action with `bash scripts/check.sh`, fix the action or the test of
+`.github/workflows/action-test.yml`, and push."""
+docs = "CONTRIBUTING.md#checks"
+autofix = """A test of the action that fails needs a person, who knows what the action should do."""
+
+[check.home-assistant]
+title = "The validations of Home Assistant"
+problem = """A step of the check failed before HACS and hassfest ran. When one of them
+fails, the PR coach explains that one instead."""
+why = """HACS and hassfest run in one job, which takes one runner instead of two; they
+report only once the job got that far."""
+fix = """Run the check again; if it fails at the same step, the log of the check says
+why."""
+docs = "https://developers.home-assistant.io/docs/creating_integration_manifest"
+autofix = """A step that fails before the validations needs a look at its log."""
+
+[check.hacs]
+title = "The HACS validation"
+problem = """The integration breaks a rule that HACS applies to new submissions, such as
+one of `hacs.json`, of the description, the topics or the brand of the repository."""
+why = """HACS shows the integration to its users only when it passes; a rule that fails
+here holds up the next release in HACS."""
+fix = """Fix each rule that the log of the check marks as failed; each one links to its
+documentation."""
+docs = "https://hacs.xyz/docs/publish/include/"
+autofix = """The rules of HACS ask for a description, topics or a brand, which a person
+chooses."""
+
+[check.hassfest]
+title = "The rules of Home Assistant (hassfest)"
+problem = """The integration breaks a rule of hassfest, Home Assistant's own validation,
+such as one of its manifest, its translations, its services or its config flow; the
+annotations name each one."""
+why = """Home Assistant refuses to load an integration that breaks these rules, or
+warns its users about it."""
+fix = """Fix each error that the annotations of the check name. hassfest runs on your
+machine with Docker:"""
+commands = [
+  'docker run --rm -v "$PWD:/github/workspace:ro" ghcr.io/home-assistant/hassfest:latest',
+]
+docs = "https://developers.home-assistant.io/docs/creating_integration_manifest"
+autofix = """A rule of Home Assistant that the integration breaks needs a person, who knows what the integration should do."""
+
+[check.zizmor]
+title = "The security of the workflows (zizmor)"
+problem = """zizmor found a security problem in a workflow, such as an expression of the
+event in a script, the credentials that a checkout keeps or an action that isn't pinned
+to a commit."""
+why = """A workflow runs with the token of the repository; a weakness in it can give a
+pull request, a branch name or an issue the power to change the repository. The rules
+of `main` stop the merge while the pull request adds an alert of zizmor, of any
+severity; an alert that `main` has already doesn't."""
+fix = """Open the finding from the details of the check; the documentation of each audit
+of zizmor shows the fix. A finding in a workflow of the project that it accepts on
+purpose is ignored at its line with `# zizmor: ignore[<audit>]` and the reason;
+`.github/zizmor.yml` belongs to the blueprint and holds only what it accepts. On a
+private repository without code scanning, where `CODE_SCANNING` is `off`, every
+finding fails the check *zizmor*, with an annotation at its line. Otherwise only an
+error fails the check *zizmor*: a warning or a note stops the merge while the check is
+green, and shows in the merge box and as an annotation at its line. If the job *zizmor*
+of *Workflow security* failed, rather than the check of code scanning, the analysis
+broke and the merge waits for it: run the job again, and open an issue with its log if
+it fails again. In a pull request that changes no workflow, no
+action and not `.github/zizmor.yml`, an alert comes from an advisory of an action
+published since the last analysis of `main`: a maintainer starts the workflow
+*Workflow security* on `main`, which gives `main` the alert, and runs the checks
+again. The fix of such an alert, `known-vulnerable-actions`, is the pin: move the commit
+and the version in its comment to the release that the advisory names as fixed. Renovate
+moves it in its next weekly window once that release is a week old, and a workflow that
+belongs to the blueprint moves with the update of the blueprint. zizmor runs on your
+machine as well:"""
+commands = ["pipx run zizmor .github/workflows"]
+docs = "https://docs.zizmor.sh/audits/"
+autofix = """A weakness of a workflow needs a person, and the bot never writes a
+workflow."""
+
+[check.links]
+title = "The links of the documentation"
+problem = """A link of a Markdown document leads nowhere: the page is gone or has moved,
+or the anchor doesn't exist; the summary of the check lists each one."""
+why = """A broken link leaves a reader stranded exactly where the document promised more
+help."""
+fix = """Correct or remove each link that the summary lists. A link that only fails for
+the check, such as one behind a sign-in, goes into `.lycheeignore` with the reason.
+lychee runs on your machine with Docker:"""
+commands = [
+  'docker run --rm -v "$PWD:/input" -w /input lycheeverse/lychee --config lychee.toml "./**/*.md"',
+]
+autofix = """Where a link should lead, only a person knows."""
+
+[check.fuzz]
+title = "The fuzzing"
+problem = """Atheris found an input that crashes the code or makes it raise an exception
+that it shouldn't; the log shows the input and the traceback."""
+why = """Untrusted input reaches the code in every real use; a crash that fuzzing finds
+in a minute, an attacker finds as well."""
+fix = """Reproduce the crash with the input from the log, fix the code, and add the input
+to a test, so that the crash can't come back. With Atheris installed, the targets run
+on your machine as well:"""
+commands = ['for target in fuzz/fuzz_*.py; do python "$target" -max_total_time=60; done']
+docs = "https://github.com/google/atheris"
+autofix = """A crash needs a fix of the code, and a test with its input, by a
+person."""
+
+[check."osv-scanner*"]
+title = "The vulnerabilities of the lock files (OSV-Scanner)"
+problem = """A lock file of the pull request pins a dependency with a known vulnerability
+of the OSV database; the summary of the check names each one."""
+why = """A dependency with a vulnerability ships it to every user of the project."""
+fix = """Update the dependency to a version that fixes it. An advisory that doesn't
+affect the project goes into the `osv-scanner.toml` beside the lock file with the
+reason, in the same pull request: as `[[IgnoredVulns]]` alone, or, for a version that
+another package pins exactly, as `[[PackageOverrides]]` with `effectiveUntil`, from
+which `blueprint.py advisories --fix` writes the rule that keeps Renovate from trying
+to fix it."""
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#osv-scanner-reports-a-version-that-another-package-pins"
+autofix = """Which version fixes an advisory, and whether it affects the project, is
+the decision of a person."""
+
+[check."dependabot alerts"]
+title = "The Dependabot alerts of the accepted advisories"
+problem = """The job closes each Dependabot alert of an advisory that an `osv-scanner.toml`
+accepts, with its reason and its end, and opens again each one that it closed once the
+acceptance is gone, and it couldn't: GitHub refused the app a token with the
+permission *Dependabot alerts* (read and write), or refused the alerts to its token.
+The summary of the run names the app: the settings app once the variable
+`SETTINGS_APP_CLIENT_ID` names it, the release app until then."""
+why = """The token of a workflow can't read the Dependabot alerts, so only an app of the
+owner can close them. Until it may, Dependabot keeps an alert open for every advisory
+that the project accepts, such as each of the Pillow that Home Assistant pins for the
+tests, and a new alert that matters hides among them."""
+fix = """On the settings page of the app that the summary names, under *Permissions &
+events*, set *Dependabot alerts* to *Read and write* and save. GitHub then asks the
+owner to accept the new permission on the installation of the app (*Settings →
+Applications → Configure*, *Review request*); accept it, and run the workflow
+*OSV-Scanner* again. With the GitHub CLI of a maintainer, this shows which alerts the
+job would close or open again (in the blueprint itself, the tool is `blueprint.py`
+without `.github/`):"""
+commands = [
+  "python3 .github/blueprint.py --repo {repo} advisories --dependabot --dry-run",
+]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/own-account.md#8-the-settings-app-optional"
+autofix = """Only the owner of the app can grant it a permission, on the settings page of
+the app; no command of a pull request can."""
+
+[check."renovate rules"]
+title = "The rules of Renovate"
+problem = """Renovate doesn't accept the rules of the pull request, or doesn't read
+every file of the dependencies with them: a rule of `.github/renovate.json5` or a
+setting of the bot in `.github/renovate-global.json5` is wrong, or Renovate logs a
+warning or skips a lock file, such as one whose header it can't compile again; the
+annotations of the check name each one."""
+why = """A rule that Renovate refuses stops every update of the repository, also the
+fixes of vulnerabilities, and a file that it skips gets no update from then on, with no
+more than a warning in its log."""
+fix = """Correct the rule or the file that the annotations name; for a lock file,
+`blueprint.py locks --fix` writes its header as Renovate reads it. The check runs the
+Renovate that `.github/workflows/renovate.yml` pins; with Docker, the same checks run
+on your machine, the last one on the files of your last commit:"""
+commands = [
+  'docker run --rm -v "$PWD:/usr/src/app" -w /usr/src/app ghcr.io/renovatebot/renovate:latest renovate-config-validator --strict .github/renovate.json5 .github/renovate-blueprint.json5 .github/renovate-accepted.json5',
+  'docker run --rm -v "$PWD:/usr/src/app" -w /usr/src/app -e RENOVATE_CONFIG_FILE=/usr/src/app/.github/renovate-global.json5 ghcr.io/renovatebot/renovate:latest renovate-config-validator --strict',
+  '''git archive HEAD | docker run --rm -i -e LOG_LEVEL=info -e RENOVATE_GITHUB_TOKEN_WARN=false -e RENOVATE_CONFIG_FILE=/tmp/repository/.github/renovate-blueprint.json5 ghcr.io/renovatebot/renovate:latest bash -c 'mkdir /tmp/repository && cd /tmp/repository && tar -xf - && sed -i "s#\"local>[^\"]*\",\{0,1\}##" .github/renovate.json5 .github/renovate-blueprint.json5 && renovate --platform=local --dry-run=extract'''',
+]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#the-check-renovate-rules-fails"
+autofix = """Which rule is meant, only a person knows; a lock file that Renovate can't
+compile again fails the step Lock files of the tests too, whose fix writes its header
+anew."""
+
+[check."variants plan"]
+title = "The legs of the Variants"
+problem = """The plan of the Variants named no legs: `copier.yml` offers no kind of project,
+a file of `tests/answers/` can't be read or names none, or the step that installs
+Copier failed. When that step failed, a download failed or hung until the step ran out
+of its time: that usually passes when the job runs again, which the flaky-test bot does
+once by itself. A project that fails to render doesn't fail the plan: every leg runs
+then, and its log names the project."""
+why = """No leg of the Variants starts without the plan, so the required check `variants`
+fails with it, rather than count the skipped legs as passed."""
+fix = """Run the plan on your machine, for the commits of the pull request. It names what it
+could not read, or which legs it runs and why:"""
+commands = ["python3 variants.py --base origin/main"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """Which answers or which kind a file should have, only a person knows; a
+download that failed passes when the flaky-test bot runs the job again."""
+
+[check."variant (*)"]
+title = "A new repository of one kind"
+problem = """A repository of this kind, made from the template of the pull request, fails
+its checks; the log names the step and the summary how to fix it. When that step
+comes before the checks, such as the one that installs the tools or pulls an image,
+a download failed or hung until the step ran out of its time: that usually passes
+when the job runs again, which the flaky-test bot does once by itself."""
+why = """Every repository made from the blueprint must pass its own checks from its first
+commit."""
+fix = """The log of the check shows the step that failed in the project of that kind.
+The tests of the template make every kind of project:"""
+commands = ["python -m pytest tests/test_template.py"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """A kind of project that fails its checks needs a fix of the template."""
+
+[check."update (*)"]
+title = "The update of a repository of one kind"
+problem = """A repository of this kind, made from the latest release and brought to the
+pull request with `copier update`, conflicts or fails its checks; the log names the
+step. When that step comes before the checks, such as the one that installs the tools
+or pulls an image, a download failed or hung until the step ran out of its time: that
+usually passes when the job runs again, which the flaky-test bot does once by
+itself."""
+why = """The blueprint bot brings every release to every repository; an update that
+fails there holds up all of them."""
+fix = """Read the log of the check: it shows the conflict or the step that failed. Fix
+the template; for a file of the project, which an update keeps, add a migration to
+`blueprint/migrate.py`.
+The tests of the template update a project of every kind as well:"""
+commands = ["python -m pytest tests/test_template.py"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """An update that conflicts or fails needs a fix of the template."""
+
+[check."adopted (*)"]
+title = "The update of a repository that takes the blueprint"
+problem = """A repository with the answers of this one in `tests/answers/`, made from the
+latest release and brought to the pull request with `copier update`, conflicts, gets
+other files than a new repository with these answers, or fails the build of its website
+or the lint of its workflows or its Markdown; the log names the step. When that step
+comes before the checks, such as the one that installs the tools or pulls an image, a
+download failed or hung until the step ran out of its time: that usually passes when
+the job runs again, which the flaky-test bot does once by itself."""
+why = """The Rollout brings every release to this repository within minutes, with its
+own answers, such as no sample code, its license and its languages; an update that
+fails there holds it up."""
+fix = """Read the log of the check: it shows the conflict or the step that failed. Fix
+the template for these answers. The tests of the template render every file of
+`tests/answers/`:"""
+commands = ["python -m pytest tests/test_template.py -k answers"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """An update that conflicts or fails needs a fix of the template."""
+
+[check."pictures (*)"]
+title = "The pictures of a new repository of one kind"
+problem = """The starter `scripts/screenshots.sh` of a new repository of this kind, which its
+screenshot bot runs, took no picture of its website, or of its integration in Home
+Assistant or its app in Nextcloud; the log names the step and what the script waited
+for. When the step that failed downloads an image or a tool, the download failed or
+hung: that usually passes when the job runs again, which the flaky-test bot does once
+by itself."""
+why = """Renovate moves the images of Home Assistant and Nextcloud and the Playwright of
+the browser on its own, and those updates merge themselves: an image whose setup
+changed would break the screenshot bot of every new repository of this kind on its
+first push."""
+fix = """Render a project of this kind, install the tools of its website in `.venv-docs`
+as its CONTRIBUTING.md shows, and run the script there with Docker, then fix the
+template of the script, `template/scripts/`:"""
+commands = ["bash scripts/screenshots.sh"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """A script that takes no picture needs a fix of its template."""
+
+[check.variants]
+title = "Every kind of project"
+problem = """At least one kind of project, new, updated or with the answers of a
+repository that takes the blueprint, fails its checks, or a new one takes no
+pictures, or the plan of the legs failed; the check `variant (…)`, `update (…)`,
+`adopted (…)`, `pictures (…)` or `variants plan` that failed says why."""
+why = """The rules of `main` require that every kind of project passes."""
+fix = """Fix the check `variant (…)`, `update (…)`, `adopted (…)`, `pictures (…)` or
+`variants plan` that failed; this one passes with it."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """It passes once `variants plan` and every `variant (…)`, `update (…)`,
+`adopted (…)` and `pictures (…)` that runs passes."""
+
+[check.downstream]
+title = "The update of the repositories that take the blueprint"
+problem = """The update of a repository of `tests/answers/` to the pull request, as its
+blueprint bot would run it after the release, failed, or leaves a conflict in a file
+that isn't a page of text, such as a workflow, a script or the configuration of a
+bot, which the pull request changes. The summary of the check names each repository
+with the files whose update the pull request changes and those with a conflict, and
+the log shows each conflict."""
+why = """The Rollout brings every release to these repositories within minutes. A
+workflow or a script with a conflict breaks their checks or their bots until someone
+resolves it by hand, in every repository."""
+fix = """Change the template so that the update keeps what the repository changed in
+the file, or bring that change into the template itself. Run the same update on your
+machine:"""
+commands = ["python3 downstream.py --base origin/main"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """How a template takes up a change that a repository made is the decision
+of a person. Answers of `tests/answers/` that differ from those of a repository only
+warn, and `python3 downstream.py --answers` writes them anew."""
+
+[check."mutation plan"]
+title = "The plan of the mutation tests"
+problem = """The plan that splits the code into parts of about the same number of
+mutants failed before any mutant ran; the log names the error, such as a
+configuration of mutmut in `pyproject.toml` or `setup.cfg` that it can't read, or a
+repository variable `MUTATION_PARTS` that is neither a number nor `auto`."""
+why = """Without the plan no part runs, and the weekly score of the mutation tests,
+which shows the lines that the tests run but don't check, is missing."""
+fix = """Fix the configuration of mutmut, or set the repository variable
+`MUTATION_PARTS` to a number of parts or to `auto`."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """A configuration of mutmut or a variable of the repository is the decision
+of a person."""
+
+[check."mutation stats"]
+title = "The stats of the mutation tests"
+problem = """mutmut ran the whole suite once in its copy of the repository, `mutants/`,
+to record which tests reach each function, and saved no stats: a test failed there
+without any mutant, which the summary of the check and its annotation name, or the
+stats ran out of their time. No part of the run started."""
+why = """Every part loads these stats and runs only its mutants; without them no mutant
+runs, and the weekly score, which shows the lines that the tests run but don't
+check, is missing."""
+fix = """A test that reads the code as text, asks Git, starts the tool or runs a copy of
+it in a folder of its own can't pass in mutmut's copy: mark it with
+`@pytest.mark.mutation_unsafe`. A test that runs under a cache of `functools` clears
+it with `cache_clear()`, since the stats run every test in one process. After
+`mutmut run` on your machine, `python -m pytest -m "not mutation_unsafe"` in
+`mutants/` lists every test that fails there."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """Whether a test reads the code as text, and so belongs out of the mutation
+tests, is the decision of a person."""
+
+[check."mutation */*"]
+title = "A part of the mutation tests"
+problem = """One part of the mutation tests measured nothing: no mutant ran, mostly
+because a test fails in mutmut's copy of the repository without any mutant, which
+the summary of the check names, or the part ran out of its time."""
+why = """A part that measures nothing leaves its code out of the score, so a drop of the
+score there goes unnoticed."""
+fix = """A test that reads the code as text, runs a copy of the code in a folder of its
+own, or keeps a cache of functools between the tests, can't pass in mutmut's copy: mark
+it with `@pytest.mark.mutation_unsafe`, or clear the cache in a fixture. A part that
+runs out of its time needs more parts: set the repository variable `MUTATION_PARTS`
+to a larger number. When the output of mutmut ends in `Generating mutants` or
+`Running stats`, look for a long function with many mutants, such as a parser with the
+options of every command: mutmut copies it whole for each of them, into a module that
+takes minutes to compile, so split it into smaller functions."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """Whether a test reads the code as text, or how many parts a project needs,
+is the decision of a person."""
+
+[check."mutation report"]
+title = "The report of the mutation tests"
+problem = """The report of the mutation tests found no results to put together: no
+mutant ran, or a part sent no results, which the summary of the check names."""
+why = """A run that measures nothing has no score to compare with the run before, so a
+drop of the score would go unnoticed."""
+fix = """Fix the part of the mutation tests that failed first: its explanation says how.
+A low score fails nothing; the summary lists the survivors that change the logic
+first, each a line for a test to check."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """It passes once every part of the run measures its mutants."""
+
+[check."mutation issue"]
+title = "The issue of a dropped mutation score"
+problem = """The job that opens, keeps or closes the one issue of a mutation score of the
+default branch that dropped couldn't do so, mostly because GitHub refused the
+request; the log shows its answer."""
+why = """A drop of the score that opens no issue goes unnoticed until someone reads the
+summary of the weekly run."""
+fix = """Run the workflow Mutation again; a hiccup of GitHub usually passes."""
+docs = "CONTRIBUTING.md#tests"
+autofix = """Whether GitHub accepts a request is up to GitHub; the log shows its
+answer."""
+
+[check."adopt the latest release"]
+title = "The sync of the issue assistant"
+problem = """The sync bot refused the latest release of the issue assistant, or its
+`install` failed or changed more than the workflows, the firewall policy and the pins;
+the summary of the run says which, with the reason."""
+why = """The blueprint takes over only a release of the issue assistant that its release
+workflow made, and brings it to every repository; a release that the bot refuses
+changes nothing here."""
+fix = """Read the summary of the run. A refused release changes nothing: tell the
+maintainers of the issue assistant, or wait for its next release. When GitHub was only
+unreachable, run the dry run again:"""
+commands = ["gh workflow run sync-issue-assistant.yml -f dry_run=true"]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/features/updates.md#the-issue-assistant"
+autofix = """Whether a release of the issue assistant may reach the blueprint is decided
+by its verification, never by a command of the pull request."""
+
+[check."assets of the project"]
+title = "The assets of the project"
+problem = """`scripts/release-assets.sh` failed in the build of the release, or what runs
+before it, such as `npm ci --ignore-scripts`; or it wrote no asset into the folder of
+its first argument, or one that the release can't ship: a folder, a link, a name that
+GitHub would change, or a name that the release keeps for its own files or its
+registry. An annotation or the log of the job says which."""
+why = """The release stays a draft with its signed tag until each of its assets is built
+and attested, so nobody gets this version, and no registry does either."""
+fix = """When the log shows a hiccup of GitHub or npm, re-run the failed jobs of this run,
+which finishes the draft of a release or of a beta. Otherwise fix the script in a pull
+request with a `fix:` title, which makes a release: the fix ships with the next release,
+as the build runs at the commit of the release. Once that is out, delete the old draft
+by hand with `gh release delete vX.Y.Z --yes`, which keeps the signed tag. The job has no `sudo` and
+no Docker and reaches only GitHub, Node.js and npm, and the summary of Harden-Runner
+names a call that it blocked. Try the script on your machine, after
+`npm ci --ignore-scripts` where the project has a `package.json`:"""
+commands = ['bash scripts/release-assets.sh "$(mktemp -d)" 1.2.3']
+docs = "CONTRIBUTING.md#releases"
+autofix = """What the script builds is for the project to decide, and the build runs at
+a tag that doesn't change, so no command of a pull request repairs this release."""
+
+# ---------------------------------------------------------------- the steps of scripts/check.sh
+
+[step."Text files"]
+problem = """A text file has CRLF line endings, a line with trailing whitespace, no
+line break at its end, or the conflict markers of a merge, lines of `<<<<<<<` or
+`>>>>>>>`, alone or followed by a space; the log names each file."""
+why = """Line endings and stray whitespace that differ from file to file make every diff
+noisy and break shell scripts. `.editorconfig` and `.gitattributes` keep them the same
+everywhere. A conflict marker is a conflict that nobody resolved, such as one that an
+update of the blueprint leaves in a file that no other check reads, and it breaks the
+file or ships both versions of its lines."""
+fix = """A conflict needs a person: keep the lines that belong and delete the lines of
+the markers, `<<<<<<<`, `=======` and `>>>>>>>`; a file that needs such a line on
+purpose, such as a test of a merge, builds it, as with `"<" * 7`. For the rest, let
+your editor follow `.editorconfig`, which most do by themselves, and let the command
+fix every text file (in the blueprint itself, the tool is `blueprint.py` without
+`.github/`):"""
+commands = ["python3 .github/blueprint.py fix text"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = ["{blueprint} fix text"]
+
+[step.Diagrams]
+problem = """A page has a `mermaid` block, which the GitHub app shows as code, a source
+that a page shows lacks one of its two pictures, a picture in `docs/images/diagrams/`
+has no source, or the `alt` of a picture isn't what its source says; the log names
+each one."""
+why = """Only a picture of its source shows a diagram to every reader, also in the
+GitHub app, and only a picture with its source can be drawn again."""
+fix = """Turn the blocks into sources and draw their pictures with Docker, then commit
+what changed; without Docker, push, and on a branch of this repository with the
+release app the diagram bot draws them for you:"""
+commands = ["bash scripts/diagrams.sh --extract"]
+docs = "CONTRIBUTING.md#diagrams"
+autofix = """The diagram bot draws the pictures with Docker after the checks, in a job
+of its own."""
+
+[step."Pages in one column"]
+problem = """A README, a CONTRIBUTING file or a page of `docs/` sets columns side by
+side: a `<table>` that puts a picture beside text, or a cell with a width; the log names
+each file and line. A cell of a Markdown table with more than 30 words, a paragraph, is
+a warning in the same log, which fails nothing yet."""
+why = """The GitHub app and phones keep such columns side by side and squeeze them until
+the text is a few words wide and the pictures are tiny."""
+fix = """Put the cells one below the other, the text before its picture, and leave out
+the widths; a table holds tabular data only. Make the rows of a table with paragraphs a
+list, or move the detail to a page of its own and link it. The command that the log names does this
+for you, then commit what changed (in the blueprint itself, the tool is `blueprint.py`
+without `.github/`):"""
+commands = ["python3 .github/blueprint.py pages --fix"]
+docs = "CONTRIBUTING.md#pages-in-one-column"
+autofix = ["{blueprint} pages --fix"]
+
+[step."Files of the project"]
+problem = """A file that belongs to this project, which an update of the blueprint leaves
+as it is, lacks what a release of the blueprint moved, such as the labels `good first
+issue` and `help wanted` in the group `contribution` of `.github/labels.toml`; the log
+names each file and what moves."""
+why = """The files of the blueprint in the update count on that move, and an update never
+overwrites a file of the project. Without it the repository stays behind every new one,
+and a feature of the release stays off without a word."""
+fix = """Move it with the command, then commit what changed (in the blueprint itself, the
+tool is `blueprint.py` without `.github/`). A project that declines the move of a label
+writes a comment behind its line `group = "decision"`:"""
+commands = ["python3 .github/blueprint.py migrate --fix"]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#a-release-moves-a-file-of-the-project"
+autofix = ["{blueprint} migrate --fix"]
+
+[step."Changelog fragments"]
+problem = """A fragment in `changelog.d/` is one that the release can't take in: a name
+that it reads differently, no entry, text outside a heading, a `## ` heading, or a
+heading that is no kind of change; the log names each fragment and its problem. The
+step checks every fragment, also those that other pull requests left on `main` for the
+next release."""
+why = """The release bot takes in every fragment and stops at one that it can't, so no
+release comes until the fragment is fixed."""
+fix = """Change the fragment as the log says. The command renames each heading that
+surely means a kind of change, such as `### Fixes` to `### Fixed` or `## Features` to
+`### Features`, and names what is left for you; then commit what changed (in the
+blueprint itself, the tool is `blueprint.py` without `.github/`):"""
+commands = ["python3 .github/blueprint.py fragments --fix"]
+docs = "CONTRIBUTING.md#the-changelog"
+autofix = ["{blueprint} fragments --fix"]
+
+[step."Accepted advisories"]
+problem = """`.github/renovate-accepted.json5` has other rules of Renovate than the versions
+that an `osv-scanner.toml` accepts with every advisory, or an `osv-scanner.toml` is one
+that OSV-Scanner can't use: a key that it doesn't know, or an entry of
+`[[PackageOverrides]]` without its package, version, ecosystem, reason or
+`effectiveUntil`; the log names each file and entry."""
+why = """Renovate doesn't read `osv-scanner.toml`: without its rule, it tries a fix of
+each accepted advisory in every run, which the lock file can't take, and logs an empty
+commit. OSV-Scanner ignores a whole file with a key that it doesn't know, and then
+reports every advisory that the file accepts."""
+fix = """Fix the `osv-scanner.toml` as the log says, then write the rules of Renovate from
+it and commit both (in the blueprint itself, the tool is `blueprint.py` without
+`.github/`):"""
+commands = ["python3 .github/blueprint.py advisories --fix"]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#osv-scanner-reports-a-version-that-another-package-pins"
+autofix = ["{blueprint} advisories --fix"]
+
+[step."Lock files"]
+problem = """Renovate can't read the command in the header of a lock file of pip-compile,
+such as `requirements-dev.txt`: an option without the = before its value, an option
+that Renovate doesn't know, `--no-header`, another output file or a source file that
+doesn't exist; the log names each file and what Renovate stumbles on."""
+why = """Renovate compiles each lock file again with the command in its header. It skips
+one whose command it can't read, in every run and with no more than the warning
+`pip-compile error` in its log: the file gets no update from then on, not even one that
+fixes a vulnerability."""
+fix = """Put the = between each option and its value, and commit the lock file (in the
+blueprint itself, the tool is `blueprint.py` without `.github/`). For the rest, compile
+the file again with the options that Renovate knows, such as `uv pip compile
+--generate-hashes --python-version=3.12 --output-file=requirements.txt
+requirements.in`:"""
+commands = ["python3 .github/blueprint.py locks --fix"]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#renovate-skips-a-lock-file"
+autofix = ["{blueprint} locks --fix"]
+
+[step."Lock files match their sources"]
+problem = """A lock file of pip-compile, such as `requirements-dev.txt`, no longer pins
+what its source, such as `requirements-dev.in`, asks for: compiled again with the
+command in its header, for its Python and on the versions that it pins, it comes out with
+other pins or with a hash missing, or the sources have no solution; the log names each
+file and each pin."""
+why = """pip installs a lock file as it is: a package that a source adds, or a bound that
+it moves, reaches no install until someone compiles the file again, and a package that a
+source drops stays installed. Nothing else fails. A new release upstream doesn't trigger
+this check: only a change of the sources moves a pin."""
+fix = """Where uv finds no solution, the sources contradict themselves or a pin that they
+name: correct them first. Then compile the file again and commit it; its header stays,
+with its Python and its tool (in the blueprint itself, the tool is `blueprint.py` without
+`.github/`):"""
+commands = ["python3 .github/blueprint.py locks --compile --fix"]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/troubleshooting.md#a-lock-file-no-longer-matches-its-source"
+autofix = ["{blueprint} locks --compile --fix"]
+
+[step."Explanations of the checks"]
+problem = """A required check of `.github/repository.toml` or
+`.github/repository.project.toml`, or a step of `scripts/check.sh`, has no explanation
+in `.github/checks.toml` or `.github/checks.project.toml`, or an explanation says
+neither which commands fix what its check finds nor why no command can; the log names
+each one."""
+why = """The PR coach shows the explanation of a check that fails, to everyone who sends
+a pull request: without one, a contributor finds only the log, and the fix bot doesn't
+know what it may fix."""
+fix = """Explain the check or the step in `.github/checks.project.toml`: what it found, why
+that matters, how to fix it, the commands, a link, and in `autofix` the commands that
+fix it or the reason why none can; CONTRIBUTING.md shows an example. The command lists
+what is left (in the blueprint itself, the tool is `blueprint.py` without `.github/`):"""
+commands = ["python3 .github/blueprint.py coach verify"]
+docs = "CONTRIBUTING.md#when-a-check-fails"
+autofix = """What a check found, and how to fix it, is for a person to explain."""
+
+[step.Version]
+problem = """A file has another version than `.release-please-manifest.json`, whose
+version the release bot writes into every file that has one."""
+why = """A version changed by hand would ship a package with the wrong number; the
+release bot decides the version from the titles of the pull requests."""
+fix = """Set the version that the log names back to that of the manifest. The release bot
+changes the version, a pull request doesn't; the command writes the version of the
+manifest into each file:"""
+commands = ["python3 .github/blueprint.py fix version"]
+docs = "CONTRIBUTING.md#workflow"
+autofix = ["{blueprint} fix version"]
+
+[step."Git hooks"]
+problem = """A hook in `.githooks/` is a plain file in Git, not an executable one, as Git
+for Windows adds a new file; the log names each hook."""
+why = """Git runs a hook only when its file is executable. On Linux and macOS, in the dev
+container and in Codespaces, Git would skip the hook, and a push would go out without
+the checks."""
+fix = """Record the hook as executable in Git and commit that; this works on Windows
+too:"""
+commands = [
+  "git update-index --chmod=+x .githooks/pre-push",
+  'git commit -s -m "fix: make the pre-push hook executable"',
+]
+docs = "CONTRIBUTING.md#checks"
+autofix = """A commit through the API of GitHub keeps the mode of each file, so no bot
+can make a hook executable."""
+
+[step."Shell scripts"]
+problem = """ShellCheck flags a shell script, for a bug, such as a variable without
+quotes, or for a construct that breaks on another shell; the log names each line with
+its rule, such as SC2086, and in the CI each one is an annotation at its line. Or the runner of the CI lacks ShellCheck, which the CI never
+skips."""
+why = """Shell scripts fail quietly and differently on each system; ShellCheck finds the
+mistakes before they run. A CI that skipped it would pass a script that nobody
+checked."""
+fix = """Fix each line that ShellCheck names; its wiki explains every rule. A line that
+needs the construct on purpose gets `# shellcheck disable=SC…` above it, with the
+reason. A runner without ShellCheck installs it before the checks, such as with
+`sudo apt-get install shellcheck` or the hash-pinned `shellcheck-py` of the Python
+tools; the runners of Linux of GitHub have it. ShellCheck checks every script of the
+repository with:"""
+commands = ["shellcheck $(git ls-files '*.sh')"]
+docs = "https://www.shellcheck.net/wiki/"
+autofix = """A finding of ShellCheck needs a person, who knows what the script should do."""
+
+[step.Ruff]
+problem = """The Python code isn't in the format of Ruff, or breaks one of the rules of
+Ruff that `pyproject.toml` selects; the log shows the diff or names each line."""
+why = """One format and one set of rules keep the code readable for everyone and catch
+bugs, such as an unused variable or a mutable default, before they run."""
+fix = """Let Ruff fix what it can and format the code, then fix the rest by hand:"""
+commands = ["ruff check --fix .", "ruff format ."]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = ["ruff check --fix .", "ruff format ."]
+
+[step.Mypy]
+problem = """mypy, in its strict mode, finds a type that doesn't fit, or a function
+without type hints; the log names each line, and in the CI each one is an annotation at
+its line."""
+why = """Type hints catch a whole class of bugs before the code runs, and tell the next
+reader what a function takes and gives."""
+fix = """Fix each line that mypy names, and add the type hints that it asks for:"""
+commands = ["mypy"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """Only a person knows which type is right."""
+
+[step."Tests, with every line and branch covered"]
+problem = """A test fails, or a line or a branch of the code runs in no test; in
+the CI, each test that fails is an annotation at the line where it failed, and the
+coverage report names the files and lines that it misses. A test also fails when it runs
+longer than the `timeout` of `pyproject.toml` (the log says `Timeout`), or when it depends
+on another test: the tests run in parallel, in another order on each worker."""
+why = """Every line and branch under test means that every change of behavior shows in a
+test, so that a bug can't come back unnoticed."""
+fix = """Fix the test that fails, or the code that it catches, and write a test for each
+line and branch that the report lists as missing. Make a slow test faster, or let it wait
+for a condition instead of a time; give a test that shares state with another one its own
+files and settings, such as `tmp_path`. `coverage run -m pytest` runs the tests one after
+another; `python -m pytest -n logical --maxprocesses=8 --cov` runs them in parallel as CI
+does, where pytest-xdist and pytest-cov are installed:"""
+commands = [
+  "coverage run -m pytest",
+  "coverage report",
+  "python -m pytest -n logical --maxprocesses=8 --cov",
+]
+docs = "CONTRIBUTING.md#tests"
+autofix = """A test that fails, or code without a test, needs a person, who knows what the code should do."""
+
+[step.Package]
+problem = """The package doesn't build, or misses a file that it needs; the log shows the
+error of the build."""
+why = """A release publishes this package; one that doesn't build here won't build for
+the release either."""
+fix = """Fix what the log of the build names, such as a file that the package lists but
+the repository lacks, and build it again with `bash scripts/check.sh`."""
+docs = "CONTRIBUTING.md#checks"
+autofix = """A package that doesn't build needs a person, who knows what it should
+hold."""
+
+[step.Composer]
+problem = """`composer.json` isn't valid in the strict mode of Composer, `composer.lock`
+no longer locks what `composer.json` asks for, as after a change of it by hand, or a
+locked package has a known vulnerability."""
+why = """A broken `composer.json` breaks every install, `composer install` stops at a lock
+file that lacks a package, and a vulnerable package ships its vulnerability with the
+app."""
+fix = """Fix what `composer validate` names, lock the packages of `composer.json` again
+with the least change, which keeps every other package at its version, and update a
+vulnerable package:"""
+commands = [
+  "composer validate --strict",
+  "composer update --minimal-changes",
+  "composer audit",
+]
+docs = "CONTRIBUTING.md#checks"
+# Only for a lock file that Composer finds out of date, which composer validate fails
+# without --strict: a lock file of another version of Composer stays as it is.
+autofix = [
+  "composer validate --no-check-publish --quiet || composer update --minimal-changes --no-install --no-scripts --no-plugins --no-interaction",
+]
+
+[step."App metadata"]
+problem = """`appinfo/info.xml` doesn't follow the schema of the Nextcloud App Store; the
+log names the element."""
+why = """The App Store refuses a release whose `info.xml` breaks its schema."""
+fix = """Fix the element that the log names, as the schema of the App Store describes it.
+If the schema was out of reach, run the check again later."""
+docs = "https://nextcloudappstore.readthedocs.io/en/latest/developer.html#info-xml"
+autofix = """Only a person knows what `appinfo/info.xml` should say."""
+
+[step."PHP syntax"]
+problem = """A PHP file doesn't parse; the log names the file and the line."""
+why = """A file that doesn't parse breaks the whole app in Nextcloud."""
+fix = """Fix the line that the log names, and check the file again:"""
+commands = ["php --syntax-check FILE"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """A file that doesn't parse needs a person, who knows what the code should do."""
+
+[step."Oldest PHP"]
+problem = """A file of `appinfo/`, `lib/` or `templates/` doesn't parse on the oldest PHP
+that `appinfo/info.xml` names, or a package that the app ships needs a newer PHP; the log
+names the file and its line, or the package. In the CI, that PHP may also be missing."""
+why = """Nextcloud runs the app on every PHP from that version on: a file that doesn't
+parse there, or a package that needs a newer PHP, breaks the app on such a server,
+although the tools, on the newer PHP of `config.platform.php` in `composer.json`, pass."""
+fix = """Write the line without the syntax of the newer PHP, hold the package back to a
+release that still supports the oldest PHP, or raise the `min-version` of the PHP in
+`appinfo/info.xml` and `require.php` in `composer.json` when the app drops that PHP.
+Check it with that PHP:"""
+commands = [
+    "php8.2 --syntax-check FILE",
+    "php8.2 \"$(command -v composer)\" check-platform-reqs --lock --no-dev",
+]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """Only a person can choose between the oldest PHP and the code or the package
+that needs a newer one."""
+
+[step."Coding standard"]
+problem = """The PHP code doesn't follow the Nextcloud coding standard; the log shows the
+diff that php-cs-fixer would make, and in the CI each change is an annotation at its
+lines."""
+why = """One standard keeps the code readable for everyone who contributes to
+Nextcloud."""
+fix = """Let php-cs-fixer make the diff:"""
+commands = ["vendor/bin/php-cs-fixer fix"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = ["vendor/bin/php-cs-fixer fix"]
+
+[step.Psalm]
+problem = """Psalm, at its strictest level, finds a type that doesn't fit, a call that
+can fail or code that can't run; the log names each line with its issue, and in
+the CI each one is an annotation at its line. Psalm may
+also have stopped because `nextcloud/ocp` no longer has a method that
+`.github/psalm/NextcloudTaintPlugin.php` names; the log names that method then."""
+why = """Psalm catches bugs that the tests miss, before they reach a Nextcloud server."""
+fix = """Fix each line that Psalm names; its documentation explains every issue. A method
+that the plugin names and `nextcloud/ocp` lost is the blueprint's to adapt: report
+it there, and keep the update of `nextcloud/ocp` until a release of the blueprint
+does. Psalm runs alone with:"""
+commands = ["vendor/bin/psalm --no-cache"]
+docs = "https://psalm.dev/docs/running_psalm/issues/"
+autofix = """Only a person knows which type is right."""
+
+[step."Psalm taint canary"]
+problem = """The taint analysis no longer finds every path of the canary in
+`.github/psalm/canary/`, a controller that lets the input of a request reach each kind
+of sink, or finds one that the canary doesn't expect; the log names each line. Psalm
+may also have stopped, when `nextcloud/ocp` no longer has a method that
+`.github/psalm/NextcloudTaintPlugin.php` names as a source or a sink."""
+why = """An analysis that has gone blind passes every app in silence, as if its code
+were safe; the canary makes that fail instead."""
+fix = """An update of Psalm or of `nextcloud/ocp` usually causes it: the files in
+`.github/psalm/` belong to the blueprint, so report the log to it, and keep the
+update until a release of the blueprint adapts them. The canary runs alone with:"""
+commands = [
+  "vendor/bin/psalm --config=.github/psalm/canary.xml --taint-analysis --no-cache --report=build/psalm-canary.json",
+  "php .github/psalm/check-canary.php build/psalm-canary.json",
+]
+docs = "https://github.com/Dennis-Otto/repo-blueprint/issues"
+autofix = """An analysis that misses a path needs a person, who finds out what changed
+in Psalm or in Nextcloud."""
+
+[step."Psalm taint analysis"]
+problem = """Untrusted input reaches HTML, SQL, a shell, a file, a request to another
+server or a header without escaping: a parameter of a request to a controller, the
+term of a search or the answer of another server. The log shows its path, from the
+input to the line where it arrives, and in the CI each one is an annotation at that
+line."""
+why = """That path is a vulnerability, such as cross-site scripting, an injection of
+SQL, a path that climbs out of its folder or a request that the server makes for an
+attacker, which attackers look for."""
+fix = """Validate or escape the input on the path that the log shows, before it reaches
+its sink, then run the analysis again. A function that makes the input safe for a sink,
+such as one that refuses a path with `..`, says so in its docblock, with
+`@psalm-taint-escape file` for example, and a comment on why it is safe:"""
+commands = ["vendor/bin/psalm --taint-analysis --no-cache"]
+docs = "https://psalm.dev/docs/security_analysis/"
+autofix = """Where untrusted input may go, and how to escape it, is the decision of
+a person."""
+
+[step."Tests, with every line covered"]
+problem = """A test fails, or a line of `lib/` runs in no test; in the CI, each test that
+fails is an annotation at the line where it failed, and the coverage report names the
+lines that it misses."""
+why = """Every line under test means that every change of behavior shows in a test, so
+that a bug can't come back unnoticed."""
+fix = """Fix the test that fails, or the code that it catches, and write a test for each
+line that the report lists as missing:"""
+commands = ["XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-text"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """A test that fails, or code without a test, needs a person, who knows what the code should do."""
+
+[step."Package lock"]
+problem = """`package-lock.json` no longer locks what `package.json` asks for, as after a
+change of `package.json` by hand: it lacks a package, or locks one in a version
+outside the range of `package.json`. `npm ci --ignore-scripts` stops at such a lock
+file, and the log names each package."""
+why = """The CI, the release and every machine install exactly what the lock file locks,
+so that every install is the same; npm can't install from a lock file that
+`package.json` no longer agrees with."""
+fix = """Lock the packages of `package.json` again, which keeps every other package at
+its version, and commit `package-lock.json`:"""
+commands = ["npm install --package-lock-only --ignore-scripts"]
+docs = "CONTRIBUTING.md#checks"
+# Only for a lock file that npm refuses, which the dry run of its clean install finds
+# without a change: a lock file of another version of npm stays as it is.
+autofix = [
+  "npm ci --dry-run --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 || npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+]
+
+[step.Types]
+problem = """The TypeScript compiler, in its strict mode, finds a type that doesn't fit;
+the log names each line, and in the CI each one is an annotation at its line."""
+why = """The types catch a whole class of bugs before the code runs, and tell the next
+reader what a function takes and gives."""
+fix = """Fix each line that the compiler names:"""
+commands = ["npm run typecheck"]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = """Only a person knows which type is right."""
+
+[step."Lint and format"]
+problem = """The code isn't in the format of Biome, or breaks one of the rules of Biome,
+also one that only warns, such as an unused variable or imports that aren't sorted;
+the log shows the diff or names each line with its rule."""
+why = """One format and one set of rules keep the code readable for everyone and catch
+bugs, such as a variable that is never used or a comparison that is always true,
+before they run."""
+fix = """Let Biome format the code and make the fixes that are safe, then fix the rest
+by hand; `biome.jsonc` holds the settings, and `npx --no -- biome explain RULE`
+explains a rule:"""
+commands = ["npx --no -- biome check --write ."]
+docs = "CONTRIBUTING.md#coding-standards"
+autofix = ["npx --no -- biome check --write ."]
+
+[step."Tests, with every line, branch and function covered"]
+problem = """A test fails, or a line, a branch or a function of the code runs in no test;
+in the CI, each test that fails is an annotation at the line where it failed, and the
+coverage report names what it misses."""
+why = """Everything under test means that every change of behavior shows in a test, so
+that a bug can't come back unnoticed."""
+fix = """Fix the test that fails, or the code that it catches, and write a test for each
+line, branch and function that the report lists as missing:"""
+commands = ["npm test"]
+docs = "CONTRIBUTING.md#tests"
+autofix = """A test that fails, or code without a test, needs a person, who knows what the code should do."""
+
+[step.Extension]
+problem = """The manifest of the extension, `extension/manifest.json`, doesn't fit the
+Chrome Web Store, or its store files don't agree with it: the log lists each problem of
+`scripts/check-manifest.mjs`, such as a permission or host without its reason in
+`store/permissions.json` or its justification in a listing, a language without its
+`store/listing.<language>.md`, a name or a description over the limit of the store, or
+a version other than that of `package.json`. Or the build, or the zip of the store,
+fails."""
+why = """The store takes a version only with a justification of each permission and
+host, and Chrome disables an installed extension after an update that asks for a new
+one until its user accepts it: what the check finds here would stop the release in the
+review of the store, or the users after it."""
+fix = """Do what each line of the log says: give a new permission or host its reason in
+`store/permissions.json` and its justification under `## Permission justifications` of
+every listing, or remove it from the manifest; then check again:"""
+commands = ["node scripts/check-manifest.mjs", "bash scripts/package-extension.sh"]
+docs = "CONTRIBUTING.md#checks"
+autofix = """A permission and its reason need a person, who knows why the extension asks for it."""
+
+[step.Worker]
+problem = """Wrangler can't bundle the Worker as Workers Builds bundles it for Cloudflare:
+`wrangler.jsonc` breaks a rule of its schema, names a main module that doesn't exist or
+a compatibility date that is newer than the runtime of the installed Wrangler, or the
+code imports what the bundle can't resolve; the log of `npm run build` names each
+problem."""
+why = """Cloudflare builds the Worker with the same Wrangler after every merge: what
+fails here would fail there, and the release after it would not go live."""
+fix = """Fix what Wrangler names in `wrangler.jsonc` or in the code, then bundle again,
+which uploads nothing and needs no sign-in:"""
+commands = ["npm run build"]
+docs = "https://developers.cloudflare.com/workers/wrangler/configuration/"
+autofix = """A configuration of the Worker or an import that doesn't resolve needs a person, who knows what the Worker should use."""
+
+[step.Dockerfile]
+problem = """hadolint flags a line of the Dockerfile, such as a package without a pinned
+version or a shell construct that breaks; the log names each line with its rule."""
+why = """An image that builds differently every time, or as root without need, is hard to
+trust and to repair."""
+fix = """Fix each line that hadolint names; its wiki explains every rule. hadolint runs
+on your machine with Docker:"""
+commands = ["docker run --rm -i hadolint/hadolint < Dockerfile"]
+docs = "https://github.com/hadolint/hadolint#rules"
+autofix = """A finding of hadolint needs a person, who knows what the image should do."""
+
+[step.Image]
+problem = """The image doesn't build; the log shows the instruction of the Dockerfile
+that failed."""
+why = """A release publishes this image; one that doesn't build here won't build for the
+release either."""
+fix = """Fix the instruction that the log names, and build the image again:"""
+commands = ["docker build ."]
+docs = "CONTRIBUTING.md#checks"
+autofix = """An image that doesn't build needs a person, who knows what the image should do."""
+
+[step."Self-test of the image"]
+problem = """The image builds, but its self-test fails: the program in it doesn't start
+or doesn't work as it should."""
+why = """Users run the image; what fails here fails for them."""
+fix = """Read the output of the self-test in the log, fix the program or the Dockerfile,
+and run the checks again with `bash scripts/check.sh`."""
+docs = "CONTRIBUTING.md#checks"
+autofix = """A program that fails its self-test needs a person, who knows what the program should do."""
+
+[step."Accessibility check"]
+problem = """A test of the accessibility check of the website fails, or a line or a
+branch of `.github/a11y/check.mjs` runs in no test; the log names the test, or the
+limit of the coverage that it missed."""
+why = """Every repository takes this check from the blueprint, and its check *docs*
+fails on what it finds: a mistake in it blocks their pull requests, or lets a violation
+through."""
+fix = """Fix the check or its test, and run them as the step does, with Node 24 and a
+Chrome, where `CHROME` names another one than Google Chrome:"""
+commands = [
+  "npm ci --prefix .github/a11y --ignore-scripts",
+  "node --test --experimental-test-coverage --test-coverage-include=.github/a11y/check.mjs --test-coverage-lines=100 --test-coverage-branches=100 .github/a11y/check.test.mjs",
+]
+docs = "CONTRIBUTING.md#accessibility"
+autofix = """What a test finds in the check needs a person, who knows what the check
+should do."""
+
+[step.Website]
+problem = """The website doesn't build strictly: a link or an anchor leads nowhere, a
+page is missing from the navigation of `mkdocs.yml`, or MkDocs warns about a page; the
+log names each one. Or the built website breaks what its hooks promise, or fails the
+checks of this project in `scripts/check-site.sh`; the lines above say which."""
+why = """A strict build keeps every link of the documentation working, and the check
+docs builds and checks the website the same way."""
+fix = """Fix what the log names. `bash scripts/check-site.sh site`, where the project
+has that script, checks a build in the folder `site` again and keeps what the script
+leaves there, such as a screenshot of a failure; the temporary folder of the step
+doesn't keep it. Build the website again with the tools of its preview, which the
+section Website of CONTRIBUTING.md sets up:"""
+commands = [".venv-docs/bin/mkdocs build --strict"]
+docs = "CONTRIBUTING.md#website"
+autofix = """A link or a page that leads nowhere needs a person, who knows where it
+should lead."""
+
+[step."Checks of this project"]
+problem = """A check of this project alone, in `scripts/check-project.sh`, failed; its
+output above says which and why."""
+why = """These checks keep what only this project has working, such as its end-to-end
+tests or the files of its package."""
+fix = """Fix what the output of `scripts/check-project.sh` names; the project may
+explain its checks in `.github/checks.project.toml`. Then run them again:"""
+commands = ["bash scripts/check-project.sh"]
+docs = "CONTRIBUTING.md#checks"
+autofix = """The checks of this project fix themselves where its own explanations in
+`.github/checks.project.toml` give them an autofix."""

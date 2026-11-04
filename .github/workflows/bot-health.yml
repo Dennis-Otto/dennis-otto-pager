@@ -1,0 +1,195 @@
+name: Bot health
+
+# The bot-health bot. GitHub mails the failure of a scheduled run only to whoever
+# last changed its schedule, and that of another run to whoever started it, which
+# here is mostly the release app, so a failing bot went unnoticed for days. When a
+# run of a bot or a scheduled workflow ends on the default branch, or the verification
+# of a release that someone published by hand or with a token, this bot runs its
+# failed jobs once more if a second try can pass, as it does with a job that GitHub
+# cancelled at its time limit; a failure that stays keeps one
+# issue per workflow open, with the label bot-failure, the failed jobs, their steps
+# and their first errors, and the next run that passes closes it. Every night it
+# also looks at the latest run of every workflow, those of the project and the
+# checks of main too, in case GitHub lost an event, and starts a workflow whose
+# schedule GitHub missed or switched off. A failure of Lint at a commit that the
+# branch has left says nothing any more, because a pull request reaches the branch
+# only when it passes Lint: it gets no issue, and an open one starts Lint by hand, so
+# that a run that passes closes it. Runs of pull requests start nothing here.
+# It checks out the default branch only, for blueprint.py, never the code of a pull
+# request; blueprint.py bot-health holds the logic.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  workflow_run:
+    # The bots and the scheduled workflows of every repository; the daily look covers those of the project.
+    workflows: [Blueprint update, Chrome Web Store, Clean-up, Findings, Fuzzing, Issue lifecycle, Labels, Links, Mutation, OSV-Scanner, OpenSSF Scorecard, Property tests, Release, Release verification, SBOM, Screenshots, Settings, Update branches, Upstream, Workflow security]
+    types: [completed]
+  schedule:
+    - cron: "4 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# The GitHub CLI of the jobs sends no telemetry to GitHub.
+env:
+  GH_TELEMETRY: "false"
+
+jobs:
+  run:
+    name: look at the end of a bot's run
+    if: >-
+      github.event_name == 'workflow_run' &&
+      !github.event.repository.fork &&
+      (github.event.workflow_run.head_branch == github.event.repository.default_branch ||
+      (github.event.workflow_run.event == 'release' && github.event.workflow_run.name == 'Release verification')) &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      !contains(fromJSON('["pull_request", "pull_request_target"]'), github.event.workflow_run.event) &&
+      contains(fromJSON('["success", "failure", "timed_out", "cancelled", "startup_failure"]'), github.event.workflow_run.conclusion)
+    # One run at a time for each workflow, so that two ends never open two issues.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.workflow_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # Runs the failed jobs once more.
+      actions: write
+      # Reads the first error of a failed job.
+      checks: read
+      contents: read
+      issues: write
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            blueprint
+      - name: Run the failed jobs once more, or keep the issue of the workflow current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          set -o pipefail
+          # Repositories have the copy that the blueprint keeps current; the blueprint
+          # has the original.
+          script=.github/blueprint.py
+          if [[ ! -f "$script" ]]; then
+            script=blueprint.py
+          fi
+          python3 "$script" --repo "$GITHUB_REPOSITORY" bot-health run "$RUN" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  sweep:
+    name: look after every workflow
+    if: github.event_name != 'workflow_run' && !github.event.repository.fork
+    concurrency:
+      group: ${{ github.workflow }}-sweep
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Switches a schedule on again that GitHub switched off, and starts a workflow
+      # whose schedule GitHub missed.
+      actions: write
+      checks: read
+      contents: read
+      issues: write
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            blueprint
+      - name: Look at the latest run of every workflow, and start the missed ones
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          script=.github/blueprint.py
+          if [[ ! -f "$script" ]]; then
+            script=blueprint.py
+          fi
+          python3 "$script" --repo "$GITHUB_REPOSITORY" bot-health sweep | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."

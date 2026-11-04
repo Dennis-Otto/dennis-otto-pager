@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://dennis-otto.github.io/dennis-otto-pager/
+    about: Look up how it works, how to set it up and what to do when something goes wrong.
+  - name: Security vulnerability
+    url: https://github.com/Dennis-Otto/dennis-otto-pager/security/advisories/new
+    about: Report vulnerabilities privately, never in a public issue.
+  - name: Question or idea
+    url: https://github.com/Dennis-Otto/dennis-otto-pager/discussions
+    about: Ask questions and share ideas in the discussions.

@@ -1,0 +1,36 @@
+{
+  "name": "dennis-otto-pager",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.",
+  "homepage": "https://github.com/Dennis-Otto/dennis-otto-pager#readme",
+  "bugs": {
+    "url": "https://github.com/Dennis-Otto/dennis-otto-pager/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dennis-Otto/dennis-otto-pager.git"
+  },
+  "license": "MIT",
+  "author": "Dennis Otto",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "bash scripts/deploy-worker.sh",
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types && tsc --project tsconfig.json",
+    "test": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@cloudflare/vitest-plugin": "^1.5.1",
+    "@vitest/coverage-istanbul": "^5.1.0",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0"
+  }
+}

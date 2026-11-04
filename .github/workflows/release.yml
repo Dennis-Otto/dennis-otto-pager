@@ -1,0 +1,814 @@
+name: Release
+
+# The release bot. release-please keeps a pull request for the next release, up to
+# date with main. Its version follows from the Conventional Commit titles merged
+# since the last release (fix: a patch, feat: a minor, ! or BREAKING CHANGE: a major
+# version) and is decided anew with every merge. What the pull requests wrote in the
+# fragments of changelog.d/ and under "## Unreleased" of CHANGELOG.md becomes the
+# section of the release, and the fragments leave with it; without such text, the
+# section lists the pull requests. Merging the pull request creates the release
+# as a draft, on a tag that this workflow signs first, and the build checks the tag
+# before anything else. The jobs below attach the package, its SBOMs (SPDX and
+# CycloneDX), the licenses of its third-party components, the advisories that don't
+# affect it (OpenVEX) and its signed provenance, write the notes, make the
+# release public, announce it in the discussions, and then deliver it where the
+# repository variable PUBLISH_TO says: pypi, npm, ghcr, hacs, nextcloud-appstore,
+# github-action, chrome-web-store, which publish-store.yml takes over once this
+# workflow has passed, cloudflare-workers, which Workers Builds deploys outside
+# GitHub, or none. Last, verify-release.yml checks the release as its
+# users can. A release that only updates dependencies merges itself once its checks pass,
+# once a day, or at once with a fix of a vulnerability.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  push:
+    branches: [main]
+  # Every merge into main is a push of the release app or of a person, which starts
+  # the release bot at once. The schedule is only a safety net, for a push that GitHub
+  # lost and a tag that a failed run left to sign: GitHub runs schedules as it can,
+  # often hours late, and the bot-health bot starts a run that it missed. It is also
+  # the daily run that merges a release of dependency updates.
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# The GitHub CLI of the jobs sends no telemetry to GitHub.
+env:
+  GH_TELEMETRY: "false"
+
+jobs:
+  release-please:
+    name: release pull request
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The environment holds the private key of the release app; only main may use it.
+    environment:
+      name: release
+      deployment: false
+    permissions:
+      contents: write
+      # The keyless signature of the release tags (gitsign).
+      id-token: write
+      issues: write
+      pull-requests: write
+    # A release, or a beta of the next one; the jobs below handle both alike.
+    outputs:
+      created: ${{ steps.release.outputs.release_created == 'true' || steps.beta.outputs.tag != '' || steps.resume.outputs.tag != '' }}
+      tag: ${{ steps.release.outputs.tag_name || steps.beta.outputs.tag || steps.resume.outputs.tag }}
+      # The commit that the tag has to point at, which the build checks.
+      sha: ${{ steps.release.outputs.sha || steps.beta.outputs.sha || steps.resume.outputs.sha }}
+      version: ${{ steps.release.outputs.version || steps.beta.outputs.version || steps.resume.outputs.version }}
+      major: ${{ steps.release.outputs.major || steps.resume.outputs.major }}
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      # Without the release app of the owner, the run names what is missing rather than
+      # fail at the token; every workflow has this step, the same but for its variables.
+      - name: Check that the release app is set up
+        id: release-app
+        env:
+          CLIENT_ID: ${{ vars.RELEASE_AUTOMATION_CLIENT_ID }}
+          KEY_SET: ${{ secrets.RELEASE_AUTOMATION_PRIVATE_KEY != '' }}
+          # Who needs the app and for what, what happens without it, and whether the
+          # run fails then.
+          BOT: the release bot
+          TASK: start the checks of the release pull request and sign the release tags
+          WITHOUT: release-please keeps the release pull request with the token of the job, which starts none of its checks, and no release can be published
+          REQUIRED: "false"
+        run: |
+          if [[ -z "$CLIENT_ID" ]]; then
+            missing="names no release app in the variable RELEASE_AUTOMATION_CLIENT_ID"
+          elif [[ "$KEY_SET" != true ]]; then
+            missing="has no private key of its release app in the secret RELEASE_AUTOMATION_PRIVATE_KEY of the environment release"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          level=warning
+          if [[ "$REQUIRED" == true ]]; then
+            level=error
+          fi
+          echo "::$level::This repository $missing, which $BOT needs to $TASK; $WITHOUT."
+          {
+            echo "### ${BOT^} needs the release app of the owner"
+            echo
+            echo "This repository $missing, which $BOT needs to $TASK; $WITHOUT. The release app is a GitHub App of the owner, whose token may do what the token of a job can't: start the checks of a pull request, change a workflow and apply the settings."
+            echo
+            echo "\`python3 .github/blueprint.py app register\` registers the app, sets its private key and opens the pull request that names it in \`.github/repository.toml\`; \`python3 .github/blueprint.py checklist\` shows what is left, such as its installation and the settings. Once they are done, $BOT can $TASK in its next run."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$REQUIRED" == true ]]; then
+            exit 1
+          fi
+      - name: Create a token of the release app
+        id: app
+        if: steps.release-app.outputs.ready == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_PRIVATE_KEY }}
+          # Only what the release pull request and its merge need.
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Have the release pull request rebuilt on the current main
+        if: steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # release-please rebuilds its pull request only when its description changes,
+          # so a merge of a hidden type, such as docs or chore, would leave it behind
+          # main. A marker after the footer of the description makes it rebuild the pull
+          # request on main; the notes above stay as they are, since release-please reads
+          # them from a merged release pull request to create the release.
+          set -euo pipefail
+          gh pr list --state open --label "autorelease: pending" --json number,headRefName \
+            --jq '.[] | "\(.number) \(.headRefName)"' |
+            while read -r number branch; do
+              # The list can lag behind a merge: only a pull request still open is rebuilt.
+              if [[ "$(gh pr view "$number" --json state --jq .state)" != OPEN ]]; then
+                continue
+              fi
+              behind="$(gh api "repos/$GH_REPO/compare/main...$branch" --jq .behind_by)"
+              if [[ "$behind" != 0 ]]; then
+                echo "#$number is $behind commit(s) behind main; release-please rebuilds it."
+                body="$(gh pr view "$number" --json body --jq .body)"
+                gh pr edit "$number" --body "$(printf '%s\n\n%s\n' "$body" "<!-- The release bot rebuilds this pull request on the current main. -->")"
+              fi
+            done
+      # A merged release pull request: its tag comes first, signed, and release-please
+      # creates the release on it. Every run looks, not only the push of the merge, so
+      # that a run that is lost or fails early leaves the signing to the next one; a tag
+      # is locked for good once a release stands on it. A tag that exists already must
+      # be the one that the release workflow signed at the merge, such as that of a run
+      # that failed after it pushed the tag; any other stops the release here.
+      - name: Sign the tag of a release that a merged release pull request makes
+        id: sign
+        if: steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          # The merged release pull requests that wait for their release, as release-please
+          # finds them, each with the commit of its merge and the version it releases. The
+          # list of pull requests, unlike their search, doesn't lag behind a merge. GitHub
+          # fails for a moment now and then, so it asks three times.
+          for attempt in 1 2 3; do
+            # The variables of the query are GraphQL's, not the shell's.
+            # shellcheck disable=SC2016
+            if pending="$(gh api graphql -F owner="${GITHUB_REPOSITORY%/*}" -F name="${GITHUB_REPOSITORY#*/}" \
+              -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {
+                pullRequests(labels: ["autorelease: pending"], states: MERGED, baseRefName: "main", first: 10, orderBy: {field: UPDATED_AT, direction: DESC}) {
+                  nodes { mergeCommit { oid file(path: ".release-please-manifest.json") { object { ... on Blob { text } } } } } } } }' \
+              --jq '.data.repository.pullRequests.nodes[].mergeCommit | "\(.oid) \(.file.object.text | fromjson | .["."])"')"; then
+              break
+            fi
+            if ((attempt == 3)); then
+              echo "::error::The merged release pull requests could not be read."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          if [[ -z "$pending" ]]; then
+            echo "No merged release pull request waits for its release."
+            exit 0
+          fi
+          while read -r -u 3 commit version; do
+            tag="v$version"
+            bash .github/sign-tag.sh "$tag" "$commit"
+            echo "The tag $tag is signed." >> "$GITHUB_STEP_SUMMARY"
+          done 3<<<"$pending"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      # A squash commit carries the description of its pull request, such as the
+      # release notes that Renovate quotes, and a line of it that the strict parser of
+      # release-please takes for a footer makes it skip the commit, title included,
+      # in a run that passes. release-please reads the override in the description
+      # of a pull request instead: its title and the lines Release-As and BREAKING
+      # CHANGE, which blueprint.py commit-overrides writes into each merged one since
+      # the last release. The token of the job starts no workflow with the edit.
+      - name: Give release-please the title of each merged pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" --repo "$GITHUB_REPOSITORY" commit-overrides | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Update the release pull request, or create the release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # A pull request of the release app starts the checks; one of the job's
+          # GITHUB_TOKEN would start none.
+          token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Releases only on the tags that the step above signed: a release pull request
+          # merged after it looked, or a run without the release app, would get a tag
+          # without a signature, which the build refuses and nobody can delete. Its
+          # release waits for the next run, which signs the tag first.
+          skip-github-release: ${{ steps.sign.outputs.signed != 'true' }}
+      - name: Take up a release that an earlier run left as a draft
+        id: resume
+        # A run that failed or hung after the release was created leaves it as a draft,
+        # with its signed tag. Started by hand or run again, the workflow builds and
+        # publishes it; a second attempt of the job would otherwise end green without it,
+        # since release-please has nothing left to create.
+        if: (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && steps.release.outputs.release_created != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.["."]' .release-please-manifest.json)"
+          draft="$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [[ "$draft" != true ]]; then
+            echo "No draft of v$version to finish."
+            exit 0
+          fi
+          # The merge of the release pull request, the last commit that changed the version.
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/commits?path=.release-please-manifest.json&sha=$GITHUB_SHA&per_page=1" --jq '.[0].sha')"
+          {
+            echo "tag=v$version"
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "major=${version%%.*}"
+          } >> "$GITHUB_OUTPUT"
+          echo "The draft of v$version is built and published now." >> "$GITHUB_STEP_SUMMARY"
+      - name: Write the text of Unreleased and of the fragments into the release pull request
+        if: steps.app.outputs.token != ''
+        env:
+          # The commit goes through GitHub's API as the release app: GitHub signs it,
+          # as main requires, and it starts the checks.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.release.outputs.pr }}
+        run: |
+          set -euo pipefail
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          raw=(-H "Accept: application/vnd.github.raw+json")
+          # The open release pull requests; one that release-please has just created may
+          # not carry its label yet, so its own output counts as well.
+          {
+            gh pr list --state open --label "autorelease: pending" --json headRefName --jq '.[].headRefName'
+            if [[ -n "$PR" ]]; then jq -r .headBranchName <<<"$PR"; fi
+          } | sort -u |
+            while read -r branch; do
+              head="$(gh api "repos/$GH_REPO/git/ref/heads/$branch" --jq .object.sha)"
+              version="$(gh api "${raw[@]}" "repos/$GH_REPO/contents/.release-please-manifest.json?ref=$head" | jq -r '.["."]')"
+              gh api "${raw[@]}" "repos/$GH_REPO/contents/CHANGELOG.md?ref=$head" > "$RUNNER_TEMP/branch.md"
+              # The section of the release takes in the text of Unreleased and the
+              # fragments in changelog.d/ of main; the same commit deletes the fragments.
+              python3 "$script" changelog release "$version" CHANGELOG.md "$RUNNER_TEMP/branch.md" \
+                --taken "$RUNNER_TEMP/taken" > "$RUNNER_TEMP/release.md"
+              # Only those that the branch still has: an earlier run deleted them already,
+              # and the next run takes in one that reached main after this checkout.
+              listed='[]'
+              if [[ -s "$RUNNER_TEMP/taken" ]] &&
+                ! listed="$(gh api "repos/$GH_REPO/contents/changelog.d?ref=$head" --jq '[.[].path]' 2> "$RUNNER_TEMP/error")"; then
+                # A branch without the folder has no fragment to delete.
+                if ! grep -q "HTTP 404" "$RUNNER_TEMP/error"; then
+                  cat "$RUNNER_TEMP/error" >&2
+                  exit 1
+                fi
+                listed='[]'
+              fi
+              # Without a line end (-j), which the jq.exe of Git Bash writes as CRLF.
+              deletions="$(jq -R . "$RUNNER_TEMP/taken" | jq -scj --argjson listed "$listed" 'map(select(IN($listed[])) | {path: .})')"
+              if cmp -s "$RUNNER_TEMP/release.md" "$RUNNER_TEMP/branch.md" && [[ "$deletions" == '[]' ]]; then
+                echo "The changelog of $version is up to date."
+                continue
+              fi
+              echo "Writing the changelog of $version into $branch."
+              # A file, not a process substitution, which the jq.exe of Git Bash can't open.
+              base64 --wrap=0 "$RUNNER_TEMP/release.md" > "$RUNNER_TEMP/release.b64"
+              jq --null-input --arg repo "$GH_REPO" --arg branch "$branch" --arg head "$head" \
+                --arg headline "chore: write the changelog of $version" \
+                --rawfile contents "$RUNNER_TEMP/release.b64" \
+                --argjson deletions "$deletions" \
+                '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+                  variables: {input: {
+                    branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                    expectedHeadOid: $head,
+                    message: {headline: $headline},
+                    fileChanges: ({additions: [{path: "CHANGELOG.md", contents: $contents}]}
+                      + if $deletions == [] then {} else {deletions: $deletions} end)}}}' |
+                gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid
+            done
+      # A release of nothing but dependency updates merges itself, bundled: the daily
+      # run of the schedule, or a run started by hand, sets its auto-merge, so that the
+      # updates of a day make one release and not one each, which the Rollout of the
+      # blueprint would bring to every repository (decision 0087). A release with the
+      # fix of a vulnerability, which Renovate marks with [security], merges at once.
+      - name: Merge a release of dependency updates once its checks pass
+        if: steps.app.outputs.token != '' && steps.release.outputs.release_created != 'true'
+        env:
+          # Merged by the app, the release starts this workflow again and is created.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.release.outputs.pr }}
+        run: |
+          set -euo pipefail
+          # The pull request that release-please has just updated, or else the open one,
+          # which a run of the schedule finds unchanged.
+          number="$(jq -r '.number // empty' <<<"${PR:-null}")"
+          if [[ -z "$number" ]]; then
+            number="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label "autorelease: pending" \
+              --json number --jq '.[0].number // ""')"
+          fi
+          if [[ -z "$number" ]]; then
+            echo "No release pull request is open."
+            exit 0
+          fi
+          latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          if [[ -z "$latest" ]]; then
+            echo "The first release waits for the maintainer."
+            exit 0
+          fi
+          subjects="$(gh api "repos/$GITHUB_REPOSITORY/compare/$latest...$GITHUB_SHA" \
+            --jq '.commits[].commit.message | split("\n")[0]')"
+          others="$(grep -Ev '^(fix|chore|build)\(deps(-dev)?\): ' <<<"$subjects" || true)"
+          if [[ -n "$others" ]]; then
+            echo "The release holds more than dependency updates; the maintainer merges it:"
+            echo "$others"
+            exit 0
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && ! grep -qi '\[security\]' <<<"$subjects"; then
+            echo "The release of dependency updates merges in the daily run of the release bot, with the updates of the day."
+            exit 0
+          fi
+          # GitHub sets no auto-merge on a pull request whose checks have all passed
+          # already; that one merges now. The rules of main still hold for the merge.
+          gh pr merge --repo "$GITHUB_REPOSITORY" --auto --squash "$number" ||
+            gh pr merge --repo "$GITHUB_REPOSITORY" --squash "$number"
+      - name: Publish a beta of the next release
+        id: beta
+        # Where the repository variable BETA_CHANNEL is true, every change for users
+        # that reaches main, a feat, fix or perf, becomes a beta of the next release,
+        # such as 1.3.0-beta.2, for the testers who take prereleases. The jobs below
+        # build and publish it as a prerelease, which announces nothing.
+        if: >-
+          vars.BETA_CHANNEL == 'true' && github.event_name == 'push' &&
+          steps.release.outputs.release_created != 'true' && steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          subject="${MESSAGE%%$'\n'*}"
+          pattern='^(feat|fix|perf)(\(([a-z0-9._/-]+)\))?(!)?: '
+          if [[ ! "$subject" =~ $pattern || "${BASH_REMATCH[3]}" == deps* ]]; then
+            echo "No change for users, so no beta." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="$(gh pr list --state open --label "autorelease: pending" --json headRefName --jq '.[0].headRefName // ""')"
+          if [[ -z "$branch" ]]; then
+            echo "No release pull request, so no beta." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          next="$(gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/$GH_REPO/contents/.release-please-manifest.json?ref=$branch" | jq -r '.["."]')"
+          if [[ "$next" == *-* ]]; then
+            echo "The next release, $next, is a prerelease itself, so no beta." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          last="$(gh release list --limit 100 --json tagName --jq '.[].tagName' |
+            sed -n "s/^v$next-beta\.\([0-9]*\)$/\1/p" | sort -n | tail -n 1)"
+          version="$next-beta.$(( ${last:-0} + 1 ))"
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" beta "$version" > "$RUNNER_TEMP/beta.md"
+          bash .github/sign-tag.sh "v$version"
+          gh release create "v$version" --draft --prerelease --verify-tag \
+            --title "v$version" --notes-file "$RUNNER_TEMP/beta.md"
+          {
+            echo "tag=v$version"
+            echo "sha=$GITHUB_SHA"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "The beta v$version of $next is on its way." >> "$GITHUB_STEP_SUMMARY"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  # The build runs in a reusable workflow of its own, so that the provenance of the
+  # assets names it alone, as SLSA Build Level 3 asks.
+  assets:
+    name: release assets
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/build-release.yml
+    # The build gets none of the secrets of the release, only the token of its job.
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}
+      sha: ${{ needs.release-please.outputs.sha }}
+      version: ${{ needs.release-please.outputs.version }}
+
+  publish:
+    name: publish the release
+    needs: [release-please, assets]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      discussions: write
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      - name: Make the complete release public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: |
+          # A version such as 2.0.0-beta.1 is a prerelease, which HACS, npm and the
+          # like only offer to those who ask for one.
+          if [[ "$TAG" == *-* ]]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false --repo "$GITHUB_REPOSITORY"
+            exit 0
+          fi
+          # A release for everybody is announced in the category Announcements of the
+          # discussions, when the repository has them, with its notes and a link.
+          announce=()
+          # The variables of the query are GraphQL's, not the shell's.
+          # shellcheck disable=SC2016
+          categories="$(gh api graphql -F owner="${GITHUB_REPOSITORY%/*}" -F name="${GITHUB_REPOSITORY#*/}"             -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussionCategories(first: 50) { nodes { name } } } }'             --jq '.data.repository.discussionCategories.nodes[].name')"
+          if grep -qx Announcements <<<"$categories"; then
+            announce=(--discussion-category Announcements)
+            echo "The release is announced in the discussions." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          gh release edit "$TAG" --draft=false --latest "${announce[@]}" --repo "$GITHUB_REPOSITORY"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  pypi:
+    name: deliver to PyPI
+    needs: [release-please, publish]
+    if: vars.PUBLISH_TO == 'pypi'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Trusted publishing: PyPI accepts this workflow and environment, no token.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/${{ github.event.repository.name }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - name: Download the packages of the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern '*.whl' --pattern '*.tar.gz'
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  npm:
+    name: deliver to npm
+    needs: [release-please, publish]
+    if: vars.PUBLISH_TO == 'npm'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Trusted publishing with provenance: npm accepts this workflow, no token.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/${{ github.event.repository.name }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Publish the package of the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tgz'
+          # A prerelease goes to the tag next, so that npm install keeps the release.
+          channel=latest
+          [[ "$TAG" == *-* ]] && channel=next
+          npm publish ./*.tgz --provenance --access public --tag "$channel"
+
+  ghcr:
+    name: deliver to GHCR
+    needs: [release-please, publish]
+    if: vars.PUBLISH_TO == 'ghcr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the image in the lowercase that registries require
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Name the image and its tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.version }}
+      - name: Build and push the image with SBOM and provenance
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+      - name: Attest the provenance of the image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  nextcloud-appstore:
+    name: deliver to the Nextcloud App Store
+    needs: [release-please, publish]
+    if: vars.PUBLISH_TO == 'nextcloud-appstore'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The token of the App Store is the one secret of this environment, which only main
+    # may use: the job reaches neither the key that signs the app nor that of the
+    # release app.
+    environment:
+      name: appstore
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            apps.nextcloud.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            apps.nextcloud.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+      - name: Submit the signed package of the public release
+        env:
+          APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPSTORE_TOKEN" ]]; then
+            echo "::error::The secret APPSTORE_TOKEN of the environment appstore is missing."
+            exit 1
+          fi
+          app_id="$(python3 -c 'import xml.etree.ElementTree as t; print(t.parse("appinfo/info.xml").getroot().findtext("id"))')"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$app_id.tar.gz.sig"
+          umask 077
+          jq --null-input \
+            --arg download "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$app_id.tar.gz" \
+            --arg signature "$(openssl base64 -A -in "$app_id.tar.gz.sig")" \
+            '{download: $download, signature: $signature, nightly: false}' > "$RUNNER_TEMP/request.json"
+          # The API creates or updates the same version; a retry creates no second release.
+          curl --fail-with-body --silent --show-error --retry 3 --retry-connrefused \
+            --connect-timeout 15 --max-time 180 --request POST \
+            --header "Authorization: Token $APPSTORE_TOKEN" --header 'Content-Type: application/json' \
+            --data-binary "@$RUNNER_TEMP/request.json" https://apps.nextcloud.com/api/v1/apps/releases
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  github-action:
+    name: move the major tag
+    needs: [release-please, publish]
+    # A prerelease leaves the major tag at the last release.
+    if: vars.PUBLISH_TO == 'github-action' && !contains(needs.release-please.outputs.tag, '-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+      - name: Point the major tag at the release, as users of v1 and the like expect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+          MAJOR: v${{ needs.release-please.outputs.major }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR" -m "$TAG" "$TAG^{commit}"
+          git push --force "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "refs/tags/$MAJOR"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  verify:
+    name: verify
+    needs: [release-please, publish, pypi, npm, ghcr, nextcloud-appstore, github-action]
+    # After the delivery, whichever of them ran: the release as its users check it.
+    if: always() && needs.publish.result == 'success'
+    permissions:
+      attestations: read
+      contents: read
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}

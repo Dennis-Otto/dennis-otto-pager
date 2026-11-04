@@ -1,0 +1,50 @@
+# Editors and systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+/.claude/settings.local.json
+
+# The context folder of the issue assistant
+/.issue-assistant/
+
+# The tools and styles of the prose check, fetched when it runs
+/.github/prose/node_modules/
+/.github/vale/
+
+# The tools of the accessibility check of the website, fetched when it runs, and
+# the digest of the website that it compares with
+/.github/a11y/node_modules/
+/site-digest.json
+
+# Secrets, which never belong in the repository; the secret scan checks every push too.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+auth.json
+credentials*.json
+/secrets/
+
+# The website that MkDocs builds, and the tools of its preview
+/site/
+/.venv-docs/
+/.cache/
+
+# Node
+/node_modules/
+/dist/
+/coverage/
+/lcov.info
+*.tgz
+# What Wrangler writes: the state of `wrangler dev`, and the types of the runtime and
+# of the bindings, which `npm run typecheck` writes anew from wrangler.jsonc. The
+# secrets of `wrangler dev` live in .dev.vars, as in .env, which never reach git.
+/.wrangler/
+/worker-configuration.d.ts
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

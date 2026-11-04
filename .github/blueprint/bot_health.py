@@ -1,0 +1,1103 @@
+"""The bot-health bot: a bot that fails on the default branch keeps one issue open,
+which closes once the bot passes again.
+
+GitHub mails the failure of a scheduled run only to whoever last changed its
+schedule, and that of another run to whoever started it, which in these repositories
+is mostly the release app, so a failing bot went unnoticed for days. When a run of a
+watched workflow ends on the default branch, the bot runs its failed jobs once more
+if a second try can pass, and otherwise keeps one issue per workflow current, with
+the failed jobs, their steps and their first errors; a run that passes closes it.
+Once a day it looks at the latest run of every workflow, those of the project too,
+in case GitHub lost an event, and starts a workflow whose schedule GitHub missed or
+switched off. A failure of Lint, which main runs only each week, counts only at the
+head of main: a pull request reaches main only when it passes Lint. In the blueprint,
+it also keeps one issue with the warnings and errors in the log of Renovate.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import urllib.parse
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
+from typing import Any
+
+from blueprint.github import Api, GitHubError, Json
+
+LABEL = "bot-failure"
+LABEL_COLOR = "d93f0b"
+LABEL_DESCRIPTION = (
+    "A bot or a scheduled workflow fails on the default branch; "
+    "closes when it passes again"
+)
+# The type of these issues, which every repository has among its labels.
+TYPE = "maintenance"
+PULL_REQUESTS = frozenset({"pull_request", "pull_request_target"})
+# The verification that a published release starts: its run is one of the tag of the
+# release, not of the default branch, and it is the only such run that counts.
+VERIFICATION = "Release verification"
+FAILED = frozenset({"failure", "timed_out", "startup_failure"})
+OUT_OF_TIME = "The job has exceeded the maximum execution time"
+PASSED = "success"
+# A second try only hides or repeats their failure: Findings fails while an alert is
+# open, Mutation takes hours to measure the same again, and the property tests and the
+# fuzzing failed on an input that they found.
+ONE_TRY = frozenset({"Findings", "Mutation", "Property tests", "Fuzzing"})
+# Workflows that keep an issue of their own about their failures; a workflow of the
+# project says so in a comment line of its own, `# bot-health: own-issue`. The daily
+# look still starts one whose schedule GitHub missed or switched off.
+OWN_ISSUE = frozenset({"Diagrams", "Newest Node", "Newest Python", "Next runner"})
+OWN_ISSUE_LINE = re.compile(r"^[ \t]*#[ \t]*bot-health:[ \t]*own-issue\b", re.MULTILINE)
+# The runs that do what a schedule does. A push may start the same workflow, but its
+# run may leave out what only the schedule does, such as the tests of the coming
+# release, so it doesn't count as the run of a schedule.
+SCHEDULED = frozenset({"schedule", "workflow_dispatch"})
+# A check that main runs only each week, not after a push, because a pull request
+# reaches main only when it passes the check. Its failure at a commit that main has left
+# says nothing about main any more: mostly the pull request of the fix bot left it.
+CHECKED_BEFORE_THE_MERGE = frozenset({"Lint"})
+# The runs of a workflow that one request lists, the newest first.
+PAGE = 50
+# A failure that ended this recently may still get its second try from the run that
+# its end started; the daily look leaves it to that run.
+SECOND_TRY_TIME = timedelta(hours=1)
+# GitHub starts a scheduled run hours late at times; a time of a schedule counts as
+# missed only when this much time has passed since.
+LATE = timedelta(hours=6)
+# The daily look starts at most this many workflows whose schedule GitHub missed, so
+# that it doesn't take the runners of the account from the pull requests.
+MOST_STARTS = 4
+# The failed jobs that an issue lists, and the length of a line from a log.
+MOST_JOBS = 10
+LONGEST = 200
+# The issue with Renovate's problems closes after this many runs in a row without one.
+QUIET_RUNS = 3
+RENOVATE = "renovate"
+RENOVATE_TITLE = "Renovate logs problems"
+RENOVATE_LABEL = "dependencies"
+MOST_PROBLEMS = 50
+
+# The state of an issue, in its body, where only the raw text shows it.
+MARKER = re.compile(r"<!-- bot-health (\{.*?\}) -->")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# The annotation that every failed step gets; another one says more.
+GENERIC = re.compile(r"Process completed with exit code \d+\.")
+REPOSITORY = re.compile(r"[\w.-]+/[\w.-]+")
+# One item of the list on.schedule of a workflow, such as - cron: "17 4 * * 3", with
+# or without quotes and with a comment after it; no other key of a workflow is cron.
+CRON = re.compile(
+    r"""^[ \t]*-[ \t]+cron:[ \t]*["']?([^"'#\n]*?)["']?[ \t\r]*(?:#.*)?$""", re.M
+)
+DISPATCH = re.compile(r"^  workflow_dispatch:.*\n((?:(?: {4}.*)?\n)*)", re.MULTILINE)
+# The events of a workflow, under on: or after it on its line, and the workflows whose
+# end starts it, listed after workflows: or below it.
+ON_BLOCK = re.compile(r"^on:[ \t]*\n((?:(?:[ \t].*)?\n)*)", re.MULTILINE)
+ON_LINE = re.compile(r"^on:[ \t]*\[?([\w, -]+?)\]?[ \t]*$", re.MULTILINE)
+EVENT = re.compile(r"^  ([\w-]+):", re.MULTILINE)
+AFTER = re.compile(r"^  workflow_run:.*\n((?:(?: {4}.*)?\n)*)", re.MULTILINE)
+AFTER_NAMES = re.compile(
+    r"^ {4}workflows:[ \t]*(?:\[([^\]\n]*)\]|\n((?: {6,}- .*\n)+))", re.MULTILINE
+)
+EVENTS = {
+    "schedule": "its schedule",
+    "push": "a push",
+    "workflow_dispatch": "hand",
+    "workflow_run": "the end of another workflow",
+    "release": "a published release",
+}
+
+
+def code(text: str) -> str:
+    """A line from a log or a name as Markdown code that fits into a cell of a table:
+    the first line that isn't empty, without control characters, backticks or bare
+    pipes, and shortened; nothing for an empty text."""
+    line = next((part.strip() for part in text.splitlines() if part.strip()), "")
+    line = CONTROL.sub(" ", line).replace("`", "'")
+    if len(line) > LONGEST:
+        line = line[: LONGEST - 1] + "…"
+    escaped = line.replace("|", "\\|")
+    return f"`{escaped}`" if line else ""
+
+
+def marker(state: Mapping[str, Any]) -> str:
+    # Two hyphens would end the comment; JSON reads the escaped one as a hyphen.
+    text = json.dumps(state, sort_keys=True).replace("--", "-\\u002d")
+    return f"<!-- bot-health {text} -->"
+
+
+def moment(when: datetime) -> str:
+    return when.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def default_branch(api: Api, repo: str) -> str:
+    data = api.get(f"repos/{repo}")
+    if not isinstance(data, dict):
+        raise GitHubError(404, f"GitHub doesn't know the repository {repo}")
+    return str(data["default_branch"])
+
+
+@dataclass(frozen=True)
+class Run:
+    """A run of a workflow, in its latest attempt."""
+
+    id: int
+    name: str
+    path: str
+    event: str
+    branch: str
+    head: str
+    sha: str
+    status: str
+    conclusion: str
+    attempt: int
+    url: str
+    created: datetime
+    updated: datetime
+
+    @classmethod
+    def of(cls, data: Json) -> Run:
+        return cls(
+            id=int(data["id"]),
+            name=str(data["name"]),
+            # A path may name the ref of the workflow after an @.
+            path=str(data["path"]).split("@", 1)[0],
+            event=str(data["event"]),
+            branch=str(data.get("head_branch") or ""),
+            head=str((data.get("head_repository") or {}).get("full_name") or ""),
+            sha=str(data.get("head_sha") or ""),
+            status=str(data["status"]),
+            conclusion=str(data.get("conclusion") or ""),
+            attempt=int(data.get("run_attempt") or 1),
+            url=str(data["html_url"]),
+            created=datetime.fromisoformat(data["created_at"]),
+            updated=datetime.fromisoformat(data["updated_at"]),
+        )
+
+    def of_branch(self, repo: str, branch: str) -> bool:
+        """Whether the run is one of the default branch, not one of a pull request."""
+        return (
+            self.event not in PULL_REQUESTS
+            and self.branch == branch
+            and self.head == repo
+        )
+
+    @property
+    def key(self) -> str:
+        """What its issue is about: the workflow, or for the verification of a published
+        release that release. The weekly run checks the latest release only, so its pass
+        says nothing about a prerelease that fails, and an issue of its own notifies
+        where an update of the issue of the workflow would not."""
+        return f"{self.path}@{self.branch}" if self.event == "release" else self.path
+
+    def verifies_a_published_release(self, repo: str) -> bool:
+        """Whether the run is the verification that a release starts when someone
+        publishes it outside the release workflow."""
+        return (
+            self.event == "release" and self.name == VERIFICATION and self.head == repo
+        )
+
+    def deserves_second_try(self) -> bool:
+        return (
+            self.attempt == 1
+            and self.conclusion != "startup_failure"
+            and self.name not in ONE_TRY
+        )
+
+    def link(self) -> str:
+        return f"[the run of {moment(self.created)}]({self.url})"
+
+
+@dataclass(frozen=True)
+class Issue:
+    """An open issue of the bot, with the state in its body."""
+
+    number: int
+    body: str
+    state: dict[str, Any]
+
+
+def open_issues(api: Api, repo: str) -> dict[str, Issue]:
+    """The open issues of the bot by the key in their state: the path of a workflow,
+    with the tag of a published release for its verification, or renovate. Where a key has several, because two runs of the bot opened one each
+    at the same moment, the newest one stays and the older ones close."""
+    found: dict[str, Issue] = {}
+    listed = api.get(f"repos/{repo}/issues?labels={LABEL}&state=open&per_page=100")
+    for item in listed or []:
+        body = str(item.get("body") or "")
+        match = MARKER.search(body)
+        if "pull_request" in item or not match:
+            continue
+        try:
+            state = json.loads(match[1])
+        except ValueError:
+            continue
+        key = state.get("key")
+        if not isinstance(key, str):
+            continue
+        number = int(item["number"])
+        if key in found:
+            close_issue(
+                api,
+                repo,
+                number,
+                f"Continued in #{found[key].number}.",
+                reason="not_planned",
+            )
+        else:
+            found[key] = Issue(number, body, state)
+    return found
+
+
+def open_issue(
+    api: Api, repo: str, title: str, body: str, labels: Iterable[str]
+) -> int:
+    # The label of a repository whose .github/labels.toml, its own, lacks it.
+    if not api.exists(f"repos/{repo}/labels/{LABEL}"):
+        try:
+            api.post(
+                f"repos/{repo}/labels",
+                {"name": LABEL, "color": LABEL_COLOR, "description": LABEL_DESCRIPTION},
+            )
+        except GitHubError as error:
+            # The run for another workflow created it a moment ago.
+            if error.status != 422:
+                raise
+    response = api.request(
+        "POST",
+        f"repos/{repo}/issues",
+        {"title": title, "body": body, "labels": [LABEL, *labels]},
+    )
+    return int(response.data["number"])
+
+
+def close_issue(
+    api: Api, repo: str, number: int, comment: str, *, reason: str = "completed"
+) -> None:
+    api.post(f"repos/{repo}/issues/{number}/comments", {"body": comment})
+    api.patch(
+        f"repos/{repo}/issues/{number}",
+        {"state": "closed", "state_reason": reason},
+    )
+
+
+# ---------------------------------------------------------------- failures of runs
+
+
+@dataclass(frozen=True)
+class Failure:
+    """A failed job of a run: where it failed, and the first error that it names."""
+
+    job: str
+    url: str
+    step: str
+    error: str
+
+
+def annotations_of(api: Api, repo: str, job: int) -> list[Json]:
+    try:
+        return api.get(f"repos/{repo}/check-runs/{job}/annotations?per_page=50") or []
+    except GitHubError:
+        return []
+
+
+def first_error(api: Api, repo: str, job: int) -> str:
+    errors = [
+        str(annotation.get("message") or "")
+        for annotation in annotations_of(api, repo, job)
+        if annotation.get("annotation_level") == "failure"
+    ]
+    telling = [error for error in errors if not GENERIC.fullmatch(error.strip())]
+    return (telling or errors or [""])[0]
+
+
+def failures(api: Api, repo: str, run: Run) -> list[Failure]:
+    if run.conclusion == "startup_failure":
+        return []
+    data = api.get(
+        f"repos/{repo}/actions/runs/{run.id}/attempts/{run.attempt}/jobs?per_page=100"
+    )
+    jobs = (data or {}).get("jobs", [])
+    # The jobs that a failure cancelled say nothing, unless only they ended badly.
+    failed = [job for job in jobs if job.get("conclusion") in ("failure", "timed_out")]
+    failed = failed or [job for job in jobs if job.get("conclusion") == "cancelled"]
+    found = []
+    for job in failed[:MOST_JOBS]:
+        steps = [
+            str(step["name"])
+            for step in job.get("steps") or []
+            if step.get("conclusion") in ("failure", "timed_out", "cancelled")
+        ]
+        found.append(
+            Failure(
+                job=str(job["name"]),
+                url=str(job["html_url"]),
+                step=steps[0] if steps else "",
+                error=first_error(api, repo, int(job["id"])),
+            )
+        )
+    return found
+
+
+def where(run: Run, found: list[Failure]) -> str:
+    """A short mark of the places of a failure, to notice when they change."""
+    places = sorted(f"{failure.job}\n{failure.step}" for failure in found)
+    text = "\n\n".join(places) if found else run.conclusion
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+def failure_table(run: Run, found: list[Failure]) -> str:
+    if run.conclusion == "startup_failure":
+        return (
+            "GitHub couldn't start the run: its workflow file is invalid, or it asks "
+            "for more than the repository allows. The page of the run says which."
+        )
+    if not found:
+        return "The run names no failed job; its page says why it failed."
+    lines = ["| Job | Step that failed | First error |", "| --- | --- | --- |"]
+    for failure in found:
+        lines.append(
+            f"| [{code(failure.job)}]({failure.url}) | {code(failure.step)} "
+            f"| {code(failure.error)} |"
+        )
+    return "\n".join(lines)
+
+
+def published_note(run: Run, tag: str) -> str:
+    """What the issue about a published release adds: no other run closes it."""
+    if run.event != "release":
+        return ""
+    return (
+        f" Only a run for `{tag}` closes this issue: if the release shouldn't stand, "
+        "take it down and close the issue by hand."
+    )
+
+
+def failure_body(run: Run, branch: str, found: list[Failure], state: Json) -> str:
+    started = EVENTS.get(run.event, f"the event {run.event}")
+    failed = state["failed"]
+    runs = "1 failed run" if failed == 1 else f"{failed} failed runs"
+    return (
+        f"{marker(state)}\n"
+        f"The workflow **{run.name}** fails on `{branch}` since {state['since']}, "
+        f"{runs} so far. GitHub mails such a failure only to whoever started the run "
+        "or last changed its schedule, often a bot, so this issue stays open until a "
+        "run passes again; the bot-health bot closes it then.\n\n"
+        f"**The latest failure:** {run.link()}, attempt {run.attempt}, started by "
+        f"{started}.\n\n"
+        f"{failure_table(run, found)}\n\n"
+        "Fix what the error names, or run the workflow again under "
+        f"*Actions → {run.name}* when GitHub was at fault. A failure in another job "
+        f"or step adds a comment here.{published_note(run, branch)}\n"
+    )
+
+
+def report(api: Api, repo: str, branch: str, run: Run, issue: Issue | None) -> str:
+    if (
+        issue is not None
+        and issue.state.get("run") == run.id
+        and issue.state.get("attempt") == run.attempt
+    ):
+        return f"fails: #{issue.number} has this run"
+    found = failures(api, repo, run)
+    place = where(run, found)
+    if issue is None:
+        state = {
+            "key": run.key,
+            "run": run.id,
+            "attempt": run.attempt,
+            "failed": 1,
+            "where": place,
+            "since": run.created.date().isoformat(),
+        }
+        number = open_issue(
+            api,
+            repo,
+            f"{run.name} fails on {branch}",
+            failure_body(run, branch, found, state),
+            [TYPE],
+        )
+        return f"fails: opened #{number}"
+    state = {
+        **issue.state,
+        "run": run.id,
+        "attempt": run.attempt,
+        "failed": int(issue.state.get("failed") or 0) + 1,
+        "where": place,
+    }
+    state.setdefault("since", run.created.date().isoformat())
+    api.patch(
+        f"repos/{repo}/issues/{issue.number}",
+        {"body": failure_body(run, branch, found, state)},
+    )
+    if issue.state.get("where") == place:
+        return f"fails again: updated #{issue.number}"
+    api.post(
+        f"repos/{repo}/issues/{issue.number}/comments",
+        {
+            "body": f"It now fails in another place, in {run.link()}:\n\n"
+            f"{failure_table(run, found)}\n"
+        },
+    )
+    return f"fails in another place: updated #{issue.number}"
+
+
+def ran_out_of_time(api: Api, repo: str, run: Run) -> bool:
+    """Whether GitHub cancelled a job of the run at its time limit, as it says on the
+    job, and not a person or a newer run."""
+    data = api.get(
+        f"repos/{repo}/actions/runs/{run.id}/attempts/{run.attempt}/jobs?per_page=100"
+    )
+    return any(
+        OUT_OF_TIME in str(annotation.get("message"))
+        for job in (data or {}).get("jobs", [])
+        if job.get("conclusion") == "cancelled"
+        for annotation in annotations_of(api, repo, int(job["id"]))
+    )
+
+
+def run_again(api: Api, repo: str, run: Run) -> str | None:
+    """Runs the failed jobs once more; None when GitHub refuses and no one else did."""
+    try:
+        api.post(f"repos/{repo}/actions/runs/{run.id}/rerun-failed-jobs", {})
+    except GitHubError:
+        # Another bot, such as the one after the checks, may have been quicker.
+        latest = api.get(f"repos/{repo}/actions/runs/{run.id}") or {}
+        newer = int(latest.get("run_attempt") or 1) > run.attempt
+        if newer or latest.get("status") != "completed":
+            return "failed: another bot runs it again"
+        return None
+    return "failed: runs the failed jobs once more"
+
+
+def look_at(
+    api: Api,
+    repo: str,
+    branch: str,
+    run: Run,
+    issues: Mapping[str, Issue],
+    now: datetime,
+    *,
+    second_try: bool,
+) -> str:
+    """What a finished run of the default branch means for its issue. With second_try,
+    a first failure that a second try can fix runs again instead; without it, as in
+    the daily look, such a failure is reported once it is too old for its second try."""
+    issue = issues.get(run.key)
+    if run.conclusion == PASSED:
+        if issue is None:
+            return "passes"
+        # The end of an older run may come after that of the failure: ids only grow.
+        if run.id < int(issue.state.get("run") or 0):
+            return f"passes, in a run older than the failure of #{issue.number}"
+        failed = int(issue.state.get("failed") or 0)
+        runs = "1 failed run" if failed == 1 else f"{failed} failed runs"
+        close_issue(
+            api,
+            repo,
+            issue.number,
+            f"Passes again in {run.link()}, after {runs}.",
+        )
+        return f"passes again: closed #{issue.number}"
+    # A job that hangs until its time limit, as one behind Harden-Runner can, even after
+    # its last step, ends as cancelled; it failed like one that GitHub calls timed out.
+    if run.conclusion == "cancelled" and ran_out_of_time(api, repo, run):
+        run = replace(run, conclusion="timed_out")
+    if run.conclusion not in FAILED:
+        return f"ended as {run.conclusion or run.status}: no failure"
+    note = ""
+    if run.deserves_second_try():
+        if second_try:
+            tried = run_again(api, repo, run)
+            if tried is not None:
+                return tried
+            note = " (GitHub refused to run it again)"
+        elif now - run.updated < SECOND_TRY_TIME:
+            return "failed: its second try may still come"
+    return report(api, repo, branch, run, issue) + note
+
+
+def watch_run(api: Api, repo: str, run_id: int, now: datetime) -> str:
+    """The end of a run of a watched workflow, as the event of GitHub reports it."""
+    data = api.get(f"repos/{repo}/actions/runs/{run_id}")
+    if data is None:
+        return f"GitHub doesn't know the run {run_id}."
+    run = Run.of(data)
+    branch = default_branch(api, repo)
+    published = run.verifies_a_published_release(repo)
+    if not (run.of_branch(repo, branch) or published):
+        return f"{run.name}: not a run of `{branch}`, nothing to do."
+    if run.status != "completed":
+        return f"{run.name}: runs again, its next end counts."
+    issues = open_issues(api, repo)
+    ref = run.branch if published else branch
+    return f"{run.name}: {look_at(api, repo, ref, run, issues, now, second_try=True)}."
+
+
+# ---------------------------------------------------------------- the daily look
+
+# The days that the time of a schedule may lie back: every cron comes round within
+# a year, but that of a February 29th.
+LOOKBACK = 366
+MONTHS = (
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+)
+WEEKDAYS = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+# The five fields of a cron, each with its lowest and highest value and the names of
+# its values from the lowest on: the minute, the hour, the day of the month, the month
+# and the day of the week, in which 0 and 7 are Sunday.
+FIELDS: tuple[tuple[int, int, tuple[str, ...]], ...] = (
+    (0, 59, ()),
+    (0, 23, ()),
+    (1, 31, ()),
+    (1, 12, MONTHS),
+    (0, 7, WEEKDAYS),
+)
+
+
+def field_values(
+    text: str, low: int, high: int, names: Sequence[str]
+) -> frozenset[int]:
+    """The values of one field of a cron, from low to high: a list of values, ranges
+    such as 1-5 and steps such as */15, 10-50/20 or 5/15, from 5 to high, of numbers
+    or of names, such as MON or JAN. ValueError for anything else."""
+
+    def value(item: str) -> int:
+        named = item.upper()
+        if named in names:
+            return low + names.index(named)
+        if not (item.isascii() and item.isdigit()):
+            raise ValueError(f"{item!r} is no number")
+        return int(item)
+
+    found: set[int] = set()
+    for part in text.split(","):
+        span, slash, every = part.partition("/")
+        step = int(every) if slash else 1
+        if span == "*":
+            first, last = low, high
+        else:
+            start, dash, end = span.partition("-")
+            first = value(start)
+            last = value(end) if dash else high if slash else first
+        if step < 1 or not low <= first <= last <= high:
+            raise ValueError(f"{part!r} is no value from {low} to {high}")
+        found.update(range(first, last + 1, step))
+    return frozenset(found)
+
+
+@dataclass(frozen=True)
+class Cron:
+    """A schedule of a workflow as GitHub reads its cron, in UTC: the minutes, hours,
+    days of the month, months and days of the week, 0 for Sunday, at which it is due.
+    As in cron, a day is due when both kinds of day match it, or either of them where
+    both fields are limited: a field that starts with * limits nothing."""
+
+    minutes: frozenset[int]
+    hours: frozenset[int]
+    days: frozenset[int]
+    months: frozenset[int]
+    weekdays: frozenset[int]
+    either: bool
+
+    @classmethod
+    def parse(cls, text: str) -> Cron | None:
+        """The schedule of a cron such as "17 4 * * 3", or None for one that cron
+        can't read, which GitHub doesn't run either."""
+        fields = text.split()
+        if len(fields) != len(FIELDS):
+            return None
+        try:
+            minutes, hours, days, months, weekdays = (
+                field_values(found, *limits)
+                for found, limits in zip(fields, FIELDS, strict=True)
+            )
+        except ValueError:
+            return None
+        return cls(
+            minutes,
+            hours,
+            days,
+            months,
+            frozenset(weekday % 7 for weekday in weekdays),
+            not fields[2].startswith("*") and not fields[4].startswith("*"),
+        )
+
+    def runs_on(self, day: date) -> bool:
+        if day.month not in self.months:
+            return False
+        of_month = day.day in self.days
+        of_week = day.isoweekday() % 7 in self.weekdays
+        return (of_month or of_week) if self.either else (of_month and of_week)
+
+    def last(self, moment: datetime) -> datetime | None:
+        """The last time at which the schedule was due, at moment or before it, to the
+        minute: None when it wasn't within LOOKBACK days."""
+        for back in range(LOOKBACK + 1):
+            day = moment.date() - timedelta(days=back)
+            if not self.runs_on(day):
+                continue
+            for hour in sorted(self.hours, reverse=True):
+                if back == 0 and hour > moment.hour:
+                    continue
+                latest = moment.minute if back == 0 and hour == moment.hour else 59
+                minutes = [minute for minute in self.minutes if minute <= latest]
+                if minutes:
+                    return datetime.combine(day, time(hour, max(minutes)), UTC)
+        return None
+
+
+def dispatch_inputs(text: str) -> dict[str, str] | None:
+    """The inputs that start a workflow by hand as its schedule does, or None when it
+    can't be started by hand. Findings and Issue lifecycle only show what they would
+    do when started by hand, unless dry_run is false."""
+    found = DISPATCH.search(text)
+    if found is None:
+        return None
+    return {"dry_run": "false"} if re.search(r"^ {6}dry_run:", found[1], re.M) else {}
+
+
+def missed_time(text: str, now: datetime) -> tuple[datetime | None, bool]:
+    """The latest time of the schedules of a workflow that is late enough to have run
+    by now, and whether every schedule could be read."""
+    crons = [Cron.parse(line) for line in CRON.findall(text)]
+    times = [
+        time
+        for cron in crons
+        if cron is not None
+        for time in [cron.last(now - LATE)]
+        if time is not None
+    ]
+    return max(times, default=None), None not in crons
+
+
+def events_of(text: str) -> frozenset[str]:
+    """The events that start a workflow, from its on: in either form."""
+    block = ON_BLOCK.search(text)
+    if block is not None:
+        return frozenset(EVENT.findall(block[1]))
+    line = ON_LINE.search(text)
+    names = line[1].split(",") if line else []
+    return frozenset(name.strip() for name in names) - {""}
+
+
+def started_after(text: str) -> frozenset[str] | None:
+    """The workflows whose end starts this one: none without workflow_run, and None
+    when its list can't be read."""
+    block = AFTER.search(text)
+    if block is None:
+        return frozenset()
+    listed = AFTER_NAMES.search(block[1])
+    if listed is None:
+        return None
+    if listed[1] is not None:
+        names = listed[1].split(",")
+    else:
+        names = [line.strip().removeprefix("- ") for line in listed[2].splitlines()]
+    return frozenset(name.strip().strip("\"'") for name in names) - {""}
+
+
+def after_pull_requests(texts: Iterable[tuple[str, str]]) -> frozenset[str]:
+    """The names of the workflows, from their names and texts, that the end of a run
+    for a pull request starts as well, such as After the checks. GitHub gives such a
+    run the default branch and its latest commit, and only its jobs know that it was
+    for a pull request, so the daily look counts their other runs alone."""
+    texts = list(texts)
+    of_pull_requests = {name for name, text in texts if events_of(text) & PULL_REQUESTS}
+    found: set[str] = set()
+    grows = True
+    while grows:
+        grows = False
+        for name, text in texts:
+            after = started_after(text)
+            if name not in found and (after is None or after & of_pull_requests):
+                found.add(name)
+                of_pull_requests.add(name)
+                grows = True
+    return frozenset(found)
+
+
+def own_issue(text: str) -> bool:
+    """Whether the text of a workflow says that it keeps an issue of its own."""
+    return OWN_ISSUE_LINE.search(text) is not None
+
+
+def leave_to_its_own(
+    api: Api, repo: str, workflow: Json, issues: Mapping[str, Issue]
+) -> str:
+    """What the daily look does for a workflow that keeps an issue of its own: the
+    issue that the bot opened for it before it said so closes, as continued there."""
+    issue = issues.get(str(workflow["path"]))
+    if issue is None:
+        return "keeps an issue of its own"
+    close_issue(
+        api,
+        repo,
+        issue.number,
+        f"{code(str(workflow['name']))} keeps an issue of its own about its failures "
+        "now, so this one closes.",
+        reason="not_planned",
+    )
+    return f"keeps an issue of its own: closed #{issue.number}"
+
+
+def runs_of(
+    api: Api, repo: str, branch: str, workflow: Json, *, event: str = "", most: int
+) -> list[Run]:
+    """A page of the runs of a workflow on the branch, the newest first; with event,
+    only those that it started. GitHub lists the runs of a pull request from a branch
+    of the same name too, such as main of a fork."""
+    of_event = f"&event={event}" if event else ""
+    listed = api.get(
+        f"repos/{repo}/actions/workflows/{workflow['id']}/runs"
+        f"?branch={urllib.parse.quote(branch)}{of_event}"
+        f"&exclude_pull_requests=true&per_page={most}"
+    )
+    return [Run.of(item) for item in (listed or {}).get("workflow_runs", [])]
+
+
+def left_behind(api: Api, repo: str, branch: str, run: Run) -> bool:
+    """Whether the run is a failure of a check of CHECKED_BEFORE_THE_MERGE at a commit
+    that the branch has left."""
+    if run.name not in CHECKED_BEFORE_THE_MERGE or run.conclusion == PASSED:
+        return False
+    ref = api.get(f"repos/{repo}/git/ref/heads/{branch}") or {}
+    return str((ref.get("object") or {}).get("sha") or run.sha) != run.sha
+
+
+def scheduled_since(runs: Iterable[Run], repo: str, branch: str, due: datetime) -> bool:
+    """Whether one of the runs is one of the branch that its schedule or a hand
+    started, as the daily look starts one, at the time due or after it."""
+    return any(
+        run.of_branch(repo, branch) and run.event in SCHEDULED and run.created >= due
+        for run in runs
+    )
+
+
+def ran_as_scheduled(
+    api: Api,
+    repo: str,
+    branch: str,
+    workflow: Json,
+    listed: Sequence[Run],
+    due: datetime,
+) -> bool:
+    """Whether the schedule's work ran since the time due. Where a full page of runs,
+    listed, all began after it, GitHub names the latest run of each such event too."""
+    if scheduled_since(listed, repo, branch, due):
+        return True
+    if len(listed) < PAGE or min(run.created for run in listed) < due:
+        return False
+    return any(
+        scheduled_since(
+            runs_of(api, repo, branch, workflow, event=event, most=1), repo, branch, due
+        )
+        for event in sorted(SCHEDULED)
+    )
+
+
+def look_after(
+    api: Api,
+    repo: str,
+    branch: str,
+    workflow: Json,
+    issues: Mapping[str, Issue],
+    text: str,
+    now: datetime,
+    *,
+    start: bool,
+    after_checks: bool,
+    own: bool,
+) -> tuple[str, bool]:
+    """What the daily look does for one workflow, and whether it started it. With
+    after_checks, a run that the end of another workflow started doesn't count. With
+    own, the workflow keeps an issue of its own: its runs open and close none here,
+    and only an issue of the bot from before it said so closes."""
+    listed = runs_of(api, repo, branch, workflow, most=PAGE)
+    runs = [run for run in listed if run.of_branch(repo, branch)]
+    finished = next(
+        (
+            run
+            for run in runs
+            if run.status == "completed"
+            and (run.conclusion == PASSED or run.conclusion in FAILED)
+            and not (after_checks and run.event == "workflow_run")
+        ),
+        None,
+    )
+    notes = []
+    waits = False
+    if own:
+        notes.append(leave_to_its_own(api, repo, workflow, issues))
+    elif finished is None:
+        notes.append(f"no finished run on `{branch}`")
+    elif left_behind(api, repo, branch, finished):
+        notes.append(f"failed at {finished.sha[:7]}, which `{branch}` has left")
+        # Only a run of the branch closes its issue, and without an issue the next
+        # weekly run is soon enough.
+        waits = finished.key in issues
+    else:
+        # Nothing else starts the second try of Lint: after the checks leaves it out,
+        # and bot health doesn't watch its end.
+        second_try = finished.name in CHECKED_BEFORE_THE_MERGE
+        notes.append(
+            look_at(api, repo, branch, finished, issues, now, second_try=second_try)
+        )
+    if workflow["state"] == "disabled_inactivity":
+        api.put(f"repos/{repo}/actions/workflows/{workflow['id']}/enable")
+        notes.append("GitHub had switched it off for inactivity: on again")
+    due, readable = missed_time(text, now)
+    if not readable:
+        notes.append("a schedule that can't be read")
+    started = False
+    reason = f"its issue waits for a run of the head of `{branch}`" if waits else ""
+    if due is not None and not ran_as_scheduled(
+        api, repo, branch, workflow, listed, due
+    ):
+        reason = f"missed its run of {moment(due)}"
+    if reason:
+        inputs = dispatch_inputs(text)
+        if inputs is None:
+            notes.append(f"{reason}, and can't be started by hand")
+        elif not start:
+            notes.append(f"{reason}: starts in a later look, {MOST_STARTS} a day")
+        else:
+            api.post(
+                f"repos/{repo}/actions/workflows/{workflow['id']}/dispatches",
+                {"ref": branch, "inputs": inputs},
+            )
+            notes.append(f"{reason}: started")
+            started = True
+    return "; ".join(notes), started
+
+
+def sweep(api: Api, repo: str, root: Path, now: datetime) -> tuple[str, bool]:
+    """The daily look at every workflow of the repository; a summary in Markdown, and
+    whether every look succeeded."""
+    branch = default_branch(api, repo)
+    issues = open_issues(api, repo)
+    listed = api.get(f"repos/{repo}/actions/workflows?per_page=100")
+    workflows = sorted(
+        (listed or {}).get("workflows", []), key=lambda item: str(item["name"]).lower()
+    )
+    lines = [
+        "### Bot health",
+        "",
+        f"The latest finished run of every workflow on `{branch}`, and the schedules "
+        "that GitHub missed.",
+        "",
+        "| Workflow | State |",
+        "| --- | --- |",
+    ]
+    texts = {
+        str(workflow["path"]): path.read_text(encoding="utf-8")
+        if path.is_file()
+        else ""
+        for workflow in workflows
+        for path in [root / str(workflow["path"])]
+    }
+    after_checks = after_pull_requests(
+        (str(workflow["name"]), texts[str(workflow["path"])]) for workflow in workflows
+    )
+    starts = 0
+    healthy = True
+    for workflow in workflows:
+        name = str(workflow["name"])
+        if str(workflow["path"]).startswith("dynamic/") or workflow["state"] not in (
+            "active",
+            "disabled_inactivity",
+        ):
+            continue
+        text = texts[str(workflow["path"])]
+        try:
+            state, started = look_after(
+                api,
+                repo,
+                branch,
+                workflow,
+                issues,
+                text,
+                now,
+                start=starts < MOST_STARTS,
+                after_checks=name in after_checks,
+                own=name in OWN_ISSUE or own_issue(text),
+            )
+        except GitHubError as error:
+            state, started, healthy = f"couldn't look: {code(str(error))}", False, False
+        starts += started
+        lines.append(f"| {code(name)} | {state} |")
+    return "\n".join(lines) + "\n", healthy
+
+
+# ---------------------------------------------------------------- Renovate
+
+
+@dataclass(frozen=True, order=True)
+class Problem:
+    """A warning or an error in the log of Renovate."""
+
+    repository: str
+    level: str
+    message: str
+    place: str
+    detail: str
+
+
+def problem_of(entry: Mapping[str, Any]) -> Problem:
+    error = entry.get("err")
+    detail = ""
+    if isinstance(error, dict):
+        detail = str(error.get("message") or "")
+    place = next(
+        (
+            str(entry[key])
+            for key in ("packageFile", "lockFile", "depName", "branch")
+            if entry.get(key)
+        ),
+        "",
+    )
+    return Problem(
+        repository=str(entry.get("repository") or ""),
+        level="WARN" if entry["level"] < 50 else "ERROR",
+        message=str(entry.get("msg") or ""),
+        place=place,
+        detail=detail,
+    )
+
+
+def renovate_problems(lines: Iterable[str]) -> dict[Problem, int]:
+    """The warnings and errors of Renovate's log in JSON, each with how often it came."""
+    problems: dict[Problem, int] = {}
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        level = entry.get("level")
+        if not isinstance(level, int) or level < 40:
+            continue
+        problem = problem_of(entry)
+        problems[problem] = problems.get(problem, 0) + 1
+    return problems
+
+
+def is_public(api: Api, name: str, known: dict[str, bool]) -> bool:
+    """Whether a repository is public; an issue of the blueprint names no other."""
+    if name not in known:
+        data = None
+        if REPOSITORY.fullmatch(name):
+            try:
+                data = api.get(f"repos/{name}")
+            except GitHubError:
+                data = None
+        known[name] = isinstance(data, dict) and data.get("private") is False
+    return known[name]
+
+
+def problems_text(problems: Mapping[Problem, int], hidden: int, run: str) -> str:
+    lines = [
+        f"Renovate logged warnings or errors in [its run]({run}). Each can mean that a "
+        "dependency gets no update, as when it skipped two lock files for days with "
+        "no more than a warning. This issue lists those of the latest run with "
+        f"problems and closes after {QUIET_RUNS} runs in a row without one."
+    ]
+    by_repository: dict[str, list[tuple[Problem, int]]] = {}
+    for problem, count in sorted(problems.items())[:MOST_PROBLEMS]:
+        by_repository.setdefault(problem.repository, []).append((problem, count))
+    for repository, items in by_repository.items():
+        lines += [
+            "",
+            f"### {repository or 'Renovate itself'}",
+            "",
+            "| Level | Message | Where | Detail | Times |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for problem, count in items:
+            lines.append(
+                f"| {problem.level} | {code(problem.message)} | {code(problem.place)} "
+                f"| {code(problem.detail)} | {count} |"
+            )
+    if len(problems) > MOST_PROBLEMS:
+        lines += [
+            "",
+            f"And {len(problems) - MOST_PROBLEMS} more in the log of the run.",
+        ]
+    if hidden:
+        lines += [
+            "",
+            f"{hidden} more in private repositories, which a public issue doesn't name.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def renovate_report(
+    api: Api, repo: str, logs: Iterable[Path], run: str, *, complete: bool = True
+) -> str:
+    """Keeps the one issue with Renovate's problems current from the logs of a run, one
+    for each repository where the blueprint runs Renovate for several. A run that isn't
+    complete missed a repository, which may be the one with the problems, so it doesn't
+    count towards closing the issue."""
+    written = [log for log in logs if log.is_file()]
+    if not written:
+        return "Renovate wrote no log of problems; the issue stays as it is.\n"
+    problems = renovate_problems(
+        line for log in written for line in log.read_text("utf-8").splitlines()
+    )
+    known: dict[str, bool] = {}
+    shown = {
+        problem: count
+        for problem, count in problems.items()
+        if not problem.repository or is_public(api, problem.repository, known)
+    }
+    hidden = sum(problems.values()) - sum(shown.values())
+    issue = open_issues(api, repo).get(RENOVATE)
+    if not problems:
+        if issue is None:
+            return "Renovate logged no warning and no error.\n"
+        if not complete:
+            return (
+                "Renovate logged no problem, but not every repository finished; "
+                f"#{issue.number} stays as it is.\n"
+            )
+        quiet = int(issue.state.get("quiet") or 0) + 1
+        if quiet >= QUIET_RUNS:
+            close_issue(
+                api,
+                repo,
+                issue.number,
+                f"Renovate logged no problem in {quiet} runs in a row, the latest "
+                f"[this one]({run}).",
+            )
+            return f"Renovate logged no problem: closed #{issue.number}.\n"
+        state = {**issue.state, "quiet": quiet}
+        api.patch(
+            f"repos/{repo}/issues/{issue.number}",
+            {"body": MARKER.sub(lambda _: marker(state), issue.body, count=1)},
+        )
+        return (
+            f"Renovate logged no problem; #{issue.number} closes after "
+            f"{QUIET_RUNS - quiet} more runs like this.\n"
+        )
+    text = problems_text(shown, hidden, run)
+    body = f"{marker({'key': RENOVATE, 'quiet': 0})}\n{text}"
+    if issue is None:
+        number = open_issue(api, repo, RENOVATE_TITLE, body, [TYPE, RENOVATE_LABEL])
+        return f"{text}\nOpened #{number}.\n"
+    api.patch(f"repos/{repo}/issues/{issue.number}", {"body": body})
+    return f"{text}\nUpdated #{issue.number}.\n"

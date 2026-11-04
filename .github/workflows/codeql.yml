@@ -1,0 +1,119 @@
+name: CodeQL
+
+# The code analysis of GitHub. CodeQL reads the code of every language of this
+# repository and its workflows with the queries of security-extended, for every pull
+# request, every push to main and every week, and sends what it finds to code
+# scanning, where a new alert of a pull request stops its merge. A private repository
+# without GitHub Code Security has no code scanning: there the settings bot sets the
+# variable CODE_SCANNING to off, and the check passes without an analysis, because the
+# terms of CodeQL allow it on private code only with GitHub Code Security or Advanced
+# Security.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "33 4 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer run for the same pull request, or for a newer push to main, cancels the run
+# still going, which would only tell what the newer one tells; the bot for cancelled
+# checks starts the run of the head again when a late run for an older commit
+# cancelled it. A run on a schedule or by hand is in a group of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+# The GitHub CLI of the jobs sends no telemetry to GitHub.
+env:
+  GH_TELEMETRY: "false"
+
+jobs:
+  # One job for every language, which downloads CodeQL once and takes one runner:
+  # the analyses run one after the other, and each language keeps the category of
+  # its own analysis, /language:<name>, under which code scanning keeps its alerts.
+  codeql:
+    name: codeql
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The terms of CodeQL allow it on the code of a private repository only with a
+      # licence of GitHub Code Security or Advanced Security (decision 0082).
+      - name: Skip the analysis without GitHub Code Security
+        if: vars.CODE_SCANNING == 'off'
+        run: |
+          message="CodeQL doesn't analyze this repository: its terms allow it on private code only with GitHub Code Security or Advanced Security, and CODE_SCANNING is off. zizmor, OSV-Scanner and the linters of check.sh still run."
+          echo "::notice::$message"
+          echo "$message" >> "$GITHUB_STEP_SUMMARY"
+      - name: Initialize the analysis
+        if: vars.CODE_SCANNING != 'off'
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript, actions
+          build-mode: none
+          queries: security-extended
+      - name: Analyze
+        if: vars.CODE_SCANNING != 'off'
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          # The results of each language as <language>.sarif, uploaded below.
+          output: ${{ runner.temp }}/codeql
+          upload: never
+      # Without a category, the results of every language would take the one of the
+      # job, and code scanning would see new analyses, whose alerts open anew. Each
+      # file gets the category that the analysis of its language always had.
+      - name: File the results of each language under its own category
+        if: vars.CODE_SCANNING != 'off'
+        run: |
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/codeql/*.sarif)
+          if ((${#files[@]} == 0)); then
+            echo "::error::CodeQL wrote no results."
+            exit 1
+          fi
+          echo "The categories of the analyses:" >> "$GITHUB_STEP_SUMMARY"
+          for file in "${files[@]}"; do
+            # CodeQL names each file after the extractor; the category keeps the
+            # name of the language as configured, as the analyses always had it.
+            language="$(basename "$file" .sarif)"
+            case "$language" in
+              javascript) language=javascript-typescript ;;
+              java) language=java-kotlin ;;
+              cpp) language=c-cpp ;;
+            esac
+            jq --arg id "/language:$language/" '.runs[].automationDetails = {id: $id}' \
+              "$file" > "$file.json"
+            mv "$file.json" "$file"
+            echo "- $language: \`/language:$language\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Upload the results
+        if: vars.CODE_SCANNING != 'off'
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: ${{ runner.temp }}/codeql
+      # The PR coach: what failed, why it matters and how to fix it, in the summary
+      # of the check and as its annotation, from .github/checks.toml.
+      - name: Explain the failure
+        if: failure()
+        env:
+          CHECK: codeql
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" coach explain "$CHECK"

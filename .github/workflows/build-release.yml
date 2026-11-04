@@ -1,0 +1,664 @@
+name: Build the release
+
+# The build of a release, called by the release workflow only: it packages the
+# release, writes the SBOMs of what it ships, the licenses of its third-party
+# components and the advisories that don't affect it, attests the signed provenance
+# of every asset and attaches all of it to the draft. As a reusable workflow of its own, it is isolated
+# from the rest of the release workflow, and the provenance names it as the build,
+# as SLSA Build Level 3 asks; verify-release.yml checks that. A project that ships
+# something of its own, such as the zip of a browser extension, builds it with its
+# scripts/release-assets.sh, in a job of this workflow that may write nothing, and
+# the release attests and attaches it like every other asset.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag of the release or beta
+        required: true
+        type: string
+      sha:
+        description: The commit that the tag has to point at
+        required: true
+        type: string
+      version:
+        description: Its version
+        required: true
+        type: string
+    secrets:
+      # Only the release of a Nextcloud app passes it. A called workflow sees no secret
+      # that its caller doesn't pass, and the secret of the environment that a called
+      # job enters takes the place of the value passed, which is empty as the caller
+      # enters no environment: the build signs with the key of its environment signing.
+      APP_PRIVATE_KEY:
+        description: The key that signs a Nextcloud app
+        required: false
+
+permissions: {}
+
+# The GitHub CLI of the jobs sends no telemetry to GitHub.
+env:
+  GH_TELEMETRY: "false"
+
+jobs:
+  # The assets of the project's own scripts/release-assets.sh, if it has one. Its code
+  # and its npm packages run here, with a token that may only read, without the
+  # environment release, its secrets and an OIDC token; the job assets attests what
+  # it built with the rest of the release and attaches it to the draft.
+  project-assets:
+    name: assets of the project
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          # GitHub for the checkout, and for Node.js should the runner image lack its
+          # version; npm for the packages of the project. The hosts of the Actions
+          # service keep the artifact for the job assets.
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            nodejs.org:443
+            registry.npmjs.org:443
+            *.actions.githubusercontent.com:443
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            nodejs.org:443
+            registry.npmjs.org:443
+            *.actions.githubusercontent.com:443
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      # The release by its tag, which must stand at the commit of the release: the job
+      # assets attests nothing before it checked that the signed tag points at that commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Check that the tag stands at the commit of the release
+        if: hashFiles('scripts/release-assets.sh') != ''
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          if [[ "$commit" != "$SHA" ]]; then
+            echo "::error::The tag stands at $commit, not at the commit of the release, $SHA."
+            exit 1
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: hashFiles('scripts/release-assets.sh') != '' && hashFiles('package.json') != ''
+        timeout-minutes: 5
+        with:
+          # The Node of .nvmrc, or that of the runner in a project without one.
+          node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+          # No cache in a job whose files the release attests: a poisoned cache could
+          # change them.
+          package-manager-cache: false
+      - name: Build the assets of the project
+        id: build-project-assets
+        if: hashFiles('scripts/release-assets.sh') != ''
+        timeout-minutes: 15
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/project-assets"
+          mkdir -p "$out"
+          # The packages of the lock file, without their install scripts, as the
+          # release of an npm package installs them.
+          if [[ -f package.json ]]; then
+            npm ci --ignore-scripts
+          fi
+          bash scripts/release-assets.sh "$out" "$VERSION"
+          # Each asset is a file of its own at the top of the folder, by a name that
+          # GitHub keeps as it is.
+          shopt -s nullglob dotglob
+          assets=("$out"/*)
+          if ((${#assets[@]} == 0)); then
+            echo "::error::scripts/release-assets.sh wrote no asset into the folder of its first argument."
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            name="${asset##*/}"
+            if [[ ! -f "$asset" || -L "$asset" ]]; then
+              echo "::error::$name is no file; scripts/release-assets.sh writes each asset as a file of its own at the top of the folder."
+              exit 1
+            fi
+            if [[ ! "$name" =~ ^[A-Za-z0-9]([A-Za-z0-9._+-]*[A-Za-z0-9])?$ ]]; then
+              echo "::error::GitHub would rename the asset $name: a name has only letters, digits, '.', '_', '+' and '-', and starts and ends with a letter or a digit."
+              exit 1
+            fi
+            echo "- $name" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Keep the assets of the project for the job assets
+        if: hashFiles('scripts/release-assets.sh') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 5
+        with:
+          name: project-assets
+          path: ${{ runner.temp }}/project-assets
+          if-no-files-found: error
+          # Long enough to re-run only the failed job assets after a weekend.
+          retention-days: 7
+      # The PR coach: what failed, why it matters and how to fix it, in the summary
+      # of the check and as its annotation, from .github/checks.toml. Only for the step
+      # of the script: a tag that moved, say, is no fault of the script, and its own
+      # annotation names it.
+      - name: Explain a failure of the script
+        if: failure() && steps.build-project-assets.outcome == 'failure'
+        env:
+          CHECK: assets of the project
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" coach explain "$CHECK"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always()
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+
+  assets:
+    name: release assets
+    needs: project-assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # No environment and no secret but the token of the job, so that no action of
+    # the build can reach the private key of the release app.
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    env:
+      TAG: ${{ inputs.tag }}
+      PUBLISH_TO: ${{ vars.PUBLISH_TO }}
+      # renovate: datasource=github-releases depName=ChristophWurst/krankerl extractVersion=^v(?<version>.+)$
+      KRANKERL_VERSION: 0.14.0
+      KRANKERL_SHA256: 9bee5a756a83c5a6b1f040e9a2ade9e902e4a57211afc174cd8ac5c4f913958f
+      # renovate: datasource=github-releases depName=nextcloud/server extractVersion=^v(?<version>.+)$
+      NEXTCLOUD_VERSION: 35.0.2
+      NEXTCLOUD_SHA256: 2f1dcec6a7cdab70346e80a823ccaaa2001a6085013d9f2ae0a2606fa38c2835
+      # The syft that writes the SBOMs.
+      # renovate: datasource=github-releases depName=anchore/syft extractVersion=^v(?<version>.+)$
+      SBOM_SYFT_VERSION: 1.55.0
+      SBOM_SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
+    steps:
+      - name: Block every host that the job doesn't need
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: ${{ vars.PUBLISH_TO != 'nextcloud-appstore' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            uploads.github.com:443
+            release-assets.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+            ${{ vars.PUBLISH_TO == 'nextcloud-appstore' && 'raw.githubusercontent.com:443 download.nextcloud.com:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'pypi' && 'raw.githubusercontent.com:443 pypi.org:443 files.pythonhosted.org:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'npm' && 'raw.githubusercontent.com:443 nodejs.org:443 registry.npmjs.org:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'chrome-web-store' && 'raw.githubusercontent.com:443 nodejs.org:443 registry.npmjs.org:443' || '' }}
+      - name: Wait until Harden-Runner lets the hosts through
+        # The runner may have asked for an address past Harden-Runner, which then blocks
+        # that address for as long as systemd-resolved keeps it, up to a minute.
+        timeout-minutes: 4
+        env:
+          HOSTS: >-
+            api.github.com:443
+            github.com:443
+            uploads.github.com:443
+            release-assets.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+            ${{ vars.PUBLISH_TO == 'nextcloud-appstore' && 'raw.githubusercontent.com:443 download.nextcloud.com:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'pypi' && 'raw.githubusercontent.com:443 pypi.org:443 files.pythonhosted.org:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'npm' && 'raw.githubusercontent.com:443 nodejs.org:443 registry.npmjs.org:443' || '' }}
+            ${{ vars.PUBLISH_TO == 'chrome-web-store' && 'raw.githubusercontent.com:443 nodejs.org:443 registry.npmjs.org:443' || '' }}
+        run: |
+          deadline=$(($(date +%s) + 120))
+          for endpoint in $HOSTS; do
+            host="${endpoint%:*}"
+            # A wildcard names no host to ask.
+            [[ "$host" == '*.'* ]] && continue
+            until curl --silent --head --connect-timeout 3 --max-time 5 --output /dev/null "https://$host/"; do
+              if (($(date +%s) >= deadline)); then
+                echo "::warning::Harden-Runner still blocks $host after two minutes; a step that needs it will fail, and the job can run again."
+                break
+              fi
+              echo "Harden-Runner still blocks $host, waiting 3 s."
+              sleep 3
+            done
+          done
+      # Anybody with a token that may push could create the tag of a coming release
+      # first, at a commit of their own. Only a tag that the release workflow signed, at
+      # the commit of the release, is built and signed here. The check is the script of
+      # the commit that runs this workflow, not the one of the tag.
+      - name: Verify the tag before building
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/$GITHUB_REPOSITORY/contents/.github/sign-tag.sh?ref=$GITHUB_SHA" > "$RUNNER_TEMP/sign-tag.sh"
+          bash "$RUNNER_TEMP/sign-tag.sh" verify "$TAG" "$SHA"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - name: Collect the assets in one folder
+        run: |
+          echo "ASSETS=$RUNNER_TEMP/assets" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/assets"
+      # What the job project-assets built from the commit of the tag.
+      - name: Take the assets of the project
+        if: hashFiles('scripts/release-assets.sh') != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 5
+        with:
+          name: project-assets
+          path: ${{ runner.temp }}/project-assets
+
+      - name: Package the integration for HACS
+        if: env.PUBLISH_TO == 'hacs'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # A failing jq in a pipe fails the step, instead of leaving an empty manifest.
+          set -euo pipefail
+          # The archive holds the integration folder's content, as HACS zip releases do.
+          domain="$(basename custom_components/*/)"
+          filename="$(jq -r '.filename // empty' hacs.json)"
+          manifest="custom_components/$domain/manifest.json"
+          tree="HEAD:custom_components/$domain"
+          # A beta, such as 1.3.0-beta.2, comes from main, whose manifest.json still has
+          # the version of the last release, as release-please writes it: its zip gets
+          # the version of the beta, which Home Assistant shows to its testers and which
+          # verify-release.yml checks, in a tree of its own beside the tag's. A release,
+          # whose version release-please wrote, zips the folder of its tag as it is.
+          if [[ "$(jq -r .version "$manifest")" != "$VERSION" ]]; then
+            # jq.exe of a Windows runner writes CRLF; the zip keeps the LF of the tag.
+            # The variable of the filter is jq's, not the shell's.
+            # shellcheck disable=SC2016
+            jq --arg version "$VERSION" '.version = $version' "$manifest" | tr -d '\r' > "$RUNNER_TEMP/manifest.json"
+            export GIT_INDEX_FILE="$RUNNER_TEMP/index"
+            git read-tree "$tree"
+            git update-index --cacheinfo "100644,$(git hash-object -w "$RUNNER_TEMP/manifest.json"),manifest.json"
+            tree="$(git write-tree)"
+            unset GIT_INDEX_FILE
+          fi
+          zip="$ASSETS/${filename:-$domain.zip}"
+          git archive --format=zip --output="$zip" "$tree"
+          # The check of verify-release.yml, before the release is immutable: HACS
+          # installs the manifest.json at the root of the zip, of this domain and version.
+          if ! python3 -c '
+          import json, sys, zipfile
+          found = json.loads(zipfile.ZipFile(sys.argv[1]).read("manifest.json"))
+          sys.exit(found.get("domain") != sys.argv[2] or found.get("version") != sys.argv[3])
+          ' "$zip" "$domain" "$VERSION"; then
+            echo "::error::The zip for HACS has no manifest.json of $domain $VERSION at its root."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: env.PUBLISH_TO == 'pypi'
+        with:
+          python-version-file: .python-version
+      - name: Build the Python package
+        if: env.PUBLISH_TO == 'pypi'
+        run: |
+          # The build backend comes hash-pinned from requirements-dev.txt as well.
+          python -m pip install --require-hashes -r requirements-dev.txt
+          python -m build --no-isolation --outdir "$ASSETS"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: env.PUBLISH_TO == 'npm' || env.PUBLISH_TO == 'chrome-web-store'
+        with:
+          node-version-file: .nvmrc
+      - name: Pack the npm package
+        if: env.PUBLISH_TO == 'npm'
+        run: |
+          npm ci --ignore-scripts
+          npm run build --if-present
+          npm pack --pack-destination "$ASSETS"
+      # The zip that the Chrome Web Store gets: publish-store.yml takes it from the
+      # release and uploads it only with this provenance (decision 0085).
+      - name: Package the Chrome extension
+        if: env.PUBLISH_TO == 'chrome-web-store'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          # The contents of extension/ after npm run build, with manifest.json at the
+          # root of the zip. A beta, such as 1.3.0-beta.2, comes from main, whose
+          # manifest still has the version of the last release: its zip gets 1.3.0, as
+          # a manifest takes only numbers, and the whole version as version_name.
+          bash scripts/package-extension.sh "$ASSETS" "$VERSION"
+          # The check of verify-release.yml, before the release is immutable.
+          if ! python3 -c '
+          import json, re, sys, zipfile
+          zips = sys.argv[1:-1]
+          version = sys.argv[-1]
+          found = json.loads(zipfile.ZipFile(zips[0]).read("manifest.json")) if len(zips) == 1 else {}
+          numbers = re.match(r"[0-9]+(?:[.][0-9]+)*", version).group()
+          sys.exit(found.get("manifest_version") != 3 or found.get("version") != numbers)
+          ' "$ASSETS"/*.zip "$VERSION"; then
+            echo "::error::The release needs one zip with the manifest.json of Manifest V3 and the version $VERSION at its root."
+            exit 1
+          fi
+
+      # The occ of NEXTCLOUD_VERSION signs the app and stops on a PHP that this
+      # Nextcloud doesn't run on, as its lib/versioncheck.php says: Nextcloud 35 runs
+      # on PHP 8.3 to 8.5. The PHP of the app itself is that of appinfo/info.xml.
+      - name: Set up PHP for the signing of the Nextcloud app
+        if: env.PUBLISH_TO == 'nextcloud-appstore'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.4"
+          extensions: dom, libxml, mbstring, xml, zip
+          coverage: none
+      # The private key is only in the step that signs, which runs nothing of the
+      # project and removes the key also when it fails: the build, the downloads and
+      # the project's own checks of its package run without it.
+      - name: Build the Nextcloud app
+        id: nextcloud
+        if: env.PUBLISH_TO == 'nextcloud-appstore'
+        run: |
+          set -euo pipefail
+          app_id="$(python3 -c 'import xml.etree.ElementTree as t; print(t.parse("appinfo/info.xml").getroot().findtext("id"))')"
+          echo "app-id=$app_id" >> "$GITHUB_OUTPUT"
+          # Each download tries again after a passing error of the network or of its
+          # server, which would otherwise leave the release a draft. A release builds
+          # without the cache of the checks.
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 --output "$RUNNER_TEMP/krankerl.deb" \
+            "https://github.com/ChristophWurst/krankerl/releases/download/v$KRANKERL_VERSION/krankerl_${KRANKERL_VERSION}_amd64.deb"
+          echo "$KRANKERL_SHA256  $RUNNER_TEMP/krankerl.deb" | sha256sum --check --strict
+          sudo dpkg --install "$RUNNER_TEMP/krankerl.deb"
+          krankerl package
+          # The project's own checks of what its package holds, before and after signing.
+          if [[ -f scripts/check-package.sh ]]; then
+            bash scripts/check-package.sh "build/artifacts/$app_id.tar.gz" unsigned
+          fi
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 --output "$RUNNER_TEMP/app.crt" \
+            "https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$app_id/$app_id.crt"
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 600 --output "$RUNNER_TEMP/nextcloud.zip" \
+            "https://download.nextcloud.com/server/releases/nextcloud-$NEXTCLOUD_VERSION.zip"
+          echo "$NEXTCLOUD_SHA256  $RUNNER_TEMP/nextcloud.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/nextcloud.zip" -d "$RUNNER_TEMP/server"
+          mkdir -p "$RUNNER_TEMP/signing"
+          tar --extract --gzip --file "build/artifacts/$app_id.tar.gz" --directory "$RUNNER_TEMP/signing"
+      - name: Sign the Nextcloud app
+        if: env.PUBLISH_TO == 'nextcloud-appstore'
+        env:
+          APP_ID: ${{ steps.nextcloud.outputs.app-id }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # Without the key, no release: an app signed by nothing never reaches the draft.
+          if [[ -z "$APP_PRIVATE_KEY" ]]; then
+            echo "::error::The build got no APP_PRIVATE_KEY: set it as a secret of the environment signing, and let the job assets of release.yml pass it under secrets:, as a called workflow sees no secret that its caller doesn't pass. If both are in place, GitHub didn't take the key of signing in place of the empty value passed (decision 0114, #530): revert the blueprint update, as the environment release still holds a copy of the key."
+            exit 1
+          fi
+          trap 'rm -f "$RUNNER_TEMP/app.key"' EXIT
+          umask 077
+          printf '%s' "$APP_PRIVATE_KEY" > "$RUNNER_TEMP/app.key"
+          php "$RUNNER_TEMP/server/nextcloud/occ" integrity:sign-app \
+            --privateKey="$RUNNER_TEMP/app.key" --certificate="$RUNNER_TEMP/app.crt" \
+            --path="$RUNNER_TEMP/signing/$APP_ID"
+          test -s "$RUNNER_TEMP/signing/$APP_ID/appinfo/signature.json"
+          tar --create --gzip --file "$ASSETS/$APP_ID.tar.gz" --directory "$RUNNER_TEMP/signing" "$APP_ID"
+          openssl dgst -sha512 -sign "$RUNNER_TEMP/app.key" -out "$ASSETS/$APP_ID.tar.gz.sig" "$ASSETS/$APP_ID.tar.gz"
+          openssl x509 -in "$RUNNER_TEMP/app.crt" -pubkey -noout > "$RUNNER_TEMP/app.pub"
+          openssl dgst -sha512 -verify "$RUNNER_TEMP/app.pub" -signature "$ASSETS/$APP_ID.tar.gz.sig" "$ASSETS/$APP_ID.tar.gz"
+          echo "Signed $APP_ID with the key of the environment signing, which its certificate verifies." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the signed Nextcloud app
+        if: env.PUBLISH_TO == 'nextcloud-appstore' && hashFiles('scripts/check-package.sh') != ''
+        env:
+          APP_ID: ${{ steps.nextcloud.outputs.app-id }}
+        run: bash scripts/check-package.sh "$ASSETS/$APP_ID.tar.gz" signed
+
+      # The SBOMs describe what the release ships, which its users install and their
+      # scanners match every advisory against: not the repository with the tools of
+      # its checks, its website and its workflows, which a package doesn't hold.
+      - name: Unpack what the release ships
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package="$RUNNER_TEMP/package"
+          mkdir -p "$package"
+          case "$PUBLISH_TO" in
+            hacs | pypi | chrome-web-store)
+              # The zip that HACS installs, the wheel that pip installs and the zip of
+              # the extension that the Chrome Web Store installs.
+              for archive in "$ASSETS"/*.zip "$ASSETS"/*.whl; do
+                python3 -m zipfile -e "$archive" "$package"
+              done
+              ;;
+            npm | nextcloud-appstore)
+              # The package of npm, and the signed app of the App Store.
+              for archive in "$ASSETS"/*.tgz "$ASSETS"/*.tar.gz; do
+                tar --extract --gzip --file "$archive" --directory "$package"
+              done
+              ;;
+            *)
+              # A project that no registry delivers ships the zips and tarballs that its
+              # scripts/release-assets.sh built, such as the zip of a browser extension.
+              project=("$RUNNER_TEMP"/project-assets/*.zip "$RUNNER_TEMP"/project-assets/*.tar.gz)
+              if [[ "${PUBLISH_TO:-none}" == none ]] && ((${#project[@]})); then
+                for archive in "${project[@]}"; do
+                  if [[ "$archive" == *.zip ]]; then
+                    python3 -m zipfile -e "$archive" "$package"
+                  else
+                    tar --extract --gzip --file "$archive" --directory "$package"
+                  fi
+                done
+              else
+                # An action, an image or a project without a package ships its sources:
+                # the tree of the tag, without what only checks, tests and documents it:
+                # its run time pins live in requirements.txt, every requirements-*.* is
+                # a lock file of its tools, and stacks/ holds the tool pins of the
+                # blueprint.
+                git archive --format=tar HEAD | tar --extract --directory "$package"
+                (cd "$package" && rm -rf .devcontainer .githooks .github changelog.d docs fuzz \
+                  scripts stacks test tests requirements-*.*)
+              fi
+              ;;
+          esac
+          if [[ -z "$(ls -A "$package")" ]]; then
+            echo "::error::The release has no package for its SBOMs to describe."
+            exit 1
+          fi
+
+      # syft from its release, checked by its sha256 like every tool that the
+      # workflows download, in place of an action that fetches its installer and runs
+      # it in this job, which may write the release.
+      - name: Describe it in the SBOMs, as SPDX and as CycloneDX
+        env:
+          NAME: ${{ github.event.repository.name }}
+          VERSION: ${{ inputs.version }}
+          SUPPLIER: ${{ github.repository_owner }}
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 --output "$RUNNER_TEMP/syft.tar.gz" \
+            "https://github.com/anchore/syft/releases/download/v$SBOM_SYFT_VERSION/syft_${SBOM_SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "$SBOM_SYFT_SHA256  $RUNNER_TEMP/syft.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/syft"
+          tar --extract --gzip --file "$RUNNER_TEMP/syft.tar.gz" --directory "$RUNNER_TEMP/syft" syft
+          # A package lists what it installs, as in an image; sources list what their
+          # manifests and lock files declare.
+          case "$PUBLISH_TO" in
+            hacs | pypi | npm | nextcloud-appstore | chrome-web-store) catalogers=image ;;
+            *) catalogers=directory ;;
+          esac
+          # The archives of scripts/release-assets.sh are the package of a project that
+          # no registry delivers, as the step before unpacked them.
+          shopt -s nullglob
+          project=("$RUNNER_TEMP"/project-assets/*.zip "$RUNNER_TEMP"/project-assets/*.tar.gz)
+          if [[ "${PUBLISH_TO:-none}" == none ]] && ((${#project[@]})); then
+            catalogers=image
+          fi
+          # The release is the root of both, by its name, version and supplier, as the
+          # minimum elements of an SBOM ask (NTIA), and the scanners name it.
+          "$RUNNER_TEMP/syft/syft" scan "dir:$RUNNER_TEMP/package" --quiet \
+            --override-default-catalogers "$catalogers" \
+            --source-name "$NAME" --source-version "$VERSION" --source-supplier "$SUPPLIER" \
+            --output "spdx-json=$ASSETS/$NAME.spdx.json" \
+            --output "cyclonedx-json=$ASSETS/$NAME.cdx.json"
+          # The check of verify-release.yml, before the release is immutable.
+          # The variables of the filters are jq's, not the shell's.
+          # shellcheck disable=SC2016
+          spdx='[.relationships[] | select(.spdxElementId == "SPDXRef-DOCUMENT" and .relationshipType == "DESCRIBES")
+            | .relatedSpdxElement] as $roots
+            | any(.packages[]; (.SPDXID | IN($roots[])) and .name == $name and .versionInfo == $version)'
+          # shellcheck disable=SC2016
+          cyclonedx='.metadata.component.name == $name and .metadata.component.version == $version'
+          if ! jq -e --arg name "$NAME" --arg version "$VERSION" "$spdx" "$ASSETS/$NAME.spdx.json" >/dev/null ||
+            ! jq -e --arg name "$NAME" --arg version "$VERSION" "$cyclonedx" "$ASSETS/$NAME.cdx.json" >/dev/null; then
+            echo "::error::The SBOMs don't name the release $NAME $VERSION at their root, which a new syft may write elsewhere; the release stays a draft."
+            exit 1
+          fi
+
+      # Every advisory that osv-scanner.toml accepts, with its reason, as an OpenVEX
+      # statement that it does not affect the release, for the scanners of the users;
+      # the release is its product by the name and version of the SBOMs as well.
+      - name: Write the advisories that don't affect the release
+        env:
+          NAME: ${{ github.event.repository.name }}
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          # The version is the tag without its v, as release.yml tags it; no option for
+          # it, which the blueprint.py of an older tag rejects when its draft is finished
+          # by hand.
+          python3 "$script" vex "$GITHUB_REPOSITORY" "$TAG" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$RUNNER_TEMP/vex.json"
+          if [[ -s "$RUNNER_TEMP/vex.json" ]]; then
+            mv "$RUNNER_TEMP/vex.json" "$ASSETS/$NAME.openvex.json"
+          fi
+
+      - name: Write the licenses of the third-party components
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          gh api "repos/$GITHUB_REPOSITORY/dependency-graph/sbom" > "$RUNNER_TEMP/dependency-graph.json"
+          python3 "$script" notices "$TAG" "$RUNNER_TEMP/dependency-graph.json" > "$ASSETS/THIRD_PARTY_NOTICES.md"
+
+      # The assets that scripts/release-assets.sh built, beside those of the release,
+      # none of which they replace.
+      - name: Add the assets of the project
+        id: add-project-assets
+        if: hashFiles('scripts/release-assets.sh') != ''
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for asset in "$RUNNER_TEMP"/project-assets/*; do
+            name="${asset##*/}"
+            if [[ -e "$ASSETS/$name" || "$name" == provenance.* ]]; then
+              echo "::error::The asset $name of scripts/release-assets.sh has the name of one of the release; the script names it otherwise."
+              exit 1
+            fi
+            # Names that verify-release reads as the release's own SBOMs, VEX, notices
+            # or statement, and those that the registry jobs of release.yml download by
+            # pattern and publish, whether or not this release has such a file yet.
+            case "${PUBLISH_TO:-none}:$name" in
+              *:*.intoto.jsonl | *:*.spdx.json | *:*.cdx.json | *:*.openvex.json | *:THIRD_PARTY_NOTICES.md |                 pypi:*.whl | pypi:*.tar.gz | npm:*.tgz | nextcloud-appstore:*.tar.gz* | chrome-web-store:*.zip)
+                echo "::error::The asset $name of scripts/release-assets.sh has a name that the release keeps for its own files or its registry; the script names it otherwise."
+                exit 1
+                ;;
+            esac
+            cp "$asset" "$ASSETS/$name"
+          done
+
+      - name: Attest the provenance of every asset
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/assets/*
+
+      - name: Attach the assets and their signed provenance to the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE_PATH" "$ASSETS/provenance.sigstore.json"
+          # The signed statement also as in-toto JSON lines, the format of SLSA, which
+          # OpenSSF Scorecard and other tools look for.
+          jq -c .dsseEnvelope "$BUNDLE_PATH" > "$ASSETS/provenance.intoto.jsonl"
+          gh release upload "$TAG" "$ASSETS"/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Write the notes, the section of the changelog with every pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/pull-requests.md"
+          python3 "$script" changelog notes "$VERSION" CHANGELOG.md "$RUNNER_TEMP/pull-requests.md" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/notes.md"
+      # The PR coach for a name that the release refuses for itself; the other
+      # failures of this job are no fault of the project's script.
+      - name: Explain a refused asset of the project
+        if: failure() && steps.add-project-assets.outcome == 'failure'
+        env:
+          CHECK: assets of the project
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" coach explain "$CHECK"
+      - name: Wait until Harden-Runner has removed Docker
+        # Harden-Runner removes Docker with apt-get in the background; a job that ends
+        # before it finishes hangs in "Cleaning up orphan processes" until its timeout.
+        if: always() && vars.PUBLISH_TO != 'nextcloud-appstore'
+        run: |
+          for _ in {1..120}; do
+            pgrep -x 'apt-get|dpkg' >/dev/null || exit 0
+            sleep 1
+          done
+          echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."

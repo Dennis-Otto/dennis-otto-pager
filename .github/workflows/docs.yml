@@ -1,0 +1,437 @@
+name: Docs
+
+# The documentation website. MkDocs with the Material theme builds it from mkdocs.yml
+# and the pages in docs/, strictly, so that a link or an anchor that leads nowhere
+# fails: in every pull request as the check docs, and on main, where the same job
+# hands the website that it built to GitHub Pages, and a second one publishes it. A
+# repository without mkdocs.yml or a home page in docs/ has no website, and the
+# check passes, so that it can be required everywhere. Where another workflow
+# publishes GitHub Pages, as the Dashboard of the blueprint does with its dashboard,
+# a run on main only builds the website; in a fork, where the Dashboard doesn't run,
+# Docs publishes it. A pull request keeps the website that it built as the artifact
+# website for a week, which the report of the PR coach links. The tools are the
+# hash-pinned ones of .github/docs-requirements.txt, which the blueprint keeps
+# current, and the files that Material downloads for the website stay in a cache for a
+# week. After the build, lychee checks every link and anchor of the pages that were
+# built and the links of llms.txt, the map of the website for AI assistants,
+# blueprint.py site-check what the hooks of the website promise, and axe-core
+# the pages in the light and the dark scheme, at the width of a desktop and of a phone,
+# for what WCAG 2.2 A and AA ask, also that no page scrolls sideways on a phone, with the
+# locked tools of .github/a11y/: on a pull request those that differ from main, by the
+# digest that main keeps in the cache, and on main and every week every page. A serious
+# or critical violation fails the check, unless .github/a11y-accepted.toml accepts it
+# with its reason. The job that publishes the website signs its provenance and asks the
+# published website for its pages.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Every page each week, in case something that no commit changes finds a violation; a
+  # run of the schedule publishes nothing.
+  schedule:
+    - cron: "39 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+# One run for each commit of a pull request: a quick check, whose runs for different
+# commits never cancel each other, so that a late run for an older commit can't
+# cancel the check of the head. Runs on main wait for each other, so that the
+# website of the latest commit is published last. The run of each week has a group of
+# its own: it publishes nothing, and GitHub keeps one waiting run for each group, so
+# in that of main it could take the place of a push that waits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && 'weekly-' || '' }}${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The GitHub CLI of the jobs sends no telemetry to GitHub.
+  GH_TELEMETRY: "false"
+  # The Material theme warns about MkDocs 2.0 in every run; it keeps MkDocs below 2.0
+  # itself, so the warning says nothing about this website.
+  NO_MKDOCS_2_WARNING: "true"
+
+jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-24.04
+    # The accessibility check, with its limit below, and five minutes for the rest.
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      pages: read # whether GitHub Pages publishes from this workflow
+    outputs:
+      publish: ${{ steps.site.outputs.publish }}
+      languages: ${{ steps.promises.outputs.languages }}
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The date of the last change of every page comes from the history.
+          fetch-depth: 0
+      # Every run builds the website here, as the check. A run on main where GitHub
+      # Pages publishes from this workflow hands the same build to the job that
+      # publishes it, so that it is built once; so does a fork of the blueprint, where
+      # the Dashboard doesn't run. Where another workflow publishes the website, a run
+      # on main only builds it.
+      - name: Look for the website
+        id: site
+        timeout-minutes: 5
+        env:
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.repository.fork }}
+          PRIVATE: ${{ github.event.repository.private }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! -f mkdocs.yml ]] || [[ ! -f docs/index.md && ! -f docs/README.md ]]; then
+            echo "::notice::No website here: it needs mkdocs.yml and a home page, docs/index.md."
+            exit 0
+          fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT" != pull_request && "$EVENT" != schedule && "$GITHUB_REF" == refs/heads/main ]]; then
+            # GitHub Pages has one website, and the other workflow publishes it; not in
+            # a fork, where the Dashboard of the blueprint doesn't run.
+            for workflow in .github/workflows/*.y*ml; do
+              if [[ "$FORK" != true && "$workflow" != .github/workflows/docs.yml ]] &&
+                grep -qF 'actions/deploy-pages@' "$workflow"; then
+                echo "::notice::$workflow publishes this website; this run only builds it."
+                exit 0
+              fi
+            done
+            # The settings bot sets GitHub Pages up from the [pages] table of
+            # .github/repository.toml; until then, and in forks, nothing is published.
+            build_type="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>/dev/null || true)"
+            if [[ "$build_type" == workflow ]]; then
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # GitHub Pages publishes a private repository only on a paid plan: until
+            # then, main keeps what it built as the artifact of the run.
+            if [[ "$PRIVATE" == true ]]; then
+              echo "keep=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::GitHub Pages doesn't publish this private repository, which it does only on a paid plan; the run keeps the website as its artifact website."
+              exit 0
+            fi
+            echo "::notice::GitHub Pages doesn't publish from GitHub Actions here yet; the website waits for a run on main after it does."
+          fi
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.site.outputs.build == 'true'
+        timeout-minutes: 5
+        with:
+          # The Python that the tools of the website are compiled for.
+          python-version: "3.12"
+      # uv installs the hash-pinned tools in seconds and checks the hash of each
+      # package. Its cache keeps only the wheels that it built from source, under a
+      # key of the lock file: pre-built ones download faster than a cache restores
+      # them.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        if: steps.site.outputs.build == 'true'
+        timeout-minutes: 5
+        with:
+          # renovate: datasource=pypi depName=uv
+          version: "0.13.5"
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: .github/docs-requirements.txt
+      - name: Install the hash-pinned tools of the website
+        if: steps.site.outputs.build == 'true'
+        timeout-minutes: 5
+        run: uv pip install --system --require-hashes -r .github/docs-requirements.txt
+      # The privacy and social plugins of Material download the fonts and scripts of
+      # the pages, about 30 files, into .cache, which the build takes from there, so a
+      # warm cache saves most of its time and the downloads that fail now and then. As
+      # Material's documentation has it, the cache belongs to an ISO week: the first
+      # run of a week downloads everything again, so that no file is older than a
+      # week, and a change of the configuration or the tools starts from the cache of
+      # the same week.
+      - name: Name the cache of this week
+        id: week
+        if: steps.site.outputs.build == 'true'
+        run: echo "id=$(date -u '+%G-%V')" >> "$GITHUB_OUTPUT"
+      - name: Restore the downloads of the website
+        id: cache
+        if: steps.site.outputs.build == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 5
+        with:
+          path: .cache
+          key: mkdocs-material-${{ steps.week.outputs.id }}-${{ hashFiles('mkdocs.yml', '.github/mkdocs-blueprint.yml', '.github/docs-requirements.txt') }}
+          restore-keys: mkdocs-material-${{ steps.week.outputs.id }}-
+      # The privacy plugin never downloads a file again that it has in its cache. Fonts,
+      # stylesheets and scripts may be a week old, but status badges and other pictures
+      # show the state of now: a failing CI badge or an old score must not stay up for
+      # a week, so the build downloads everything else anew.
+      - name: Download the badges and pictures anew
+        if: steps.site.outputs.build == 'true'
+        run: |
+          folder=.cache/plugin/privacy
+          [[ ! -d "$folder" ]] || find "$folder" -type f ! -name '*.woff2' ! -name '*.woff'             ! -name '*.ttf' ! -name '*.css' ! -name '*.js' -delete
+      - name: Build the website
+        id: build
+        if: steps.site.outputs.build == 'true'
+        timeout-minutes: 5
+        run: mkdocs build --strict
+      # What the hooks of .github/mkdocs_blueprint.py promise, in the files that the
+      # real plugins wrote, so that a new version of Material or of the i18n plugin
+      # that breaks a hook fails here, before the website is published: a sitemap in
+      # every folder of pages of a website in several languages, which its language
+      # switch reads, the 404 page of the default language at the root, one canonical
+      # address on every page, and the full addresses of its other languages. It
+      # also names the further languages and the path of the address, for the steps
+      # that follow. The checks after the build run even when one before them failed,
+      # so that a run names everything to fix.
+      - name: Check what the hooks of the website promise
+        id: promises
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" site-check site --output "$GITHUB_OUTPUT"
+      # The 404 page links the files of the website by the path of its address, such
+      # as /repo/assets/ for a project website; a folder of that path leads lychee
+      # to site/.
+      - name: Lay out the address of the website
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          ADDRESS: ${{ runner.temp }}/address
+          ROOT: ${{ steps.promises.outputs.root }}
+        run: |
+          mkdir -p "$(dirname "$ADDRESS${ROOT%/}")"
+          ln -s "$GITHUB_WORKSPACE/site" "$ADDRESS${ROOT%/}"
+      # Every link and anchor of the pages that MkDocs built, also those that a page
+      # writes in HTML, such as its cards, those of the theme and those of the 404
+      # page, which the strict build doesn't check. lychee reads the files of site/
+      # alone and asks no server, so a site that is down can't fail it; the Links
+      # workflow checks the links to other sites every week. It runs in site/, away
+      # from lychee.toml and .lycheeignore, which are the rules of those links.
+      - name: Check the links and anchors of the website
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        timeout-minutes: 5
+        with:
+          workingDirectory: site
+          args: --offline --include-fragments --root-dir ${{ runner.temp }}/address --no-progress '**/*.html'
+          output: ${{ runner.temp }}/website-links.md
+      # llms.txt links the pages by their full addresses, which lychee leaves out with
+      # --offline, so reading the file alone would check none of them: the rule of
+      # blueprint.py site-check leads the addresses of the website to the files of
+      # site/. A website at the root of an address has no rule, as other websites have
+      # addresses there too, which its site-check tells apart.
+      - name: Check the links of the map of the website
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.promises.outputs.map != '' }}
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        timeout-minutes: 5
+        with:
+          workingDirectory: site
+          args: --offline --no-progress --remap '${{ steps.promises.outputs.map }}' llms.txt
+          output: ${{ runner.temp }}/website-map-links.md
+      # The checks of this project alone on its website, such as those of its
+      # robots.txt, in scripts/check-site.sh, which gets the folder of the website.
+      # The blueprint never writes that file, so it stays the project's own.
+      - name: Check the website as this project does
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && hashFiles('scripts/check-site.sh') != '' }}
+        timeout-minutes: 5
+        run: bash scripts/check-site.sh site
+      # The accessibility of the website: .github/a11y/check.mjs opens the pages in the
+      # Google Chrome of the runner, in the light and the dark scheme, at 1280 and at
+      # 375 px wide, and names each serious or critical violation of WCAG 2.2 A or AA that
+      # axe-core finds, and each page that scrolls sideways at 375 px, that
+      # .github/a11y-accepted.toml doesn't accept, with its page and how to fix it, in
+      # the summary and as annotations, and fails the check.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 5
+        with:
+          node-version: 24
+      - name: Set up the accessibility check
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 5
+        run: npm ci --prefix .github/a11y --ignore-scripts --no-audit --no-fund
+      # A pull request opens only the pages that differ from main, which takes a few
+      # seconds instead of minutes: it compares with the digest of the commit that it
+      # merges into, or else with the newest one, where what main changed since then
+      # only adds pages to open. Without a digest, or when a stylesheet, a script,
+      # mkdocs.yml, the accepted violations or the tools differ, it opens every page,
+      # and the summary says why.
+      - name: Restore the digest of the website of main
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 5
+        with:
+          path: site-digest.json
+          key: website-digest-${{ github.event.pull_request.base.sha }}-
+          restore-keys: website-digest-
+      - name: Check the accessibility of the website
+        id: a11y
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        # Every page in two schemes and at two widths, on a runner: 12 minutes 15 seconds
+        # on the blueprint (2026-11-02). At one width, homedarts, the slowest website with
+        # 243 pages, took 7 minutes 17 seconds (2026-11-01), so about twice that now. The
+        # limit is about twice the slowest, for a slow runner and new pages.
+        timeout-minutes: 30
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == pull_request ]]; then
+            node .github/a11y/check.mjs site --changed-since site-digest.json
+          else
+            node .github/a11y/check.mjs site --write-digest site-digest.json
+          fi
+      # Only main saves the digest, as every pull request reads a cache of main, and
+      # also after a violation: a pull request answers for what it changes.
+      - name: Keep the digest of the website for the pull requests
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && hashFiles('site-digest.json') != '' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 5
+        with:
+          path: site-digest.json
+          key: website-digest-${{ github.sha }}-${{ github.run_id }}
+      # The first run of every page on main, with the line baseline = true that an update
+      # of the blueprint brings, wrote what it found into .github/a11y-accepted.toml and
+      # passes, so that no repository turns red. The fix bot brings that file in its
+      # pull request with the fixes of main, and from then on a new violation fails.
+      - name: Keep the violations that this run accepted
+        id: accepted
+        if: ${{ !cancelled() && steps.a11y.outputs.written == 'true' && github.event_name == 'push' }}
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" fix keep "$RUNNER_TEMP/fixes" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the fixes for the fix bot
+        if: ${{ !cancelled() && steps.accepted.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 5
+        with:
+          name: fixes-docs
+          path: ${{ runner.temp }}/fixes/
+          # Fixes of files in .github/ as well.
+          include-hidden-files: true
+          if-no-files-found: ignore
+      # The website of a pull request, for a week: the report of the PR coach links
+      # it, so that a reviewer sees the pages as they will look after the merge, also
+      # when a check of its links or of its hooks failed. So is that of main in a
+      # private repository that GitHub Pages doesn't publish.
+      - name: Keep the website of the pull request
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'pull_request' || steps.site.outputs.keep == 'true') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 5
+        with:
+          name: website
+          path: site
+          retention-days: 7
+          include-hidden-files: true
+      # Only a push saves the cache: one of main, which every pull request reads, since
+      # a cache of a pull request stays with its branch. It saves it once for each
+      # key, so a run that restored its own key saves nothing.
+      - name: Keep the downloads of the website for the week
+        if: >-
+          steps.site.outputs.build == 'true' && github.event_name == 'push' &&
+          steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 5
+        with:
+          path: .cache
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      # The website that this job built and checked is the one that GitHub Pages
+      # publishes. Files and folders whose name starts with a dot, such as
+      # .well-known/security.txt, are part of it; the action leaves out only .git
+      # and .github.
+      - name: Hand the website to GitHub Pages
+        if: steps.site.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        timeout-minutes: 5
+        with:
+          path: site
+          include-hidden-files: true
+      # The PR coach: what failed, why it matters and how to fix it, in the summary
+      # of the check and as its annotation, from .github/checks.toml.
+      - name: Explain the failure
+        if: failure()
+        env:
+          CHECK: docs
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" coach explain "$CHECK"
+
+  deploy:
+    name: publish the website
+    needs: docs
+    if: needs.docs.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      attestations: write # keeps the signed provenance of the website
+      id-token: write # proves to GitHub Pages and to Sigstore which workflow publishes
+      pages: write # publishes the website
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - name: Publish the website on GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      # The provenance of what GitHub Pages publishes, artifact.tar of the artifact
+      # github-pages, signed with Sigstore for this workflow and its commit, as the
+      # release workflow signs every release. This job signs it, not the job docs,
+      # which runs the code of pull requests and gets no id-token. SECURITY.md shows
+      # how gh attestation verify checks it.
+      - name: Take the website that GitHub Pages publishes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 5
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+      - name: Attest the provenance of the website
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        timeout-minutes: 5
+        with:
+          subject-path: ${{ runner.temp }}/pages/artifact.tar
+      # The published website answers: the home page of every language with a page,
+      # and an address that leads nowhere with the status 404. The servers of GitHub
+      # Pages may take a moment after the deployment, so each request is tried again
+      # for about a minute.
+      - name: Ask the published website for its pages
+        timeout-minutes: 5
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          LANGUAGES: ${{ needs.docs.outputs.languages }}
+        run: |
+          home="${PAGE_URL%/}/"
+          page="$RUNNER_TEMP/page.html"
+          failed=0
+          for language in "" $LANGUAGES; do
+            [[ "$language" =~ ^[A-Za-z0-9_-]*$ ]] || continue
+            address="$home${language:+$language/}"
+            if curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 10 \
+              --connect-timeout 10 --max-time 30 --output "$page" "$address" &&
+              grep -qF '<title>' "$page"; then
+              echo "- $address answers with its page." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error title=The published website::$address answers with no page: GitHub Pages doesn't serve the website that this run published."
+              failed=1
+            fi
+          done
+          # The status that it asks for is an error, so curl tries again only after
+          # an error of the server or of the network.
+          missing="${home}no-such-page-$GITHUB_SHA"
+          status="$(curl --silent --retry 5 --retry-delay 10 --connect-timeout 10 --max-time 30 \
+            --output /dev/null --write-out '%{http_code}' "$missing" || true)"
+          if [[ "$status" == 404 ]]; then
+            echo "- $missing answers with 404, as an address that leads nowhere does." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=The published website::$missing answers with the status $status, not 404: GitHub Pages must answer an address that leads nowhere with its 404 page."
+            failed=1
+          fi
+          exit "$failed"

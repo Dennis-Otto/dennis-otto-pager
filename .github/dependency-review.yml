@@ -1,0 +1,55 @@
+# Rules of the dependency review of pull requests (.github/workflows/dependency-review.yml).
+# An advisory that this repository accepts, for example in a dependency that only
+# the tests install and that a pinned upstream can't move yet, goes into
+# allow-ghsas with its reason.
+fail-on-severity: moderate
+fail-on-scopes:
+  - runtime
+  - development
+  - unknown
+show-patched-versions: true
+retry-on-snapshot-warnings: true
+allow-ghsas: []
+
+# The licenses a new dependency may have: free licenses that the MIT
+# license of this project can carry.
+allow-licenses:
+  - 0BSD
+  - Apache-2.0
+  - BlueOak-1.0.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - BSL-1.0
+  - CC-BY-3.0
+  - CC-BY-4.0
+  - CC0-1.0
+  - ISC
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+  - LGPL-3.0-only
+  - LGPL-3.0-or-later
+  - MIT
+  - MIT-CMU
+  - MIT-0
+  - MPL-2.0
+  - OFL-1.1
+  - PSF-2.0
+  - Python-2.0
+  - Unicode-3.0
+  - Unicode-DFS-2016
+  - Unlicense
+  - Zlib
+
+# Dependencies that no release ships, whatever their license.
+allow-dependencies-licenses:
+  # The tools of the blueprint bot (.github/copier-requirements.txt): Copier's Jinja
+  # filters (GPL-3.0-only), typing-extensions, whose license the review reads wrongly,
+  # and wcwidth, whose tables fall under a permissive license: HPND-Markus-Kuhn AND MIT.
+  - pkg:pypi/jinja2-ansible-filters
+  - pkg:pypi/typing-extensions
+  - pkg:pypi/wcwidth
+  # The dictionaries of cspell, the spell check of the prose in .github/prose/, which
+  # only the checks run: Django's words (WTFPL) and the common misspellings
+  # (CC-BY-SA-4.0).
+  - pkg:npm/%40cspell/dict-django
+  - pkg:npm/%40cspell/dict-en-common-misspellings

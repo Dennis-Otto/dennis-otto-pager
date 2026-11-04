@@ -1,0 +1,79 @@
+name: Dependency review
+
+# The review of the dependencies that a pull request adds or changes: one with a
+# known vulnerability of moderate severity or more, or with a license outside the
+# list of .github/dependency-review.yml, fails it. An advisory that the repository
+# accepts goes into allow-ghsas there, with its reason. Started by hand, it compares
+# two commits. A private repository without GitHub Code Security has no dependency
+# review: there the settings bot sets the variable DEPENDENCY_REVIEW to off, and the
+# check leaves the vulnerabilities of the lock files to OSV-Scanner.
+# https://github.com/Dennis-Otto/repo-blueprint
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base commit for the dependency comparison"
+        required: true
+        type: string
+      head_ref:
+        description: "Candidate commit for the dependency comparison"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One run for each commit of a pull request: a quick check, whose runs for different
+# commits never cancel each other, so that a late run for an older commit can't
+# cancel the check of the head.
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The GitHub CLI of the jobs sends no telemetry to GitHub.
+env:
+  GH_TELEMETRY: "false"
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Record the network traffic of the job
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      # The rules of the pull request itself: accepting an advisory shows in its diff.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check dependency changes for known vulnerabilities
+        if: vars.DEPENDENCY_REVIEW != 'off'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          base-ref: ${{ inputs.base_ref || github.event.pull_request.base.sha }}
+          head-ref: ${{ inputs.head_ref || github.event.pull_request.head.sha }}
+          # The rules and the accepted advisories of this repository.
+          config-file: ./.github/dependency-review.yml
+      # The check osv-scanner (pull request) compares the lock files that a pull
+      # request changes with those of its base, against the advisories of OSV, which
+      # include those of GitHub, and fails on a vulnerability that the pull request adds.
+      - name: Leave the vulnerabilities to OSV-Scanner
+        if: vars.DEPENDENCY_REVIEW == 'off'
+        run: |
+          message="GitHub doesn't offer its dependency review to this private repository on its plan, and DEPENDENCY_REVIEW is off: the check osv-scanner (pull request) of the workflow OSV-Scanner fails on a vulnerability that a pull request adds to a lock file."
+          echo "::notice title=Dependency review::$message"
+          printf '### The dependency review\n\n%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+      # The PR coach: what failed, why it matters and how to fix it, in the summary
+      # of the check and as its annotation, from .github/checks.toml.
+      - name: Explain the failure
+        if: failure()
+        env:
+          CHECK: dependency-review
+        run: |
+          script=.github/blueprint.py
+          [[ -f "$script" ]] || script=blueprint.py
+          python3 "$script" coach explain "$CHECK"

@@ -1,0 +1,231 @@
+// The rules of Renovate from the blueprint, which .github/renovate.json5 extends.
+// Renovate keeps the actions, the dependencies, the images and the pins of the
+// workflows current; the Renovate workflow of the blueprint runs it for every
+// repository with a .github/renovate.json5, as the release app. An update waits a
+// week after its release; one that fixes a vulnerability comes at once, and so does
+// the new commit of a branch that an action follows. Routine updates merge on their
+// own once every check passes; the weekly refresh of the lock files and a major
+// update wait for the maintainer. Updates of what the users run are committed as
+// fix(deps) and lead to a patch release, updates of the tools as chore(deps).
+// Renovate keeps no issue open: what waits for the maintainer is a pull request,
+// and its warnings and errors reach the issue "Renovate logs problems".
+// https://github.com/Dennis-Otto/repo-blueprint
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  // The versions that an osv-scanner.toml accepts with every advisory, which no
+  // update of a lock file can fix, such as one that another package pins exactly:
+  // .github/renovate-accepted.json5 has a rule for each, which blueprint.py writes,
+  // so that Renovate tries no fix of them and logs no empty commit in every run.
+  extends: [
+    "config:recommended",
+    ":semanticCommits",
+    "local>Dennis-Otto/dennis-otto-pager//.github/renovate-accepted.json5",
+  ],
+  timezone: "Europe/Berlin",
+  // No dependency dashboard, so that a repository can have no open issue: routine
+  // updates merge on their own, and what waits for the maintainer is a pull
+  // request. Renovate closes the issue of the dashboard by its title, which stays
+  // the one that it had.
+  dependencyDashboard: false,
+  dependencyDashboardTitle: "Dependency dashboard",
+  // Once a week, so that the release bot sums the updates up in one release: the
+  // whole Monday, since GitHub starts the runs of the bot every two hours only
+  // roughly and now and then skips one, so that a window of a few hours could
+  // pass without a run and hold the updates back for another week.
+  schedule: ["* * * * 1"],
+  minimumReleaseAge: "7 days",
+  // In the same window, the lock files of every package manager are refreshed:
+  // their indirect dependencies move to their newest versions.
+  lockFileMaintenance: { enabled: true, schedule: ["* * * * 1"] },
+  internalChecksFilter: "strict",
+  // GitHub merges a routine update once every required check passes.
+  platformAutomerge: true,
+  automergeType: "pr",
+  automergeStrategy: "squash",
+  // Renovate keeps its own branches up to date with main.
+  rebaseWhen: "behind-base-branch",
+  // The title check sets the labels.
+  labels: [],
+  prConcurrentLimit: 10,
+  prHourlyLimit: 0,
+  // The tools of the tests are kept current as well.
+  ignorePaths: ["**/node_modules/**", "**/vendor/**"],
+  vulnerabilityAlerts: {
+    minimumReleaseAge: null,
+    schedule: ["at any time"],
+    automerge: true,
+  },
+  osvVulnerabilityAlerts: true,
+  // Python, Node and PHP follow the blueprint and what the project supports.
+  pyenv: { enabled: false },
+  nvm: { enabled: false },
+  // The Features of the dev container and their lock file are Dependabot's.
+  devcontainer: { enabled: false },
+  // The blueprint bot brings the updates of the blueprint.
+  copier: { enabled: false },
+  // The hash-pinned requirements are compiled from their .in files. Renovate
+  // installs pip-tools once per repository, for the Python of the first lock file
+  // it compiles: a lock file for another Python is compiled with
+  // `uv pip compile --python-version=`, which doesn't depend on the Python it runs
+  // on. Renovate compiles a lock file again with the command in its header, and
+  // skips the file for good if an option is new to it or lacks the = before its
+  // value.
+  pip_requirements: { enabled: false },
+  "pip-compile": { managerFilePatterns: ["/(^|/)requirements[^/]*\\.txt$/"] },
+  // The hooks of .pre-commit-config.yaml, which Renovate leaves alone by default.
+  "pre-commit": { enabled: true },
+  customManagers: [
+    {
+      // Images that the scripts of workflows and checks start, by tag and digest,
+      // also in a variable such as IMAGE="name:tag@sha256:…".
+      customType: "regex",
+      managerFilePatterns: [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/(^|/)[^/]+\\.sh$/",
+      ],
+      matchStrings: [
+        "(?:^|[\\s\"'=])(?<depName>[a-z0-9][a-z0-9._-]*(?:/[a-z0-9._-]+)+):(?<currentValue>v?\\d[a-zA-Z0-9._-]*)@(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      // A version below a line "# renovate: datasource=… depName=…", in YAML
+      // (NAME: 1.2.3) or in the shell (name=1.2.3). extractVersion= takes the
+      // version out of the tag of a release, such as v1.2.3.
+      customType: "regex",
+      managerFilePatterns: [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/(^|/)[^/]+\\.sh$/",
+      ],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\n\\s*[\\w-]+(?:: |=)\"?(?<currentValue>[^\"\\s@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\"?",
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      // Routine updates merge on their own, a week after their release.
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+      automerge: true,
+    },
+    {
+      // The weekly refresh of the lock files brings the newest version of every
+      // indirect dependency, also one released minutes ago. It has no release date
+      // to wait for, so an age check would stay pending, and a cooldown of the
+      // package managers would hold back the fixes of vulnerabilities too: Renovate
+      // sets their environment for the whole repository, not for a rule. So the
+      // refresh waits for the maintainer. Renovate builds it anew only in its weekly
+      // window, so that the changes the maintainer reviewed are the ones that merge.
+      matchUpdateTypes: ["lockFileMaintenance"],
+      minimumReleaseAge: null,
+      automerge: false,
+      updateNotScheduled: false,
+    },
+    {
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+      groupName: "the actions",
+    },
+    {
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["major"],
+      groupName: "the actions to a new major version",
+    },
+    {
+      // An action pinned to a commit of a branch, with the branch in its comment, as
+      // a project may add one: zizmor reports the pin as soon as the branch moves on,
+      // and every commit to the branch starts the week of waiting anew, so Renovate
+      // would never catch up with a branch that moves every few days. It follows the
+      // branch in its next run instead.
+      matchManagers: ["github-actions"],
+      matchDatasources: ["github-digest"],
+      minimumReleaseAge: null,
+      schedule: ["at any time"],
+      automerge: true,
+      groupName: "the actions that follow a branch",
+    },
+    {
+      // The issue assistant comes with its templates, with which its check compares
+      // the workflows: a pin that moved alone would fail the check issue-assistant.
+      // The sync bot of the blueprint takes over each verified release, workflows and
+      // pins together, and the blueprint bot brings it to every repository.
+      matchManagers: ["github-actions"],
+      matchDepNames: ["Dennis-Otto/issue-assistant"],
+      enabled: false,
+    },
+    {
+      // The versions of Python, Node and PHP that the workflows set up, and the
+      // runners, follow the blueprint.
+      matchDepTypes: ["uses-with"],
+      enabled: false,
+    },
+    {
+      matchDatasources: ["github-runners"],
+      enabled: false,
+    },
+    {
+      // So does the uv that they set up, on its line "# renovate:".
+      matchManagers: ["custom.regex"],
+      matchDepNames: ["uv"],
+      matchFileNames: [".github/workflows/**"],
+      enabled: false,
+    },
+    {
+      // And the tools that they and .github/sign-tag.sh download and check by
+      // their sha256, each on its line "# renovate:": the blueprint writes the
+      // checksum of each new version beside it.
+      matchManagers: ["custom.regex"],
+      matchDepNames: ["sigstore/gitsign", "infection/infection", "ChristophWurst/krankerl", "nextcloud/server", "anchore/syft"],
+      matchFileNames: [".github/workflows/**", ".github/sign-tag.sh"],
+      enabled: false,
+    },
+    {
+      // The tools of the prose check belong to the blueprint, which keeps them current.
+      matchFileNames: [".github/prose/**"],
+      enabled: false,
+    },
+    {
+      // So do the tools of the accessibility check of the website.
+      matchFileNames: [".github/a11y/**"],
+      enabled: false,
+    },
+    {
+      matchDatasources: ["docker"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+      groupName: "the images",
+    },
+    {
+      // The dev container keeps the Python, PHP or Node of the project, as the CI
+      // does; only its digest moves.
+      matchDepNames: ["mcr.microsoft.com/devcontainers/**"],
+      matchUpdateTypes: ["major", "minor", "patch"],
+      enabled: false,
+    },
+    {
+      matchManagers: ["npm"],
+      matchDepTypes: ["dependencies"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "the npm packages",
+    },
+    {
+      matchManagers: ["npm"],
+      matchDepTypes: ["devDependencies"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "the npm tools",
+    },
+    {
+      // The types follow the Node version of .nvmrc, not the newest Node.
+      matchDepNames: ["@types/node"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      // Vitest takes only a coverage provider of its own version, so a new major
+      // version of the one comes with that of the other.
+      matchManagers: ["npm"],
+      matchPackageNames: ["vitest", "@vitest/coverage-istanbul"],
+      matchUpdateTypes: ["major"],
+      groupName: "Vitest",
+    },
+  ],
+}

@@ -1,0 +1,20 @@
+# Renovate keeps the actions, the dependencies and the images current
+# (.github/renovate.json5). Dependabot keeps only the Features of the dev container,
+# because it alone also updates their lock file, .devcontainer/devcontainer-lock.json.
+# Their updates merge on their own once every check passes (dependabot-automerge.yml).
+version: 2
+updates:
+  - package-ecosystem: devcontainers
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 7
+    groups:
+      dev-container-features:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: chore
+      include: scope

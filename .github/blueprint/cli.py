@@ -1,0 +1,2305 @@
+"""The command line of blueprint.py."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+import webbrowser
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from pathlib import Path
+from xml.etree import ElementTree
+
+import blueprint
+from blueprint import (
+    advisories,
+    annotate,
+    dependabot,
+    locks,
+    mutation,
+    screenshots,
+    versions,
+)
+from blueprint.app import TIMEOUT, connect, register
+from blueprint.bootstrap import CreateError, create, doctor
+from blueprint.bot_health import renovate_report, sweep, watch_run
+from blueprint.branches import job_from, next_branch
+from blueprint.changelog import (
+    FRAGMENTS,
+    FragmentError,
+    beta_notes,
+    fragment_problems,
+    heal,
+    read_fragments,
+    release_changelog,
+    release_notes,
+    released_fragments,
+)
+from blueprint.checklist import SETTINGS_APPLY, checklist, describe_steps
+from blueprint.coach import (
+    PROJECT_CATALOG,
+    Catalog,
+    CatalogError,
+    Part,
+    check_steps,
+    link,
+    missing,
+    plain,
+    required_checks,
+    summary,
+    undeclared,
+    unknown,
+    unverified_commits,
+)
+from blueprint.coach import annotation as coach_annotation
+from blueprint.coach import report as coach_report
+from blueprint.coverage_comment import Coverage, coverage_comment
+from blueprint.diagrams import (
+    SOURCES,
+    commit_request,
+    extract,
+    follow,
+    keep,
+    listing,
+    report,
+)
+from blueprint.fixes import (
+    MAIN_EVENTS,
+    Fixes,
+    FixLoop,
+    NoList,
+    collect,
+    commit_onto_branch,
+    downloader,
+    fix_own,
+    fix_text,
+    fixers,
+    heal_main,
+    load,
+    own_fix,
+    plan,
+    report_kept,
+    run_until_done,
+    suggest,
+    watched,
+)
+from blueprint.fixes import keep as keep_fixes
+from blueprint.github import Api, GitHubError, Json, current_repo
+from blueprint.migrate import migrate
+from blueprint.notices import third_party_notices
+from blueprint.overrides import write_overrides
+from blueprint.ownership import check as ownership_check
+from blueprint.pages import (
+    CELL_WORDS,
+    Layout,
+    annotation,
+    command,
+    fixed,
+    layouts,
+    long_cells,
+    pages,
+)
+from blueprint.pr_report import about as pr_parts
+from blueprint.settings import (
+    CONFIG,
+    ConfigError,
+    Settings,
+    apply,
+    check,
+    describe,
+    fitted,
+    kept,
+    line_of,
+    offered_only,
+    read_plan,
+    unlisted_actions,
+    widen_selected_actions,
+)
+from blueprint.site_check import annotation as site_annotation
+from blueprint.site_check import check as check_site
+from blueprint.site_check import map_rule
+from blueprint.stale_runs import cancel_stale_runs
+from blueprint.update import SOURCE, Outdated, update_pull_request
+from blueprint.vex import openvex
+
+
+def changelog_command(arguments: argparse.Namespace) -> int:
+    if arguments.command == "beta":
+        text = Path(arguments.file).read_text(encoding="utf-8")
+        fragments = read_fragments(Path(arguments.fragments))
+        sys.stdout.write(beta_notes(arguments.version, text, fragments))
+        return 0
+    if arguments.command == "fragments":
+        return fragments_command(arguments)
+    if arguments.command == "vex":
+        accepted = Path(arguments.file)
+        text = accepted.read_text(encoding="utf-8") if accepted.is_file() else ""
+        document = openvex(
+            arguments.repo, arguments.tag, arguments.timestamp, text, arguments.version
+        )
+        if document is not None:
+            sys.stdout.write(document)
+        return 0
+    if arguments.command == "notices":
+        sbom = json.loads(Path(arguments.sbom).read_text(encoding="utf-8"))
+        sys.stdout.write(third_party_notices(arguments.version, sbom))
+        return 0
+    read = [Path(name).read_text(encoding="utf-8") for name in arguments.files]
+    if arguments.action == "notes":
+        sys.stdout.write(release_notes(arguments.version, *read))
+        return 0
+    main, branch = read
+    fragments = read_fragments(Path(arguments.fragments))
+    sys.stdout.write(release_changelog(arguments.version, main, branch, fragments))
+    if arguments.taken:
+        taken = released_fragments(arguments.version, branch, fragments)
+        Path(arguments.taken).write_text(
+            "".join(f"{path}\n" for path in taken), encoding="utf-8", newline="\n"
+        )
+    return 0
+
+
+def fragments_command(arguments: argparse.Namespace) -> int:
+    """Checks the fragments as the release takes them in: the problems on stdout, one
+    on each line, for the check of a pull request to show. With --fix, it renames each
+    heading that surely means a kind of change first, and names each renaming."""
+    folder = Path(arguments.folder)
+    changelog = Path(arguments.file)
+    text = changelog.read_text(encoding="utf-8") if changelog.is_file() else ""
+    if arguments.fix:
+        for said in heal(folder, text):
+            print(said)
+    fragments = read_fragments(folder)
+    problems = fragment_problems(fragments, text)
+    for problem in problems:
+        print(problem)
+    if not problems:
+        print(f"The {len(fragments)} fragment(s) in {folder.name}/ are fine.")
+    return 1 if problems else 0
+
+
+def coverage_command(arguments: argparse.Namespace) -> int:
+    # The coverage bot runs in the checkout at the path where the checks ran.
+    root = Path.cwd()
+    head = Coverage.read(Path(arguments.head), root)
+    base_file = Path(arguments.base)
+    base = Coverage.read(base_file, root) if base_file.is_file() else None
+    sys.stdout.write(coverage_comment(head, base))
+    return 0
+
+
+def annotate_command(arguments: argparse.Namespace, root: Path) -> int:
+    """The annotations of a tool of scripts/check.sh, after what it wrote: it reads
+    that from its input and passes it on as it is."""
+    found = annotate.annotations_of(
+        arguments.tool,
+        arguments.report,
+        root.resolve(),
+        sys.stdin.buffer,
+        sys.stdout.buffer,
+    )
+    sys.stdout.flush()
+    for line in found:
+        print(line)
+    return 0
+
+
+def read_coverage(head: str, base: str) -> tuple[Coverage, Coverage | None] | None:
+    """The coverage reports of a pull request and of main for its report, none when
+    the tests kept none. A pull request from a fork writes its report as it likes, and
+    one that can't be read leaves the coverage out of the report."""
+    root = Path.cwd()
+    try:
+        found = Coverage.read(Path(head), root)
+        base_file = Path(base)
+        before = (
+            Coverage.read(base_file, root) if base and base_file.is_file() else None
+        )
+    except (OSError, ElementTree.ParseError, ValueError):
+        return None
+    return found, before
+
+
+def ownership_command(arguments: argparse.Namespace, root: Path) -> int:
+    """The step of the check lint, which needs neither the API nor the settings."""
+    try:
+        listing = arguments.changed.read_bytes()
+        part_diff = (
+            arguments.contributing_diff.read_text(encoding="utf-8", errors="replace")
+            if arguments.contributing_diff
+            else ""
+        )
+    except OSError as error:
+        print(f"blueprint.py: {error}", file=sys.stderr)
+        return 2
+    return ownership_check(
+        root,
+        listing,
+        part_diff=part_diff,
+        branch=arguments.branch,
+        head_repo=arguments.head_repo,
+        repo=arguments.repo or "",
+        author_type=arguments.author_type,
+        mode=arguments.mode,
+    )
+
+
+def explain_command(arguments: argparse.Namespace, root: Path) -> int:
+    """What failed and how to fix it: in the log, and in the CI also in the summary
+    of the job and as an annotation, from the variables that GitHub sets."""
+    catalog = Catalog.load(root)
+    if arguments.action == "verify":
+        gaps = missing(catalog, required_checks(root), check_steps(root))
+        for gap in gaps:
+            print(
+                f"blueprint.py: {gap} has no explanation; add it to "
+                f"{PROJECT_CATALOG.as_posix()}",
+                file=sys.stderr,
+            )
+        silent = undeclared(catalog)
+        for gap in silent:
+            print(
+                f"blueprint.py: the explanation of {gap} has no autofix: the commands "
+                "that fix what it finds, or the reason why no command can",
+                file=sys.stderr,
+            )
+        if gaps or silent:
+            return 1
+        print(
+            "Every required check and every step of scripts/check.sh is explained, "
+            "and every explanation says how it fixes itself or why it can't."
+        )
+        return 0
+    # A check that runs several others, as lint runs every linter, explains each of
+    # them that failed, and itself only when none did.
+    if not arguments.parts:
+        explain(catalog, arguments.name, arguments.step)
+    for part in arguments.parts:
+        explain(catalog, part, arguments.step, within=arguments.name)
+    return 0
+
+
+def explain(catalog: Catalog, name: str, step: bool, within: str = "") -> None:
+    """What a check or a step found and how to fix it: in the log, and in the CI also
+    in the summary of the job and as its annotation; within names the check whose job
+    ran it, if another one."""
+    entry = catalog.step(name) if step else catalog.check(name)
+    if entry is None:
+        text = unknown(name, step)
+        sys.stdout.write(text)
+    else:
+        repo = os.environ.get("GITHUB_REPOSITORY") or None
+        # The branch that a pull request goes into, which the runner names for it.
+        entry = entry.within(repo, os.environ.get("GITHUB_BASE_REF") or None)
+        sys.stdout.write(plain(entry, step, within))
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(coach_annotation(entry, step, within))
+        url = link(
+            entry.docs,
+            repo,
+            os.environ.get("GITHUB_SERVER_URL") or "https://github.com",
+        )
+        text = summary(entry, step, url, within)
+    to_summary(text)
+
+
+def to_summary(text: str) -> None:
+    """Text at the end of the summary of the job, in the CI."""
+    target = os.environ.get("GITHUB_STEP_SUMMARY")
+    if target:
+        with Path(target).open("a", encoding="utf-8") as file:
+            file.write(text + "\n")
+
+
+def signatures_command(api: Api, repo: str, arguments: argparse.Namespace) -> int:
+    """The check signed commits: each commit of the pull request that blocks its merge,
+    as an annotation and in the summary. It fails as GitHub's rule blocks the merge."""
+    unverified = unverified_commits(api, repo, arguments.pull, arguments.base)
+    if not unverified:
+        print(f"No commit of #{arguments.pull} blocks its merge.")
+        return 0
+    for commit in unverified:
+        print(commit.annotation())
+    to_summary("\n".join(commit.finding().markdown() for commit in unverified))
+    return 1
+
+
+def bot_health_command(
+    api: Api, repo: str, arguments: argparse.Namespace, root: Path
+) -> int:
+    now = datetime.now(UTC)
+    if arguments.action == "run":
+        print(watch_run(api, repo, arguments.run_id, now))
+        return 0
+    if arguments.action == "sweep":
+        summary, healthy = sweep(api, repo, root, now)
+        print(summary, end="")
+        return 0 if healthy else 1
+    complete = arguments.result == "success"
+    logs = map(Path, arguments.log)
+    print(renovate_report(api, repo, logs, arguments.run, complete=complete), end="")
+    return 0
+
+
+def show_mutant(name: str) -> str:
+    """The change of a mutant, as mutmut show prints it: mutmut of this Python, which
+    the step installed, without the folder of the project ahead of its modules."""
+    return subprocess.run(
+        [sys.executable, "-X", "utf8", "-P", "-m", "mutmut", "show", name],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    ).stdout
+
+
+def read_output(path: Path) -> str:
+    """What a tool printed, with the carriage returns of its spinner."""
+    if not path.is_file():
+        return ""
+    with path.open(encoding="utf-8", errors="replace", newline="") as file:
+        return file.read()
+
+
+def parts_count(text: str) -> int | None:
+    """The number of parts of a run: auto, or none, for the estimate."""
+    if text in ("", "auto"):
+        return None
+    if not text.isdigit() or int(text) < 1:
+        raise ValueError(f"the parts of a run are a number or auto, not {text!r}")
+    return int(text)
+
+
+def mutation_command(
+    arguments: argparse.Namespace,
+    root: Path,
+    api: Api | None,
+) -> int:
+    if arguments.action == "plan":
+        kind, parts = mutation.plan(
+            root, parts_count(arguments.parts), arguments.sample
+        )
+        print(f"kind={kind}")
+        print(f"parts={json.dumps(parts, ensure_ascii=False)}")
+        for part in parts:
+            print(
+                f"Part {part['part']} of {part['parts']}: about {part['mutants']} "
+                "mutants",
+                file=sys.stderr,
+            )
+        return 0
+    if arguments.action == "configure":
+        section = mutation.configure(root)
+        if section is None:
+            print("The project configures mutmut itself; setup.cfg stays as it is.")
+            return 0
+        setup = root / "setup.cfg"
+        before = setup.read_text(encoding="utf-8") if setup.is_file() else ""
+        if before and not before.endswith("\n"):
+            before += "\n"
+        setup.write_text(before + section, encoding="utf-8", newline="\n")
+        print(section, end="")
+        return 0
+    if arguments.action == "stats":
+        printed = read_output(Path(arguments.output))
+        stats = mutation.read_stats(root / arguments.stats)
+        print(mutation.stats_summary(stats, printed), end="")
+        if stats is None:
+            print(
+                mutation.no_mutant_ran_error(mutation.stopped(printed)), file=sys.stderr
+            )
+            return 1
+        return 0
+    if arguments.action == "collect":
+        number, _, total = arguments.part.partition("/")
+        output = Path(arguments.output)
+        part = mutation.collect(
+            Path(arguments.results).read_text(encoding="utf-8", errors="replace"),
+            read_output(output),
+            arguments.patterns.split(),
+            arguments.status,
+            (int(number), int(total or 1)),
+            show_mutant,
+            os.cpu_count() or 4,
+        )
+        Path(arguments.out).write_text(
+            json.dumps(part, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+        )
+        silent = mutation.Report.of([part]).silent
+        if silent:
+            # The reason in the summary, and the annotation, which names the test that
+            # failed, in the log.
+            print(mutation.no_mutant_ran(part))
+            print(mutation.no_mutant_ran_error(part), file=sys.stderr)
+        return 1 if silent else 0
+    if arguments.action == "issue":
+        folder = Path(arguments.folder)
+        now = mutation.read_previous(folder / "mutation.json")
+        if now is None:
+            print(f"No mutation.json in {folder}: the issue stays as it is.")
+            return 1
+        previous = mutation.read_previous(folder / "previous.json")
+        api = api or Api()
+        repo = arguments.repo or current_repo(api)
+        print(mutation.keep_issue(api, repo, now, previous))
+        return 0
+    report = mutation.Report.of(mutation.read_parts(Path(arguments.parts_folder)))
+    previous = mutation.baseline_of(mutation.read_previous(arguments.previous))
+    now = report.data(arguments.run, datetime.now(UTC))
+    # An incomplete run keeps the last complete one, so that the next run compares
+    # with that, and a drop past an incomplete run still shows.
+    if not now["complete"] and previous is not None:
+        now["baseline"] = previous
+    out = Path(arguments.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "mutation.json").write_text(
+        json.dumps(now, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+    )
+    # What the run compared with, for the job that keeps the issue of a drop.
+    if previous is not None:
+        (out / "previous.json").write_text(
+            json.dumps(previous, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+        )
+    (out / "results.txt").write_text(report.results_text(), encoding="utf-8")
+    (out / "survivors.md").write_text(mutation.survivors_text(report), encoding="utf-8")
+    sys.stdout.write(mutation.summary(report, now, previous))
+    return 0 if report.measured and not report.silent and not report.missing else 1
+
+
+def diagrams_command(arguments: argparse.Namespace, root: Path) -> int:
+    if arguments.action == "keep":
+        print(listing(keep(root, arguments.folder)), end="")
+        return 0
+    if arguments.action == "commit":
+        if not arguments.repo:
+            print("blueprint.py: diagrams commit needs --repo", file=sys.stderr)
+            return 2
+        request = commit_request(
+            arguments.folder,
+            arguments.repo,
+            arguments.branch,
+            arguments.head,
+            arguments.headline,
+            arguments.body,
+        )
+        print(json.dumps(request))
+        return 0
+    if arguments.action == "report":
+        print(report(arguments.folder, arguments.kind), end="")
+        return 0
+    if arguments.action == "check":
+        stale = [found for found in follow(root, write=False) if found.line]
+        for found in stale:
+            print(
+                f"{found.path.as_posix()}:{found.line}: the alt of the picture of "
+                f"{found.source.as_posix()} isn't its accTitle and accDescr; bash "
+                "scripts/diagrams.sh --extract writes them into it"
+            )
+        return 1 if stale else 0
+    for found in follow(root):
+        if found.line:
+            print(
+                f"{found.path.as_posix()}:{found.line}: the alt of the picture repeats "
+                f"{found.source.as_posix()} again"
+            )
+        else:
+            print(
+                f"{found.path.as_posix()}: its labels lost their HTML, which the "
+                "pictures show as text"
+            )
+    extracted = extract(root)
+    for diagram in extracted:
+        known = "" if diagram.new else ", which was there already"
+        print(f"{diagram.page.as_posix()}: {diagram.source.as_posix()}{known}")
+    if extracted:
+        print(
+            f"{len(extracted)} diagram(s) became pictures of their sources in "
+            f"{SOURCES.as_posix()}/."
+        )
+    else:
+        print("No ```mermaid block in the Markdown.")
+    return 0
+
+
+def screenshots_command(arguments: argparse.Namespace, root: Path) -> int:
+    if arguments.action == "due":
+        ready, reason = screenshots.due(
+            root, arguments.since, arguments.until, arguments.paths, arguments.script
+        )
+        print(reason)
+        return 0 if ready else 1
+    if arguments.action in ("keep", "restore"):
+        folder = arguments.folder if arguments.action == "keep" else None
+        try:
+            found = screenshots.keep(root, folder)
+        except ModuleNotFoundError as error:
+            # Pillow compares the pixels; a project's own tools may not have it.
+            wanted = ".github/screenshots-requirements.txt"
+            if not (root / wanted).is_file():
+                wanted = "stacks/screenshots/requirements.txt"
+            print(
+                f"blueprint.py: screenshots {arguments.action} needs {error.name}:"
+                f" python3 -m pip install --require-hashes -r {wanted}",
+                file=sys.stderr,
+            )
+            return 2
+        print(screenshots.summary(found), end="")
+        if arguments.action == "restore":
+            repository = arguments.repo or screenshots.repository_of(root)
+            pages = screenshots.correct_work_tree(root, found, repository)
+            corrected = screenshots.corrections(pages)
+            if corrected:
+                print(f"\n{corrected}", end="")
+        return 0
+    if arguments.action == "commit" and not arguments.repo:
+        print("blueprint.py: screenshots commit needs --repo", file=sys.stderr)
+        return 2
+    repository = arguments.repo or screenshots.repository_of(root)
+    pages = screenshots.pages_of_folder(root, arguments.folder, repository)
+    if arguments.action == "parts":
+        print(len(screenshots.parts(arguments.folder, pages=pages)))
+        return 0
+    if arguments.action == "commit":
+        request = screenshots.commit_request(
+            arguments.folder,
+            arguments.repo,
+            arguments.branch,
+            arguments.head,
+            arguments.headline,
+            arguments.body,
+            arguments.part,
+            pages,
+        )
+        print(json.dumps(request))
+        return 0
+    text = screenshots.report(
+        arguments.folder, arguments.sha, arguments.run, arguments.script, pages
+    )
+    print(text, end="")
+    return 0
+
+
+def fix_command(arguments: argparse.Namespace, root: Path) -> int:
+    """The fixes that a command makes, on your machine and in the check that failed."""
+    if arguments.action == "text":
+        fixed = fix_text(root)
+        for path in fixed:
+            print(
+                f"{path}: LF line endings, no trailing whitespace, a line break at its end"
+            )
+        print(
+            f"{len(fixed)} text file(s) fixed."
+            if fixed
+            else "Every text file is clean."
+        )
+        return 0
+    if arguments.action == "version":
+        return fix_version(root)
+    if arguments.action == "keep":
+        print("\n".join(report_kept(keep_fixes(root, arguments.folder), kept=True)))
+        return 0
+    catalog = Catalog.load(root)
+    commands = fixers(catalog, root, arguments.check)
+    what = arguments.check or "the steps of scripts/check.sh"
+    if not commands:
+        print(f"No command of the explanations fixes what {what} found.")
+        return 0
+    lines = [
+        "### Fixed by a command",
+        "",
+        f"The commands that fix what {what} found, from `autofix` of the explanations:",
+        "",
+        *run_until_done(commands, root),
+        "",
+    ]
+    if arguments.keep is None:
+        lines.append("`git diff` shows what they changed; commit it.")
+    else:
+        lines += report_kept(keep_fixes(root, arguments.keep), kept=True)
+    print("\n".join(lines))
+    return 0
+
+
+def fix_version(root: Path) -> int:
+    """Writes the version of the manifest of the release bot back into each file that
+    has another one; a file without a version at the place of the step Version stays
+    for a person."""
+    done = versions.fix(root)
+    if done.version is None:
+        print(f"{versions.MANIFEST} names no version, so there is none to write.")
+        return 0
+    for file in done.fixed:
+        print(
+            f"{file.path}: version {done.version} of the release bot, "
+            f"in place of {file.found}"
+        )
+    for file in done.left:
+        print(
+            f"{file.path}: has no version where the step Version reads it; "
+            f"give it version {done.version}"
+        )
+    if done.fixed:
+        print(f"{len(done.fixed)} file(s) have the version of the release bot again.")
+    elif not done.left:
+        print(f"Every file has the version of the release bot, {done.version}.")
+    return 1 if done.left else 0
+
+
+def kept_fixes(folder: Path) -> Fixes:
+    """The fixes that fix collect downloaded into folder, one folder for each check."""
+    if not folder.is_dir():
+        return Fixes({})
+    return load(sorted(path for path in folder.iterdir() if path.is_dir()))
+
+
+def fix_own_command(api: Api, repo: str, arguments: argparse.Namespace) -> int:
+    """The title and the entry of a pull request from a branch of this repository: what
+    the bot fixes of them, and with --app also the fixes, as that app."""
+    number = int(arguments.pull) if arguments.pull else None
+    if arguments.app:
+        sys.stdout.write(
+            fix_own(api, repo, arguments.sha, number, arguments.app, arguments.url)
+        )
+        return 0
+    found = own_fix(api, repo, arguments.sha, number)
+    if arguments.output:
+        to_fix = found.title or found.path
+        with Path(arguments.output).open("a", encoding="utf-8") as file:
+            file.write(f"action={'fix' if to_fix else ''}\n")
+            file.write(f"pull={found.number or ''}\n")
+    sys.stdout.write(found.text)
+    return 0
+
+
+def job_output(output: str | Path | None, lines: str) -> None:
+    """Adds lines to the outputs of the step, when the job asks for them."""
+    if output:
+        with Path(output).open("a", encoding="utf-8") as file:
+            file.write(lines)
+
+
+def fix_bot_command(
+    api: Api, repo: str, arguments: argparse.Namespace, root: Path
+) -> int:
+    """The fix bot after the checks: collect the fixes of a commit and decide, then
+    commit them, suggest them or keep the pull request of main."""
+    if arguments.action == "own":
+        return fix_own_command(api, repo, arguments)
+    if arguments.action == "collect":
+        number = int(arguments.pull) if arguments.pull else None
+        try:
+            workflows = watched(root)
+            found = collect(
+                api,
+                repo,
+                arguments.run,
+                arguments.sha,
+                arguments.event,
+                arguments.branch,
+                arguments.folder,
+                downloader(api, repo),
+                workflows,
+            )
+            decided = plan(
+                api,
+                repo,
+                arguments.sha,
+                arguments.event,
+                arguments.branch,
+                number,
+                load(found.folders),
+                workflows.listed,
+                found.late,
+            )
+        except (FixLoop, NoList) as error:
+            # The annotation in the log, the reason in the summary as well.
+            print(f"::error::{error}", file=sys.stderr)
+            print(error)
+            job_output(arguments.output, "stopped=true\n")
+            return 1
+        job_output(
+            arguments.output,
+            f"action={decided.action}\npull={decided.number or ''}\n",
+        )
+        sys.stdout.write(decided.text)
+        return 0
+    fixes = kept_fixes(arguments.folder)
+    if arguments.action == "commit":
+        said = commit_onto_branch(
+            api,
+            repo,
+            arguments.branch,
+            arguments.sha,
+            fixes,
+            arguments.app,
+            arguments.url,
+        )
+    elif arguments.action == "suggest":
+        said = suggest(api, repo, int(arguments.pull), arguments.sha, fixes)
+    else:
+        said = heal_main(
+            api,
+            repo,
+            arguments.sha,
+            arguments.base,
+            fixes,
+            arguments.app,
+            arguments.url,
+        )
+    sys.stdout.write(said)
+    return 0
+
+
+def migrate_command(arguments: argparse.Namespace, root: Path) -> int:
+    """What the releases of the blueprint move in the files of the project, one on each
+    line, and in the CI also as annotations of those files; with --fix, it moves them."""
+    found = migrate(root, arguments.fix)
+    for migration in found:
+        print(f"{migration.path}: {migration.summary}")
+    if arguments.fix or not found:
+        print(
+            f"{len(found)} move(s) of a release done in the files of the project."
+            if found
+            else "The files of the project have what the releases of the blueprint moved."
+        )
+        return 0
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        for migration in found:
+            print(
+                f"::error file={migration.path},title=Files of the project::"
+                f"{migration.summary}"
+            )
+    print(
+        f"{command(root)} migrate --fix moves what these lines name: an update of the "
+        "blueprint leaves the files of the project alone, so a release moves them "
+        "through this check. How a project declines: "
+        "https://github.com/Dennis-Otto/repo-blueprint/blob/main/docs/"
+        "troubleshooting.md#a-release-moves-a-file-of-the-project"
+    )
+    return 1
+
+
+def pages_command(arguments: argparse.Namespace, root: Path) -> int:
+    """The layouts of the pages that GitHub shows, one on each line, and in the CI also
+    as annotations at their lines; with --fix, the pages in one column first, where
+    there is a safe way to. The cells of Markdown tables that hold a paragraph come
+    first, as warnings, which fail nothing yet."""
+    shown = pages(root)
+    left: list[tuple[Path, Layout]] = []
+    long: list[tuple[Path, Layout]] = []
+    fixable = 0
+    for page in shown:
+        path = root / page
+        text = path.read_text(encoding="utf-8")
+        found = layouts(text)
+        editable = sum(1 for layout in found if layout.edits)
+        fixable += editable
+        if arguments.fix and editable:
+            text = fixed(text, found)
+            path.write_text(text, encoding="utf-8", newline="\n")
+            found = layouts(text)
+            print(f"{page.as_posix()}: {editable} layout(s) in one column now")
+        left += [(page, layout) for layout in found]
+        long += [(page, cell) for cell in long_cells(text)]
+    ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    for page, cell in long:
+        print(f"{page.as_posix()}:{cell.line}: {cell.message}")
+    if long:
+        if ci:
+            for page, cell in long:
+                print(annotation(page, cell))
+        print(
+            f"{len(long)} cell(s) of Markdown tables hold more than {CELL_WORDS} words, "
+            "a paragraph that the GitHub app and phones squeeze: make the rows a list, "
+            "or move the detail to a page of its own, as CONTRIBUTING.md describes. "
+            "They are warnings for now."
+        )
+    if not left:
+        print(f"The {len(shown)} page(s) that GitHub shows have one column.")
+        return 0
+    for page, layout in left:
+        print(f"{page.as_posix()}:{layout.line}: {layout.message}")
+    if ci:
+        for page, layout in left:
+            print(annotation(page, layout))
+    print(
+        f"{len(left)} layout(s) set columns side by side, which the GitHub app and "
+        "phones squeeze. A page has one column, so that it reads well everywhere: the "
+        "text, and below it each picture at full width; a table is for tabular data, "
+        "as CONTRIBUTING.md describes."
+    )
+    if arguments.fix:
+        print(
+            "These are left to you: a table inside another one, a table without its "
+            "end, or one with content outside of its cells or on its lines."
+        )
+    elif fixable:
+        print(
+            f"{command(root)} pages --fix puts {fixable} of them in one column: the "
+            "cells of a layout table one below the other, the text before its picture, "
+            "and cells without their width."
+        )
+    return 1
+
+
+def advisories_command(arguments: argparse.Namespace, root: Path) -> int:
+    """The versions that the osv-scanner.toml files accept with every advisory, and
+    whether .github/renovate-accepted.json5 has the rules of Renovate for them; with
+    --fix, it writes them first."""
+    outcome = advisories.check(root)
+    if arguments.fix and not outcome.in_step:
+        advisories.write(root, outcome)
+        print(
+            f"{advisories.PRESET}: the rules of Renovate are those of osv-scanner.toml now"
+        )
+        outcome = advisories.check(root)
+    for problem in outcome.problems:
+        print(problem)
+    if not outcome.in_step:
+        state = "differs from" if outcome.current is not None else "is missing for"
+        print(
+            f"{advisories.PRESET} {state} the versions that osv-scanner.toml accepts "
+            "with every advisory, so Renovate would go on trying to fix them, which "
+            f"no lock file can take. {command(root)} advisories --fix writes it; "
+            "commit it with the change of osv-scanner.toml."
+        )
+    if outcome.problems or not outcome.in_step:
+        return 1
+    if outcome.accepted:
+        print(
+            f"The {len(outcome.accepted)} version(s) that osv-scanner.toml accepts with "
+            f"every advisory have their rules of Renovate in {advisories.PRESET}."
+        )
+    else:
+        print(
+            "No osv-scanner.toml accepts a version with every advisory, and "
+            f"{advisories.PRESET} has no rule."
+        )
+    return 0
+
+
+def dependabot_command(
+    api: Api, repo: str, arguments: argparse.Namespace, root: Path
+) -> int:
+    """Closes the Dependabot alerts that an osv-scanner.toml accepts and opens again
+    those that it closed once the acceptance ends; with --dry-run, only says so."""
+    try:
+        outcome = dependabot.sync(api, repo, root, dry_run=arguments.dry_run)
+    except GitHubError as error:
+        if error.status == 403 and "disabled" in error.message.lower():
+            print(
+                f"Dependabot alerts are off in {repo}, so no alert is there to close "
+                "or to open again."
+            )
+            return 0
+        if error.status not in (401, 403, 404):
+            raise
+        print(
+            f"blueprint.py: GitHub refused the Dependabot alerts of {repo} ({error}). "
+            "The token needs the permission Dependabot alerts (read and write) of an "
+            "app installed on the repository: grant it on the settings page of the "
+            "app, under Permissions & events, accept it on the installation, and run "
+            "it again. The PR coach explains the check dependabot alerts.",
+            file=sys.stderr,
+        )
+        return 1
+    for line in outcome.report(repo, arguments.dry_run):
+        print(line)
+    return 0
+
+
+def locks_command(arguments: argparse.Namespace, root: Path) -> int:
+    """Whether Renovate can compile each lock file of pip-compile again with the
+    command in its header; with --fix, it puts the = between each option and its
+    value first. With --compile, whether each one still pins what its sources ask for."""
+    if arguments.compile:
+        return locks_compile_command(arguments, root)
+    names, skipped = locks.check(root)
+    if arguments.fix and skipped:
+        for name in locks.fix(root, skipped):
+            print(f"{name}: the = stands between each option and its value now")
+        names, skipped = locks.check(root)
+    for lock in skipped:
+        print(lock)
+    if skipped:
+        print(
+            "Renovate compiles each lock file again with the command in its header, "
+            "and skips one whose command it can't read, in every run and with no more "
+            "than a warning in its log: the file gets no update, not even one that "
+            f"fixes a vulnerability. {command(root)} locks --fix puts the = between "
+            "each option and its value; for the rest, compile the file again with the "
+            "options that Renovate knows, such as uv pip compile --generate-hashes "
+            "--python-version=3.12 --output-file=requirements.txt requirements.in."
+        )
+        return 1
+    if names:
+        print(
+            f"Renovate can compile each of the {len(names)} lock file(s) of pip-compile "
+            "again with the command in its header."
+        )
+    else:
+        print("No file here is a lock file of pip-compile, which Renovate compiles.")
+    return 0
+
+
+def locks_compile_command(arguments: argparse.Namespace, root: Path) -> int:
+    """Whether each lock file of pip-compile, compiled again with the command in its
+    header, keeps its pins; with --fix, it keeps the result of those that don't."""
+    names = locks.lock_files(root)
+    if not names:
+        print("No file here is a lock file of pip-compile.")
+        return 0
+    uv = shutil.which("uv")
+    if uv is None:
+        print(
+            "uv is not installed here, so nothing compiled the lock files of "
+            "pip-compile again; the CI does."
+        )
+        return 0
+    failed = False
+    compared = 0
+    written = 0
+    with ThreadPoolExecutor() as pool:
+        results = list(pool.map(lambda name: locks.compare(root, name, uv), names))
+    for found in results:
+        if found.note:
+            print(f"{found.name}: not compared, for {found.note}.")
+            continue
+        compared += 1
+        if found.failure:
+            failed = True
+            print(f"{found.name}: uv can't compile its sources:\n{found.failure}")
+        elif found.differences and arguments.fix:
+            (root / found.name).write_bytes(found.content)
+            written += 1
+            print(f"{found.name}: compiled again with the command in its header.")
+        elif found.differences:
+            failed = True
+            print(
+                f"{found.name}: no longer matches its sources: "
+                f"{'; '.join(found.differences)}."
+            )
+    if failed:
+        print(
+            "pip installs a lock file as it is: what its sources ask for reaches no "
+            f"install until the file is compiled again. {command(root)} locks --compile "
+            "--fix compiles each one with the command in its header, on the versions "
+            "that it pins; sources that uv can't compile need a fix of their own."
+        )
+        return 1
+    if written:
+        print(
+            f"Compiled {written} of the {compared} compared lock file(s) of pip-compile "
+            "again; the others keep their pins."
+        )
+        return 0
+    print(
+        "Compiled again with the command in its header, each of the "
+        f"{compared} compared lock file(s) of pip-compile keeps its pins."
+    )
+    return 0
+
+
+def site_check_command(arguments: argparse.Namespace, root: Path) -> int:
+    """What the website that MkDocs built promises, one broken promise on each line,
+    and in the CI also as annotations; with --output, the further languages, the
+    path of the address and the rule that checks the links of its map for the steps
+    that follow."""
+    folder = Path(arguments.site).as_posix().rstrip("/") or "."
+    site = check_site(root / arguments.site, root, arguments.docs)
+    if arguments.output:
+        with Path(arguments.output).open("a", encoding="utf-8") as file:
+            file.write(f"languages={' '.join(site.further)}\n")
+            file.write(f"root={site.root}\n")
+            file.write(f"map={map_rule(site, root / arguments.site)}\n")
+    if not site.findings:
+        languages = " ".join((site.default, *site.further)).strip() or "one language"
+        print(f"The website in {folder} keeps what its hooks promise ({languages}).")
+        return 0
+    for finding in site.findings:
+        print(f"{folder}/{finding.path}: {finding.message}")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        for finding in site.findings:
+            print(site_annotation(finding, folder))
+    print(
+        f"{len(site.findings)} file(s) of the website break what the hooks of "
+        ".github/mkdocs_blueprint.py promise. A new version of Material or of "
+        "mkdocs-static-i18n that writes its pages differently, or a hook of the "
+        "project, changed them: build the website, compare the files named above "
+        "with what the hooks write, and report it to the blueprint if its hooks "
+        "need to change. A page that loads more than it may at once names what it "
+        "loads the most: a picture that is too large, or Mermaid, which a "
+        "```mermaid block loads and the pictures of scripts/diagrams.sh don't. "
+        "llms.txt, the map of the website that the hooks write from its menu, leads "
+        "to the pages that the menu lists; a file of the project's own in its place "
+        "follows https://llmstxt.org/ and links the pages of the website. A "
+        "page that lacks a picture of its Markdown, or has an empty paragraph where "
+        "one was, lost it in the build: build the website with the lock of its "
+        "tools, .github/docs-requirements.txt (stacks/docs/requirements-docs.txt in "
+        "the blueprint itself), and look for the plugin or the hook "
+        "that takes it out."
+    )
+    return 1
+
+
+def settings_command(
+    api: Api, repo: str, settings: Settings, action: str, path: Path
+) -> int:
+    """settings check or apply: 0 when GitHub matches the settings, 1 when it differs,
+    2 when GitHub refused a part of them. What GitHub doesn't do for the repository,
+    such as a switch that its plan lacks, is named after them and fails nothing, and
+    what a private repository lacks on its plan the settings leave to the workflows,
+    by the variables of PLAN_VARIABLES."""
+    plan = read_plan(api, repo)
+    settings = fitted(api, repo, settings, plan)
+    drift = check(api, repo, settings, plan.private)
+    refused: dict[str, str] = {}
+    if action == "apply" and drift:
+        refused, unoffered = apply(api, repo, settings, drift, plan.private)
+        after = check(api, repo, settings, plan.private)
+        # A refused write shows nothing about what GitHub keeps.
+        if "security" not in {*refused, *unoffered}:
+            after = kept(repo, drift, after, plan.private)
+        drift = offered_only(repo, after, unoffered)
+    for reason in refused.values():
+        print(f"blueprint.py: {reason}", file=sys.stderr)
+    # The path as the documentation writes it, with slashes on Windows too.
+    config = path.as_posix()
+    notices = [item for item in drift if item.notice]
+    drift = [item for item in drift if not item.notice]
+    if drift:
+        print(f"The settings of {repo} differ from {config}:")
+        print(describe(drift))
+        if action == "check":
+            print(f"{SETTINGS_APPLY} sets what the API can set.")
+    else:
+        print(f"The settings of {repo} match {config}.")
+    if notices:
+        print("GitHub doesn't do this for the repository, which fails nothing:")
+        print(describe(notices))
+    if not drift:
+        return 0
+    return 2 if refused else 1
+
+
+def actions_command(api: Api, root: Path, path: Path) -> int:
+    """settings actions: 0 when the list of the allowed actions in the settings as code
+    lets every action and reusable workflow that the workflows run start, also those
+    that these run in turn; 1 when it lacks one, or GitHub refused the file of one.
+    The check of the Lint workflow: it reads the public files of the actions and none
+    of the settings on GitHub, which the token of a pull request may not read."""
+    settings = Settings.load(root / path, root)
+    # The blueprint renders the list of every repository from its template.
+    listed_in = (
+        "template/.github/repository.toml.jinja and .github/repository.toml"
+        if (root / "copier.yml").is_file() and (root / "template").is_dir()
+        else ".github/repository.project.toml"
+    )
+    found = unlisted_actions(api, settings.actions, settings.workflows, listed_in)
+    # The path as the documentation writes it, with slashes on Windows too.
+    config = path.as_posix()
+    if not found:
+        print(
+            "GitHub starts every action that the workflows run, also those that"
+            f" these run in turn, by [actions] of {config}."
+        )
+        return 0
+    print(f"GitHub won't start a workflow that runs these, by [actions] of {config}:")
+    annotations = []
+    for item in found:
+        file = settings.workflows[item.via]
+        how = (
+            f"{file} names it"
+            if item.reference == item.via
+            else f"{item.where} runs it in turn, from {item.via} that {file} names"
+        )
+        message = f"{item.reference}: {how}; {item.fix}"
+        print(f"- {message}")
+        text = (root / file).read_text(encoding="utf-8")
+        annotations.append(
+            annotate.Annotation(
+                "Allowed actions", message, file, line_of(text, item.via)
+            )
+        )
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print("\n".join(annotate.commands(annotations)))
+    return 1
+
+
+def widen_command(api: Api, repo: str, settings: Settings, path: Path) -> int:
+    """settings widen: the list of the allowed actions on GitHub gets every pattern of
+    [actions.selected] that it lacks, and loses none, where GitHub uses the list. The
+    blueprint bot runs it with the settings of an update before it pushes the update,
+    so that the checks of its pull request can start the actions that the release
+    adds; the settings bot narrows the list to the settings after the merge. A list
+    that only grows stops no workflow, so the command changes nothing else."""
+    # The path as the documentation writes it, with slashes on Windows too.
+    config = path.as_posix()
+    selected = settings.actions.get("selected")
+    if settings.actions.get("allowed_actions") != "selected" or not isinstance(
+        selected, dict
+    ):
+        print(f"[actions] of {config} lists no selected actions to add to GitHub's.")
+        return 0
+    added = widen_selected_actions(api, repo, selected)
+    if not added:
+        print(
+            f"GitHub lets {repo} start every pattern of [actions.selected] of {config}."
+        )
+        return 0
+    print(f"GitHub now lets {repo} start these patterns of {config} as well:")
+    for pattern in added:
+        print(f"- {pattern}")
+    return 0
+
+
+def checklist_command(api: Api, repo: str, settings: Settings, root: Path) -> int:
+    print(f"The set-up of {repo}:")
+    steps = checklist(api, repo, settings, root)
+    print(describe_steps(steps))
+    return 0 if all(step.done is not False for step in steps) else 1
+
+
+def create_command(api: Api, arguments: argparse.Namespace, root: Path) -> int:
+    """blueprint.py create: the repository on GitHub of a new copy, then its settings
+    and its checklist. The settings load first, so that a configuration that can't be
+    right stops it before anything is made, as the preflight of create does for the
+    rest; a run that goes on where an earlier one stopped applies the settings again,
+    which changes only what differs. What only a person can do, such as the
+    secrets, the checklist names, so only a part of the settings that GitHub refused
+    fails it."""
+    settings = Settings.load(root / arguments.config, root)
+    repo = create(
+        root,
+        str(settings.repository.get("description", "")),
+        repo=arguments.repo,
+        private=arguments.private,
+        dry_run=arguments.dry_run,
+    )
+    if repo is None:
+        return 0
+    applied = settings_command(api, repo, settings, "apply", arguments.config)
+    checklist_command(api, repo, settings, root)
+    return 2 if applied == 2 else 0
+
+
+def app_command(arguments: argparse.Namespace, root: Path) -> int:
+    """blueprint.py app: the release app of the owner, from its manifest or as one that
+    exists. Git and gh do the work, and the settings play no part in it."""
+    try:
+        if arguments.action == "register":
+            register(
+                root,
+                repo=arguments.repo,
+                org=arguments.org,
+                update=not arguments.no_update,
+                browser=None if arguments.no_browser else webbrowser.open,
+                timeout=arguments.timeout,
+            )
+        else:
+            connect(
+                root,
+                arguments.key_file,
+                repo=arguments.repo,
+                name=arguments.name,
+                client_id=arguments.client_id,
+                app_id=arguments.app_id,
+                update=not arguments.no_update,
+            )
+    except (CreateError, OSError) as error:
+        print(f"blueprint.py: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def utf8_output() -> None:
+    """Windows consoles default to a code page without the marks of the checklist, and
+    to CRLF, which a file of the repository written from the output must not get."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", newline="\n")
+
+
+def add_settings_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The settings as code, the checklist and a new repository."""
+    settings_parser = commands.add_parser(
+        "settings", help="compare or apply the settings as code"
+    )
+    settings_parser.add_argument(
+        "action",
+        choices=["check", "apply", "actions", "widen"],
+        help="check: compare with GitHub; apply: make GitHub match; actions: whether "
+        "the list of the allowed actions lets every action that the workflows run "
+        "start, also in turn, from the files alone (the check of the Lint workflow); "
+        "widen: only add the patterns of the selected actions that GitHub's list "
+        "lacks (the blueprint bot, before it pushes an update)",
+    )
+    commands.add_parser(
+        "checklist", help="the steps outside the API, and which are done"
+    )
+    app_parser = commands.add_parser(
+        "app",
+        help="the release app of the owner: register one from GitHub's manifest, or "
+        "connect one that exists",
+    )
+    app_actions = app_parser.add_subparsers(dest="action", required=True)
+    register_parser = app_actions.add_parser(
+        "register",
+        help="register the app on one page of GitHub, set its private key without "
+        "a file, and open the pull request that names it",
+    )
+    register_parser.add_argument(
+        "--org",
+        metavar="ORG",
+        help="the organization that owns the repository, which GitHub otherwise tells",
+    )
+    register_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="only print the address of the page",
+    )
+    register_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=TIMEOUT,
+        metavar="SECONDS",
+        help=f"how long to wait for the page of GitHub; {TIMEOUT} by default",
+    )
+    connect_parser = app_actions.add_parser(
+        "connect",
+        help="set the private key of an app that exists from a file, and name the app "
+        "unless the answers of the blueprint do",
+    )
+    connect_parser.add_argument(
+        "--key-file",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="the private key that GitHub gave you",
+    )
+    connect_parser.add_argument(
+        "--name", default="", help="the name in the address of the app"
+    )
+    connect_parser.add_argument(
+        "--client-id", default="", help="the Client ID on the settings page of the app"
+    )
+    connect_parser.add_argument(
+        "--app-id", default="", help="the App ID on the settings page of the app"
+    )
+    for action_parser in (register_parser, connect_parser):
+        action_parser.add_argument(
+            "--no-update",
+            action="store_true",
+            help="print the commands that name the app, and run none of them",
+        )
+    create_parser = commands.add_parser(
+        "create",
+        help="the repository on GitHub of a new copy: git init, the first commit, "
+        "gh repo create, the settings and the checklist",
+    )
+    create_parser.add_argument(
+        "--private", action="store_true", help="a private repository; public by default"
+    )
+    create_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the preflight and the commands, and run none",
+    )
+    commands.add_parser(
+        "doctor",
+        help="the preflight of create alone: whether Python, Git, the GitHub CLI, "
+        "its sign-in, the owner and the name let create run, with what fixes each",
+    )
+
+
+def add_changelog_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The changelog and the notes of a release, its fragments, the coverage comment,
+    the VEX document and the notices."""
+    changelog_parser = commands.add_parser(
+        "changelog",
+        help="the changelog and the notes of a release, for the release bot",
+    )
+    changelog_parser.add_argument(
+        "action",
+        choices=["release", "notes"],
+        help="release: the changelog of the release pull request; notes: the release notes",
+    )
+    changelog_parser.add_argument("version")
+    changelog_parser.add_argument(
+        "files",
+        nargs=2,
+        metavar="FILE",
+        help="release: the changelog of main and that of the release branch; "
+        "notes: the changelog of the release and the notes of release-please",
+    )
+    changelog_parser.add_argument(
+        "--fragments",
+        default=FRAGMENTS,
+        help="release: the folder of the fragments, by default %(default)s",
+    )
+    changelog_parser.add_argument(
+        "--taken",
+        help="release: the file to write the paths of the fragments into that the "
+        "release takes in, one on each line, for the release bot to delete",
+    )
+    commands.add_parser(
+        "commit-overrides",
+        help="write the title of each merged pull request since the last release "
+        "into its description, for release-please, which might not parse its squash "
+        "commit (the release bot)",
+    )
+    beta_parser = commands.add_parser(
+        "beta", help="the notes of a beta of the next release, for the release bot"
+    )
+    beta_parser.add_argument(
+        "version", help="the version of the beta, such as 1.3.0-beta.2"
+    )
+    beta_parser.add_argument("--file", default="CHANGELOG.md")
+    beta_parser.add_argument("--fragments", default=FRAGMENTS)
+    fragments_parser = commands.add_parser(
+        "fragments",
+        help="check the fragments of the changelog as a release takes them in, for "
+        "the changelog check",
+    )
+    fragments_parser.add_argument(
+        "--folder", default=FRAGMENTS, help="by default %(default)s"
+    )
+    fragments_parser.add_argument(
+        "--file",
+        default="CHANGELOG.md",
+        help="the changelog, whose headings a fragment may use too",
+    )
+    fragments_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="first rename each heading that surely means a kind of change, such as "
+        "### Fixes to ### Fixed, as the fix bot does",
+    )
+    coverage_parser = commands.add_parser(
+        "coverage",
+        help="the comment of the coverage bot: a Cobertura or LCOV report against that "
+        "of main",
+    )
+    coverage_parser.add_argument("head", help="the report of the pull request")
+    coverage_parser.add_argument(
+        "base", nargs="?", default="", help="the report of main, if there is one"
+    )
+    vex_parser = commands.add_parser(
+        "vex",
+        help="the OpenVEX document of a release from osv-scanner.toml, for the release "
+        "bot; nothing when it accepts no advisory",
+    )
+    vex_parser.add_argument("repo", help="owner/name")
+    vex_parser.add_argument("tag", help="the tag of the release")
+    vex_parser.add_argument("timestamp", help="when the release is made, RFC 3339")
+    vex_parser.add_argument("--file", default="osv-scanner.toml")
+    vex_parser.add_argument(
+        "--version",
+        help="the version of the release, which its SBOMs name; the tag without its v "
+        "by default",
+    )
+    notices_parser = commands.add_parser(
+        "notices", help="the third-party components and their licenses, for releases"
+    )
+    notices_parser.add_argument("version", help="the tag of the release")
+    notices_parser.add_argument("sbom", help="the SBOM of GitHub's dependency graph")
+
+
+def add_update_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The commit of a blueprint update and the next branch to bring up to date."""
+    update_parser = commands.add_parser(
+        "update-commit",
+        help="commit what copier update staged and keep its one pull request, for the "
+        "blueprint bot",
+    )
+    update_parser.add_argument(
+        "--app",
+        required=True,
+        help="the login of the release app, such as name[bot]; the branch of a pull "
+        "request with commits of anyone else stays as it is",
+    )
+    update_parser.add_argument(
+        "--automerge", default="on", help="off leaves the merge to the maintainer"
+    )
+    update_parser.add_argument(
+        "--run-id",
+        default="manual",
+        help="names the branch that a commit without the modes of the files needs",
+    )
+    update_parser.add_argument(
+        "--source",
+        default=SOURCE,
+        help="the blueprint on GitHub as OWNER/NAME, a fork perhaps, whose release the "
+        "pull request links",
+    )
+    next_branch_parser = commands.add_parser(
+        "next-branch",
+        help="bring the next pull request that waits for auto-merge up to date, one "
+        "at a time, for the branch bot",
+    )
+    next_branch_parser.add_argument(
+        "--warnings-only",
+        action="store_true",
+        help="pass even when GitHub refused a request, with the warnings alone, as "
+        "in a run that shows as a check of a pull request",
+    )
+    stale_runs_parser = commands.add_parser(
+        "stale-runs",
+        help="cancel the runs of the checks of commits that no open pull request has "
+        "as its head any more",
+    )
+    stale_runs_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="only say which runs the bot would cancel",
+    )
+
+
+def add_ownership_parser(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The notice for a pull request that changes a file of the blueprint."""
+    parser = commands.add_parser(
+        "ownership",
+        help="annotate each changed file of a pull request that belongs to the "
+        "blueprint, for the check lint",
+    )
+    parser.add_argument(
+        "changed", type=Path, help="the file with the output of git diff -z --name-only"
+    )
+    parser.add_argument(
+        "--contributing-diff",
+        type=Path,
+        help="the file with the git diff of CONTRIBUTING.md: a change that stays "
+        "between its two marked lines belongs to the project",
+    )
+    parser.add_argument("--branch", default="", help="the head branch")
+    parser.add_argument("--head-repo", default="", help="the repository of the branch")
+    parser.add_argument("--author-type", default="", help="the type of the author")
+    parser.add_argument(
+        "--mode",
+        default="",
+        help="fail makes each file a failure; anything else leaves a notice",
+    )
+
+
+def add_coach_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The PR coach."""
+    coach_parser = commands.add_parser(
+        "coach",
+        help="the PR coach: how to fix a check that failed, in its summary and in one "
+        "comment on the pull request",
+    )
+    coach_actions = coach_parser.add_subparsers(dest="action", required=True)
+    explain_parser = coach_actions.add_parser(
+        "explain",
+        help="what a check or a step of scripts/check.sh found and how to fix it; in "
+        "the CI also in the summary and as an annotation of the job",
+    )
+    explain_parser.add_argument(
+        "name", help="the name of the check, such as markdown, or of the step"
+    )
+    explain_parser.add_argument(
+        "--step", action="store_true", help="the name is a step of scripts/check.sh"
+    )
+    explain_parser.add_argument(
+        "--parts",
+        nargs="*",
+        default=[],
+        metavar="PART",
+        help="the checks that the job of the check runs and that failed, such as "
+        "markdown in lint; the coach explains each of them instead of the check",
+    )
+    coach_report_parser = coach_actions.add_parser(
+        "report",
+        help="keep the one comment of the PR coach on the pull request of a commit up "
+        "to date, for the bots after the checks",
+    )
+    coach_report_parser.add_argument("sha", help="the head of the pull request")
+    coach_report_parser.add_argument(
+        "--pull", default="", help="its number, when the run of the checks names it"
+    )
+    coach_report_parser.add_argument(
+        "--coverage", default="", help="the coverage report of its tests, if any"
+    )
+    coach_report_parser.add_argument(
+        "--coverage-base", default="", help="the coverage report of main, if any"
+    )
+    signatures_parser = coach_actions.add_parser(
+        "signatures",
+        help="whether a commit of a pull request lacks the verified signature that the "
+        "rules of the branch that it goes into require, which blocks its merge",
+    )
+    signatures_parser.add_argument(
+        "pull", type=int, help="the number of the pull request"
+    )
+    signatures_parser.add_argument(
+        "--base", required=True, help="the branch that it goes into"
+    )
+    coach_actions.add_parser(
+        "verify",
+        help="whether every required check and every step of scripts/check.sh has "
+        "its explanation",
+    )
+    annotate_parser = commands.add_parser(
+        "annotate",
+        help="each finding of a tool of scripts/check.sh as an annotation of the CI, "
+        "which the files of a pull request show at its line and the PR coach lists",
+    )
+    annotate_parser.add_argument(
+        "tool",
+        choices=annotate.TOOLS,
+        help="the tool: one whose output comes in on the input and goes on as it is, "
+        "or pytest and phpunit, whose report of JUnit is the second argument",
+    )
+    annotate_parser.add_argument(
+        "report", nargs="?", default="", help="the report of JUnit of the tests"
+    )
+
+
+def add_bot_health_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The bot-health bot."""
+    health_parser = commands.add_parser(
+        "bot-health",
+        help="one issue for each bot that fails on the default branch, for the "
+        "bot-health bot",
+    )
+    health = health_parser.add_subparsers(dest="action", required=True)
+    run_parser = health.add_parser(
+        "run",
+        help="the end of a run of a watched workflow: run its failed jobs once more, "
+        "or keep its issue current",
+    )
+    run_parser.add_argument("run_id", type=int, metavar="RUN", help="the id of the run")
+    health.add_parser(
+        "sweep",
+        help="the latest run of every workflow, and the workflows whose schedule "
+        "GitHub missed, once a day",
+    )
+    renovate_parser = health.add_parser(
+        "renovate", help="the warnings and errors of a run of Renovate, in one issue"
+    )
+    renovate_parser.add_argument(
+        "log", nargs="+", help="the logs of Renovate in JSON, of one run"
+    )
+    renovate_parser.add_argument(
+        "--run", required=True, help="the link of the run of Renovate"
+    )
+    renovate_parser.add_argument(
+        "--result",
+        default="success",
+        help="how the runs ended, as GitHub says it; without success, the run doesn't "
+        "count as one without problems",
+    )
+
+
+def add_diagrams_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The pictures of the diagrams."""
+    diagrams_parser = commands.add_parser(
+        "diagrams",
+        help="the ```mermaid blocks of the Markdown as sources in docs/diagrams/ and "
+        "their pictures, for scripts/diagrams.sh",
+    )
+    diagrams_actions = diagrams_parser.add_subparsers(dest="action", required=True)
+    diagrams_actions.add_parser(
+        "extract",
+        help="every ```mermaid block as a source and the <picture> of it, the labels "
+        "of the sources without HTML, and the alt of each picture as its source says",
+    )
+    diagrams_actions.add_parser(
+        "check",
+        help="whether the alt of each picture repeats the accTitle and accDescr of "
+        "its source, for scripts/diagrams.sh --check",
+    )
+    keep_parser = diagrams_actions.add_parser(
+        "keep",
+        help="copy the sources, pictures and pages that scripts/diagrams.sh changed "
+        "into a folder, for the diagram bot",
+    )
+    keep_parser.add_argument("folder", type=Path)
+    commit_parser = diagrams_actions.add_parser(
+        "commit",
+        help="the request to GitHub's GraphQL API that commits what a folder of keep "
+        "holds onto a branch of --repo, once it is checked",
+    )
+    commit_parser.add_argument("folder", type=Path)
+    commit_parser.add_argument("--branch", required=True)
+    commit_parser.add_argument(
+        "--head", required=True, help="the commit that the branch must still be at"
+    )
+    commit_parser.add_argument("--headline", required=True)
+    commit_parser.add_argument("--body", default="")
+    report_parser = diagrams_actions.add_parser(
+        "report", help="what the diagram bot says about what a folder of keep holds"
+    )
+    report_parser.add_argument("folder", type=Path)
+    report_parser.add_argument(
+        "--for",
+        dest="kind",
+        choices=["comment", "pull-request"],
+        default="comment",
+        help="comment: on the pull request whose blocks became pictures; "
+        "pull-request: the description of the bot's pull request for main",
+    )
+
+
+def add_screenshots_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The screenshot bot."""
+    screenshots_parser = commands.add_parser(
+        "screenshots",
+        help="the pictures that scripts/screenshots.sh renders, renewed by the "
+        "screenshot bot only when their pixels change",
+    )
+    screenshots_actions = screenshots_parser.add_subparsers(
+        dest="action", required=True
+    )
+    due_parser = screenshots_actions.add_parser(
+        "due",
+        help="whether the bot renders: with the script, and after a change only when "
+        "it touches a file of the list; exits 1 when not, and says why",
+    )
+    due_parser.add_argument(
+        "--since", default="", help="the commit before the change; empty for always"
+    )
+    due_parser.add_argument("--until", default="HEAD", help="the commit of the change")
+    due_parser.add_argument(
+        "--paths",
+        type=Path,
+        default=screenshots.PATHS,
+        help="the list of the files whose change can change the pictures",
+    )
+    due_parser.add_argument(
+        "--script",
+        type=Path,
+        default=screenshots.SCRIPT,
+        help="the script that renders",
+    )
+    screenshots_actions.add_parser(
+        "restore",
+        help="give each picture whose pixels the script didn't change its committed "
+        "file back, list the others, and correct the width and height that the pages "
+        "name for one of another size",
+    )
+    shots_keep_parser = screenshots_actions.add_parser(
+        "keep",
+        help="restore, then copy the pictures that look different into a folder, "
+        "for the screenshot bot",
+    )
+    shots_keep_parser.add_argument("folder", type=Path)
+    parts_parser = screenshots_actions.add_parser(
+        "parts",
+        help="how many commits carry the pictures of a folder of keep and the pages "
+        "that they correct",
+    )
+    parts_parser.add_argument("folder", type=Path)
+    shots_commit_parser = screenshots_actions.add_parser(
+        "commit",
+        help="the request to GitHub's GraphQL API that commits a part of what a "
+        "folder of keep holds, once it is checked, and of the pages that it corrects "
+        "onto a branch of --repo",
+    )
+    shots_commit_parser.add_argument("folder", type=Path)
+    shots_commit_parser.add_argument("--branch", required=True)
+    shots_commit_parser.add_argument(
+        "--head", required=True, help="the commit that the branch must still be at"
+    )
+    shots_commit_parser.add_argument("--headline", required=True)
+    shots_commit_parser.add_argument("--body", default="")
+    shots_commit_parser.add_argument(
+        "--part", type=int, default=1, help="which of the parts, from 1"
+    )
+    shots_report_parser = screenshots_actions.add_parser(
+        "report", help="the description of the bot's pull request"
+    )
+    shots_report_parser.add_argument("folder", type=Path)
+    shots_report_parser.add_argument(
+        "--sha", required=True, help="the commit that was rendered"
+    )
+    shots_report_parser.add_argument(
+        "--run", required=True, help="the link of the run of the workflow"
+    )
+    shots_report_parser.add_argument(
+        "--script",
+        type=Path,
+        default=screenshots.SCRIPT,
+        help="the script that rendered",
+    )
+
+
+def add_fix_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The fix bot."""
+    fix_parser = commands.add_parser(
+        "fix",
+        help="the fix bot: the commands that fix what a check found, and the commits "
+        "and suggestions of their fixes after the checks",
+    )
+    fix_actions = fix_parser.add_subparsers(dest="action", required=True)
+    fix_run_parser = fix_actions.add_parser(
+        "run",
+        help="run the commands of autofix that fix what a check found, by default "
+        "those of each step of scripts/check.sh",
+    )
+    fix_run_parser.add_argument(
+        "check", nargs="?", help="the name of the check that failed, such as markdown"
+    )
+    fix_run_parser.add_argument(
+        "--keep",
+        type=Path,
+        help="a folder to copy the files that they changed into, for the fix bot",
+    )
+    fix_keep_parser = fix_actions.add_parser(
+        "keep",
+        help="copy the files of the commit that a fix changed into a folder, for the "
+        "fix bot",
+    )
+    fix_keep_parser.add_argument("folder", type=Path)
+    fix_actions.add_parser(
+        "text",
+        help="give every text file LF line endings, no trailing whitespace and a line "
+        "break at its end",
+    )
+    fix_actions.add_parser(
+        "version",
+        help="write the version of .release-please-manifest.json back into each file "
+        "that the release bot writes it into, where a hand changed it",
+    )
+    collect_parser = fix_actions.add_parser(
+        "collect",
+        help="download the fixes of the checks of a commit once they ended, and "
+        "decide what the fix bot does with them",
+    )
+    collect_parser.add_argument("run", type=int, help="the run that ended")
+    own_parser = fix_actions.add_parser(
+        "own",
+        help="say what the bot fixes of the title and the entry of the changelog of a "
+        "pull request from a branch of this repository, and with --app fix them",
+    )
+    own_parser.add_argument("--sha", required=True, help="the commit of the checks")
+    own_parser.add_argument("--pull", default="", help="the pull request, if named")
+    own_parser.add_argument(
+        "--output", help="the file of the outputs of the step, $GITHUB_OUTPUT"
+    )
+    own_parser.add_argument("--app", help="the slug of the release app, which fixes")
+    own_parser.add_argument("--url", default="", help="the run of the checks")
+    commit_fixes_parser = fix_actions.add_parser(
+        "commit",
+        help="commit the fixes onto the branch of a pull request, as the release app",
+    )
+    suggest_parser = fix_actions.add_parser(
+        "suggest",
+        help="suggest the fixes at their lines of a pull request from a fork",
+    )
+    main_parser = fix_actions.add_parser(
+        "main",
+        help="keep the one pull request from bot/self-heal with the fixes of main",
+    )
+    for bot_parser in (
+        collect_parser,
+        commit_fixes_parser,
+        suggest_parser,
+        main_parser,
+    ):
+        bot_parser.add_argument("--sha", required=True, help="the commit of the checks")
+        bot_parser.add_argument(
+            "--folder", type=Path, required=True, help="the fixes, one folder per check"
+        )
+    collect_parser.add_argument(
+        "--event", required=True, choices=["pull_request", *MAIN_EVENTS]
+    )
+    collect_parser.add_argument("--branch", required=True, help="the branch of the run")
+    collect_parser.add_argument("--pull", default="", help="the pull request, if named")
+    collect_parser.add_argument(
+        "--output", help="the file of the outputs of the step, $GITHUB_OUTPUT"
+    )
+    commit_fixes_parser.add_argument("--branch", required=True)
+    suggest_parser.add_argument("--pull", required=True)
+    main_parser.add_argument("--base", required=True, help="the default branch")
+    for bot_parser in (commit_fixes_parser, main_parser):
+        bot_parser.add_argument(
+            "--app", required=True, help="the slug of the release app, which commits"
+        )
+        bot_parser.add_argument("--url", required=True, help="the run of the checks")
+
+
+def add_mutation_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The parts, the results and the report of the mutation tests."""
+    mutation_parser = commands.add_parser(
+        "mutation",
+        help="the parts of a run of the mutation tests, the results of each and the "
+        "report of the run, for the Mutation workflow",
+    )
+    mutation_actions = mutation_parser.add_subparsers(dest="action", required=True)
+    plan_parser = mutation_actions.add_parser(
+        "plan",
+        help="the tool and the parts of the run, as lines for $GITHUB_OUTPUT",
+    )
+    plan_parser.add_argument(
+        "--parts",
+        default="auto",
+        help="the number of parts, or auto for the estimate of the mutants",
+    )
+    plan_parser.add_argument(
+        "--sample",
+        action="store_true",
+        help="one part with a sample of the functions, as a pull request tries them",
+    )
+    mutation_actions.add_parser(
+        "configure",
+        help="the configuration of mutmut in setup.cfg, unless the project has one",
+    )
+    stats_parser = mutation_actions.add_parser(
+        "stats",
+        help="the summary of the stats of mutmut, or the tests that fail without any "
+        "mutant",
+    )
+    stats_parser.add_argument("output", help="what mutmut run printed")
+    stats_parser.add_argument(
+        "--stats",
+        default="mutants/mutmut-stats.json",
+        help="the stats that mutmut saved",
+    )
+    collect_mutants_parser = mutation_actions.add_parser(
+        "collect",
+        help="the results of one part, with the change and the kind of each survivor",
+    )
+    collect_mutants_parser.add_argument("results", help="what mutmut results printed")
+    collect_mutants_parser.add_argument("output", help="what mutmut run printed")
+    collect_mutants_parser.add_argument(
+        "--part", required=True, help="the part and the parts, such as 1/3"
+    )
+    collect_mutants_parser.add_argument(
+        "--patterns", default="", help="the names of the mutants of the part"
+    )
+    collect_mutants_parser.add_argument(
+        "--status", type=int, default=0, help="the exit code of mutmut run"
+    )
+    collect_mutants_parser.add_argument(
+        "--out", required=True, help="the results of the part, in JSON"
+    )
+    mutation_report_parser = mutation_actions.add_parser(
+        "report",
+        help="the score of the run and its survivors, the logic first, and the issue "
+        "when the score drops",
+    )
+    mutation_report_parser.add_argument(
+        "parts_folder", metavar="PARTS", help="the folder with the results of the parts"
+    )
+    mutation_report_parser.add_argument(
+        "--out", required=True, help="the folder for the artifact of the run"
+    )
+    mutation_report_parser.add_argument(
+        "--previous", type=Path, help="mutation.json of the run before"
+    )
+    mutation_report_parser.add_argument("--run", default="", help="the link of the run")
+    mutation_issue_parser = mutation_actions.add_parser(
+        "issue",
+        help="open, keep or close the one issue of a dropped score, from the report",
+    )
+    mutation_issue_parser.add_argument(
+        "folder",
+        help="the folder of the report, with mutation.json and previous.json",
+    )
+
+
+def add_advisories_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The rules of Renovate for the versions that osv-scanner.toml accepts."""
+    advisories_parser = commands.add_parser(
+        "advisories",
+        help="the versions that each osv-scanner.toml accepts with every advisory, as "
+        f"rules of Renovate in {advisories.PRESET}, which open no branch to fix them",
+    )
+    advisories_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=f"write {advisories.PRESET} from the osv-scanner.toml files first",
+    )
+    advisories_parser.add_argument(
+        "--dependabot",
+        action="store_true",
+        help="close the Dependabot alerts that an osv-scanner.toml accepts, with its "
+        "reason, and open again those that it closed once the acceptance ends",
+    )
+    advisories_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --dependabot: only say which alerts it would close or open again",
+    )
+
+
+def add_locks_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Whether Renovate reads the header of each lock file of pip-compile."""
+    locks_parser = commands.add_parser(
+        "locks",
+        help="whether Renovate can compile each lock file of pip-compile again with "
+        "the command in its header, which it skips with no more than a warning",
+    )
+    locks_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="put the = between each option of the command and its value first; "
+        "with --compile, keep the result of the compile",
+    )
+    locks_parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="compile each lock file again with the command in its header, for its "
+        "Python and on the versions that it pins, and say which no longer matches "
+        "its sources",
+    )
+
+
+def add_pages_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """The pages of the website and the check of the published site."""
+    pages_parser = commands.add_parser(
+        "pages",
+        help="the READMEs, CONTRIBUTING files and pages of docs/ in one column, for "
+        "the GitHub app and phones: no table that sets a picture beside text, no cell "
+        "with a width",
+    )
+    pages_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="put the cells of a layout table one below the other, the text before "
+        "its picture, and leave out the widths of cells, first",
+    )
+    migrate_parser = commands.add_parser(
+        "migrate",
+        help="what the releases of the blueprint move in the files of the project, "
+        "which an update leaves alone",
+    )
+    migrate_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="move it in those files",
+    )
+    site_check_parser = commands.add_parser(
+        "site-check",
+        help="what the website that MkDocs built promises: a sitemap in every folder "
+        "of pages, the 404 page in the default language, one canonical address and "
+        "full addresses of the other languages on every page, every picture of "
+        "the Markdown of a page on it, and a map of the website, llms.txt",
+    )
+    site_check_parser.add_argument(
+        "site", help="the folder that MkDocs built the website into, such as site"
+    )
+    site_check_parser.add_argument(
+        "--docs",
+        help="the folder of the Markdown of the pages (default: docs_dir of "
+        "mkdocs.yml, or docs)",
+    )
+    site_check_parser.add_argument(
+        "--output",
+        help="the file of the outputs of the step, $GITHUB_OUTPUT: the further "
+        "languages, the path of the address, and the rule of lychee for the links of "
+        "llms.txt",
+    )
+
+
+def parser() -> argparse.ArgumentParser:
+    """The command line of blueprint.py, each group of its commands from a function
+    of its own. mutmut writes a whole copy of a function for each of its mutants:
+    one function with every command made 1,800 copies of its 640 lines, 51 MB of
+    code that the Mutation workflow and its tests compiled for minutes."""
+    parser = argparse.ArgumentParser(
+        prog="blueprint.py", description=blueprint.__doc__.split("\n\n")[0]
+    )
+    parser.add_argument(
+        "--repo", help="OWNER/NAME; by default the repository of this folder"
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=CONFIG,
+        help="the settings, by default %(default)s",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    for add in (
+        add_settings_parsers,
+        add_changelog_parsers,
+        add_update_parsers,
+        add_coach_parsers,
+        add_ownership_parser,
+        add_bot_health_parsers,
+        add_diagrams_parsers,
+        add_screenshots_parsers,
+        add_fix_parsers,
+        add_mutation_parsers,
+        add_pages_parsers,
+        add_advisories_parsers,
+        add_locks_parsers,
+    ):
+        add(commands)
+    return parser
+
+
+def standalone_command(
+    arguments: argparse.Namespace, root: Path, api: Api | None
+) -> int | None:
+    """A command that needs neither the settings nor the repository of the folder:
+    its exit code, or None for one that does."""
+    if arguments.command == "coverage":
+        # A report that isn't there, isn't XML or isn't text of UTF-8.
+        try:
+            return coverage_command(arguments)
+        except (OSError, ElementTree.ParseError, ValueError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "annotate":
+        return annotate_command(arguments, root)
+    if arguments.command == "ownership":
+        return ownership_command(arguments, root)
+    if arguments.command == "app":
+        return app_command(arguments, root)
+    if arguments.command == "doctor":
+        # Git and gh only answer, and the settings play no part in it.
+        try:
+            return 0 if doctor(root, repo=arguments.repo) else 1
+        except CreateError as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "coach" and arguments.action in ("explain", "verify"):
+        try:
+            return explain_command(arguments, root)
+        except (OSError, CatalogError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if (
+        arguments.command == "coach"
+        and arguments.action == "report"
+        and not (
+            re.fullmatch(r"[0-9a-f]{40}", arguments.sha)
+            and re.fullmatch(r"[0-9]*", arguments.pull)
+        )
+    ):
+        print(
+            "blueprint.py: a commit is 40 hex digits, a pull request a number",
+            file=sys.stderr,
+        )
+        return 2
+    if arguments.command == "diagrams":
+        try:
+            return diagrams_command(arguments, root)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "screenshots":
+        try:
+            return screenshots_command(arguments, root)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "fix" and arguments.action in (
+        "run",
+        "keep",
+        "text",
+        "version",
+    ):
+        try:
+            return fix_command(arguments, root)
+        # A file of the release bot that isn't JSON, or isn't UTF-8, is a ValueError.
+        except (
+            OSError,
+            ValueError,
+            CatalogError,
+            subprocess.CalledProcessError,
+        ) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "fix" and not (
+        re.fullmatch(r"[0-9a-f]{40}", arguments.sha)
+        and re.fullmatch(r"[0-9]*", getattr(arguments, "pull", ""))
+    ):
+        print(
+            "blueprint.py: a commit is 40 hex digits, a pull request a number",
+            file=sys.stderr,
+        )
+        return 2
+    if arguments.command == "mutation":
+        try:
+            return mutation_command(arguments, root, api)
+        except (OSError, ValueError, GitHubError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "site-check":
+        try:
+            return site_check_command(arguments, root)
+        except OSError as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "advisories" and (
+        (arguments.dependabot and arguments.fix)
+        or (arguments.dry_run and not arguments.dependabot)
+    ):
+        print(
+            "blueprint.py: --dry-run goes with --dependabot, and --fix without it: "
+            "the one writes the rules of Renovate, the other closes Dependabot alerts",
+            file=sys.stderr,
+        )
+        return 2
+    if arguments.command == "advisories" and not arguments.dependabot:
+        try:
+            return advisories_command(arguments, root)
+        except (OSError, UnicodeDecodeError, subprocess.CalledProcessError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "locks":
+        try:
+            return locks_command(arguments, root)
+        except (OSError, UnicodeDecodeError, subprocess.CalledProcessError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "migrate":
+        try:
+            return migrate_command(arguments, root)
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command == "pages":
+        try:
+            return pages_command(arguments, root)
+        except (OSError, UnicodeDecodeError, subprocess.CalledProcessError) as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    if arguments.command in (
+        "changelog",
+        "beta",
+        "fragments",
+        "vex",
+        "notices",
+    ):
+        try:
+            return changelog_command(arguments)
+        except FragmentError as error:
+            for problem in error.problems:
+                print(f"blueprint.py: {problem}", file=sys.stderr)
+            return 1
+        except OSError as error:
+            print(f"blueprint.py: {error}", file=sys.stderr)
+            return 2
+    return None
+
+
+def main(
+    argv: Sequence[str] | None = None, api: Api | None = None, root: Path = Path()
+) -> int:
+    utf8_output()
+    arguments = parser().parse_args(argv)
+    code = standalone_command(arguments, root, api)
+    if code is not None:
+        return code
+    api = api or Api()
+    try:
+        if arguments.command == "create":
+            return create_command(api, arguments, root)
+        if arguments.command == "settings" and arguments.action == "actions":
+            return actions_command(api, root, arguments.config)
+        repo = arguments.repo or current_repo(api)
+        if arguments.command == "coach" and arguments.action == "signatures":
+            return signatures_command(api, repo, arguments)
+        if arguments.command == "coach":
+            number = int(arguments.pull) if arguments.pull else None
+            catalog = Catalog.load(root)
+            coverage = (
+                read_coverage(arguments.coverage, arguments.coverage_base)
+                if arguments.coverage
+                else None
+            )
+            client = api
+
+            def parts(pull: Json) -> list[Part]:
+                reports = catalog.reports.values()
+                return pr_parts(client, repo, pull, root, coverage, reports)
+
+            sys.stdout.write(
+                coach_report(api, repo, arguments.sha, number, catalog, about=parts)
+            )
+            return 0
+        if arguments.command == "update-commit":
+            print(
+                update_pull_request(
+                    api,
+                    repo,
+                    root,
+                    app=arguments.app,
+                    automerge=arguments.automerge != "off",
+                    run_id=arguments.run_id,
+                    source=arguments.source,
+                )
+            )
+            return 0
+        if arguments.command == "bot-health":
+            return bot_health_command(api, repo, arguments, root)
+        if arguments.command == "next-branch":
+            outcome = next_branch(api, repo, job_from(os.environ), root)
+            for warning in (*outcome.warnings, *outcome.notices):
+                print(warning, file=sys.stderr)
+            print(outcome.summary, end="")
+            return 1 if outcome.warnings and not arguments.warnings_only else 0
+        if arguments.command == "stale-runs":
+            stale = cancel_stale_runs(
+                api,
+                repo,
+                root,
+                own_run=os.environ.get("GITHUB_RUN_ID", ""),
+                dry_run=arguments.dry_run,
+            )
+            for warning in stale.warnings:
+                print(warning, file=sys.stderr)
+            print(stale.summary, end="")
+            return 0
+        if arguments.command == "fix":
+            return fix_bot_command(api, repo, arguments, root)
+        if arguments.command == "advisories":
+            return dependabot_command(api, repo, arguments, root)
+        if arguments.command == "commit-overrides":
+            print(write_overrides(api, repo), end="")
+            return 0
+        settings = Settings.load(root / arguments.config, root)
+        if arguments.command == "checklist":
+            return checklist_command(api, repo, settings, root)
+        if arguments.action == "widen":
+            return widen_command(api, repo, settings, arguments.config)
+        return settings_command(api, repo, settings, arguments.action, arguments.config)
+    except (
+        GitHubError,
+        OSError,
+        tomllib.TOMLDecodeError,
+        ConfigError,
+        Outdated,
+        CatalogError,
+        CreateError,
+    ) as error:
+        print(f"blueprint.py: {error}", file=sys.stderr)
+        return 2

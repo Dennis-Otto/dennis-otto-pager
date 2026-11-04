@@ -144,9 +144,12 @@ async function send(
 }
 
 async function edit(context: Context, item: Contribution): Promise<Reply> {
+  // The prompt goes into the topic of the draft, or answers its message.
   const prompt = await context.telegram.prompt(
     context.t("edit.prompt", { thing: `${item.repo}#${item.number}` }),
     context.t("edit.placeholder"),
+    item.topic?.thread ?? null,
+    item.messageId,
   );
   await context.store.setPendingEdit({ item: item.id, prompt });
   return done(context.t("answer.edit"));

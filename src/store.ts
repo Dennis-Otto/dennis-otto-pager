@@ -1,7 +1,7 @@
 /**
- * The things that the pager shows, one message of Telegram each, and their state in
- * Workers KV: as little as possible, nothing secret, and a closed thing expires
- * after 30 days.
+ * The things that the pager shows, one message of Telegram each, in a topic of
+ * their own where the chat has topics, and their state in Workers KV: as little as
+ * possible, nothing secret, and a closed thing expires after 30 days.
  */
 import { sha256Hex } from "./crypto.ts";
 import type { Thread } from "./telegram.ts";
@@ -11,6 +11,12 @@ export interface Entry {
   key: string;
   label: string;
   url: string;
+}
+
+/** The topic of the chat that a thing has: its thread, and the name that it shows now. */
+export interface Topic {
+  thread: number;
+  name: string;
 }
 
 interface Base {
@@ -25,6 +31,12 @@ interface Base {
   note: string | null;
   /** When "Later" brings it back, in milliseconds since 1970. */
   snoozedUntil: number | null;
+  /**
+   * The topic that holds everything about the thing, or null for the main view: a
+   * chat without topics, a topic that Telegram refused, and a record from before
+   * topics, which has none.
+   */
+  topic?: Topic | null;
 }
 
 /** An issue or pull request that someone other than the maintainer opened. */
@@ -257,6 +269,31 @@ export class Store {
     if (left.length !== Object.keys(asked).length) {
       await this.keepAsked(Object.fromEntries(left));
     }
+  }
+
+  /**
+   * Keep which thing a topic of the chat belongs to, so that a text in it goes with
+   * that thing: one write when the topic opens and one when it is renamed. Once its
+   * thing is done, the link expires after 30 days, as the record of a closed thing
+   * does.
+   */
+  async link(thread: number, id: string, done: boolean): Promise<void> {
+    await this.kv.put(
+      `topic:${thread}`,
+      id,
+      done ? { expirationTtl: MONTH } : {},
+    );
+  }
+
+  /**
+   * The thing whose topic a thread is, or null: for a topic that the maintainer
+   * opened, and for one whose thing is gone or has another topic now, such as the
+   * release of a repository that moved on to its next version.
+   */
+  async byTopic(thread: number): Promise<Item | null> {
+    const id = await this.kv.get(`topic:${thread}`);
+    const item = id === null ? null : await this.get(id);
+    return item?.topic?.thread === thread ? item : null;
   }
 
   async pendingEdit(): Promise<PendingEdit | null> {

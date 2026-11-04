@@ -51,11 +51,11 @@ Der Workflow des privaten Repositorys `Dennis-Otto/dennis-otto-pager-control` f�
 | --- | --- | --- |
 | `pager-draft` | ✍️ Antwort entwerfen | `item`, `repo`, `number`, `pull`, `language` |
 | `pager-fix` | 🛠 Fix starten | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url`, `language` |
-| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat) und `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt; `language` |
+| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
 
 `language` ist `LANGUAGE` des Workers, `en` oder `de`: Darin antwortet das Steuer-Repository dem Maintainer, die Notiz eines Fixes und der Grund eines gescheiterten Jobs eingeschlossen, während ein Antwortentwurf in der Sprache seines Issues oder Pull Requests bleibt.
 
-Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *merge it*, als Antwort auf die Nachricht eines Releases, meint dieses Release. Der Pager schickt keinen Text eines Issues: Der Workflow liest ihn selbst von GitHub, als Daten. Er antwortet mit einem `POST` an `/control`:
+Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *merge it*, als Antwort auf die Nachricht eines Releases, meint dieses Release. Ebenso ein Text im Thema einer Sache, der die Sache als `thing` mitbringt: ihre `id`, `kind`, `repo` und `state`, die `number` eines Beitrags oder Releases und die `version` eines Releases, `links` dorthin, wo GitHub sie zeigt (ihr Issue oder Pull Request, oder die Seite eines Bündels und seine Einträge, höchstens 21), und `text`, ihre Nachricht, wie der Maintainer sie sieht, im HTML von Telegram, in dem escapt ist, was von GitHub kommt, höchstens 1500 Zeichen. Der Schlüssel heißt `thing`, nicht `item`: Der Steuer-Workflow führt die Jobs eines `item` nacheinander aus, und ein Text behält einen eigenen Lauf. Ein Workflow, der `thing` nicht kennt, übergeht es, so darf jede Seite zuerst deployen. Der Pager schickt keinen Text eines Issues: Der Workflow liest ihn selbst von GitHub, als Daten. Er antwortet mit einem `POST` an `/control`:
 
 - dem Header `X-Pager-Timestamp`, der Zeit in Sekunden seit 1970, die höchstens fünf Minuten abweichen darf;
 - dem Header `X-Pager-Signature`, `sha256=` und das HMAC mit SHA-256, unter `CONTROL_SECRET`, über den Zeitstempel, einen Punkt und den Body;
@@ -124,6 +124,38 @@ Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert
 
 Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍, im Thread ihres Textes.
 
+## Ein Thema pro Sache
+
+Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `createForumTopic`, sobald der Threaded Mode für den Bot in der Mini App von @BotFather an ist ([Einrichten](setup.md#1-der-bot-von-telegram)). Dann öffnet die erste Nachricht jeder Sache ein eigenes Thema, benannt nach ihrem Repository, ohne seinen Besitzer, und dem, was die Sache ist, mit einer Farbe pro Art:
+
+| Sache | Name ihres Themas | Farbe |
+| --- | --- | --- |
+| Beitrag | 🙋 demo#12 It breaks | Blau |
+| Alarm | 🚨 demo braucht dich | Rot |
+| Code Scanning | 🛡 Code Scanning in demo | Gelb |
+| Release | 📦 demo 1.2.3 | Grün |
+| Erinnerung | 🔔 Claude-Token | Violett |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.de.dark.svg">
+  <img src="images/diagrams/a-topic-per-thing.de.svg" alt="Ein Thema pro Sache: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was Dennis im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.">
+</picture>
+
+- **Alles über die Sache steht in ihrem Thema.** Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie an Ort und Stelle, wie bisher. Ein Entwurf, ein gescheiterter Job, die Nachricht, die ⏰ Später zurückbringt, die Rückfrage von ✏️ Bearbeiten und die Antworten auf Texte im Thema folgen dort.
+- **Ein Text im Thema einer Sache handelt von dieser Sache.** Er geht mit der Sache als `thing` an das Steuer-Repository, wie die Tabelle oben sagt, so braucht eine Frage wie *warum?* keine weiteren Worte. Ein Thema, das der Maintainer öffnet, und General haben keine Sache: Ein Text dort beginnt ein eigenes Gespräch, wie bisher.
+- **Ein Thema pro Sache, nie eines pro Änderung.** Das Bündel dessen, was in einem Repository fehlschlägt, behält sein Thema, auch wenn es sich wieder öffnet, nachdem es grün wurde, und ebenso sein Code Scanning. Eine neue Version eines Releases, das noch gezeigt wird, behält das Thema der Version, die sie ersetzt, umbenannt; das nächste Release, nachdem eines veröffentlicht oder ignoriert wurde, bekommt ein eigenes.
+- **✅, sobald sie erledigt ist.** Eine Sache, die geschlossen ist, oder ein Release, das gemergt ist, bekommt mit `editForumTopic` ein ✅ vor den Namen ihres Themas, und ein Bündel, das sich wieder öffnet, verliert es. Erledigte Themen bleiben, als Geschichte ihrer Sachen, wie [Entscheidung 0005](decisions/0005-one-topic-per-thing-kept-when-done.md) erklärt: Der Maintainer löscht eines von Hand, wenn er es nicht mehr braucht.
+- **Themen des Maintainers.** Die Dienstnachricht `forum_topic_created` eines Themas, das der Maintainer öffnet, übergeht der Pager, und jeden Text darin beantwortet er darin. Telegram schickt den ersten Text eines Themas, das auf dem Handy geöffnet wurde, womöglich ohne seinen Thread: Seine Antwort geht dann in die Hauptansicht.
+
+Ohne Themen schreibt der Pager in die Hauptansicht, wie bisher, und die Sache funktioniert, wie sie es tat:
+
+- `getMe` meldet kein `has_topics_enabled`, weil der Threaded Mode aus ist;
+- Telegram lehnt `createForumTopic` ab;
+- Telegram öffnet das Thema, lehnt aber die Nachricht darin mit `message thread not found` ab, wie es ein Rollout von Telegram in [tdlib/telegram-bot-api#847](https://github.com/tdlib/telegram-bot-api/issues/847) tat: Der Pager löscht das leere Thema wieder;
+- das Thema einer Sache gibt es nicht mehr, etwa weil der Maintainer es gelöscht hat: Die nächste Nachricht der Sache geht in die Hauptansicht, und die danach ebenso. Ein Bündel, das sich wieder öffnet, nachdem sein Thema gelöscht wurde, bekommt stattdessen ein neues Thema, damit der neue Vorfall ein eigenes hat.
+
+Die Rückfrage von ✏️ Bearbeiten antwortet dann auf die Nachricht ihrer Sache, sodass klar ist, worum es geht, und eine Sache von vor den Themen bleibt in der Hauptansicht, bis sie sich schließt. Jeder dieser Fälle schreibt eine Warnung mit der Antwort von Telegram ins Log, nie den Namen des Themas oder einen Text.
+
 ## Der Thread einer Antwort
 
 Mit der Bot API 9.3 hat Telegram dem privaten Chat eines Bots Threads gegeben, und ist der Threaded Mode für den Bot an, in der Mini App von @BotFather, kann jeder neue Text des Maintainers einen eigenen Thread beginnen. Eine Antwort auf einen Text geht in den Thread, aus dem der Text kam, gelesen aus seiner `message_thread_id`: die Antwort auf `/help`, ein Fehler, etwa ein fehlendes Steuer-Repository oder ein Entwurf, den es nicht mehr gibt, und die Antwort des Steuer-Repositorys, ob Notiz, Fehlschlag oder Vorschlag mit seinem Knopf ✅ Bestätigen. Die Reaktionen brauchen keinen Thread, denn sie sitzen auf dem Text selbst.
@@ -140,7 +172,7 @@ Das Steuer-Repository sieht den Thread nie: Der Pager behält ihn beim Text, der
 - eine Antwort auf einen Text, der ging, bevor der Pager Threads kannte, und eine, die mehr als einen Tag nach ihrem Text kommt: Den Thread eines Textes, den er aufgegeben hat, behält der Pager einen Tag, so findet ihn auch eine späte Antwort;
 - eine Antwort, deren Thread Telegram nicht findet, mit `message thread not found`, etwa einen, den der Maintainer gelöscht hat: Der Pager schickt sie ohne den Thread noch einmal und schreibt das ins Log, ohne ihren Text.
 
-Die Nachrichten der Sachen, etwa eines Releases oder eines fehlschlagenden Checks, bleiben in der Hauptansicht, wo sie sind.
+Die Nachrichten der Sachen, etwa eines Releases oder eines fehlschlagenden Checks, gehen in ihre Themen, wie [ein Thema pro Sache](#ein-thema-pro-sache) sagt.
 
 ## Texte und Sprachen
 
@@ -150,6 +182,6 @@ Nach einer Änderung von `LANGUAGE` spricht eine Nachricht die neue Sprache, sob
 
 ## Zustand
 
-Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
+Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht, den Thread und den Namen ihres Themas und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Ein Verweis vom Thread eines Themas auf seine Sache, `topic:<thread>`, lässt einen Text im Thema sie finden: ein Schreibvorgang, wenn sich das Thema öffnet, und einer, wenn es umbenannt wird, und er verfällt 30 Tage, nachdem seine Sache erledigt ist. Die Zeit eines „Später“ steht in den Metadaten seines Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
 Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.

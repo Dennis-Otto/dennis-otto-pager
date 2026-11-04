@@ -207,3 +207,21 @@ export function base(
     snoozedUntil: null,
   };
 }
+
+/**
+ * A chat with topics, as Threaded Mode in @BotFather makes it: getMe says so, and
+ * each createForumTopic opens the next thread, from first on.
+ */
+export function withTopics(net: Net, first = 900): Net {
+  let next = first;
+  return net
+    .on("POST", /\/getMe$/, () =>
+      json({
+        ok: true,
+        result: { id: 1, is_bot: true, has_topics_enabled: true },
+      }),
+    )
+    .on("POST", /\/createForumTopic$/, () =>
+      json({ ok: true, result: { message_thread_id: next++, name: "topic" } }),
+    );
+}

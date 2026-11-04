@@ -1,7 +1,8 @@
 /**
  * Every text that the pager sends to the maintainer, in each language that it
- * speaks: the messages and their states, the buttons, /help, the answers of the
- * buttons, the errors that it shows and the reminder of the token. LANGUAGE in
+ * speaks: the messages and their states, the names of their topics, the buttons,
+ * /help, the answers of the buttons, the errors that it shows and the reminder of
+ * the token. LANGUAGE in
  * wrangler.jsonc chooses one, and English is the default. A text names its parts
  * in braces, such as {repo}, and what fills them, such as the title of an issue,
  * goes in as it is: only the words around it change with the language. The logs
@@ -105,7 +106,7 @@ const en = {
     "That text has {length} characters; a reply here takes {max} at most. Send a shorter one with ✏️ Edit.",
 
   "chat.help":
-    "👋 This is your pager. It writes only when something needs you, one message per thing, and edits that message as the thing changes.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Reply to a message of the pager to ask about its thing.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
+    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
   "chat.noControl":
     "Free text goes to the workflow of {repo}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.",
 
@@ -128,6 +129,13 @@ const en = {
   "kind.alarm": "alarm",
   "kind.alert": "alert",
   "kind.release": "release",
+
+  "topic.contribution": "🙋 {repo}#{number} {title}",
+  "topic.alarm": "🚨 {repo} needs you",
+  "topic.alert": "🛡 Code scanning in {repo}",
+  "topic.release": "📦 {repo} {version}",
+  "topic.reminder": "🔔 Token of Claude",
+  "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 day",
   "reminder.days.many": "{days} days",
@@ -264,7 +272,7 @@ const de: Catalog = {
     "Der Text hat {length} Zeichen; eine Antwort hier nimmt höchstens {max}. Schick einen kürzeren mit ✏️ Bearbeiten.",
 
   "chat.help":
-    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, und ändert diese Nachricht, wenn sich die Sache ändert.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Antworte auf eine Nachricht des Pagers, um nach ihrer Sache zu fragen.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.",
+    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.",
   "chat.noControl":
     "Freier Text geht an den Workflow von {repo}, wo die GitHub-App noch nicht installiert ist: Installier sie dort, wie docs/setup.md es beschreibt.",
 
@@ -287,6 +295,13 @@ const de: Catalog = {
   "kind.alarm": "Alarm",
   "kind.alert": "Code Scanning",
   "kind.release": "Release",
+
+  "topic.contribution": "🙋 {repo}#{number} {title}",
+  "topic.alarm": "🚨 {repo} braucht dich",
+  "topic.alert": "🛡 Code Scanning in {repo}",
+  "topic.release": "📦 {repo} {version}",
+  "topic.reminder": "🔔 Claude-Token",
+  "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 Tag",
   "reminder.days.many": "{days} Tagen",

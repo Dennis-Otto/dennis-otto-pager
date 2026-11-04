@@ -17,6 +17,8 @@ Führe die Befehle in Git Bash oder einer anderen Unix-Shell aus, in einem Check
 
     Die Chat-ID ist persönlich: Sie gehört nicht ins Repository. Sie kommt in Schritt 3 als Geheimnis zu Cloudflare.
 
+4. Gib dem Chat Themen, eines pro Sache: Öffne die Mini App von @BotFather, wähle den Bot, dann *Bot Settings* → *Threads Settings*, schalte **Threaded Mode** ein und lass **Disallow users to create new threads** aus, damit du eigene Themen öffnen kannst. Der Pager öffnet dann für jede neue Sache ein Thema und benennt es, etwa *🚨 repo-blueprint braucht dich*, und ein Text darin geht mit dieser Sache an das Steuer-Repository; ein Thema, das du öffnest, ist ein eigenes Gespräch. Gruppen bleiben aus: Der Pager bedient nur deinen privaten Chat. Ohne Threaded Mode schreibt der Pager alles in die Hauptansicht und funktioniert wie mit Themen; [So arbeitet er](how-it-works.md#ein-thema-pro-sache) sagt, was geschieht, wenn Telegram ein Thema ablehnt.
+
 ## 2. Der Worker auf Cloudflare
 
 Leg den Worker mit seinem ersten Deployment an, wie [Releases and Cloudflare](releases.md#set-up-cloudflare-once) beschreibt, und verbinde dort das Repository mit Workers Builds:

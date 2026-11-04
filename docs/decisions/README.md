@@ -10,3 +10,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0002](0002-buttons-of-an-allowlist-act-and-claude-only-proposes.md) | Buttons of an allowlist act, and Claude only proposes | accepted |
 | [0003](0003-the-control-repository-answers-the-worker.md) | The control repository answers the Worker, and a fix gets a token of its own | accepted |
 | [0004](0004-one-language-per-pager-from-a-catalog.md) | One language per pager, from a catalog of texts | accepted |
+| [0005](0005-one-topic-per-thing-kept-when-done.md) | One topic per thing, kept when it is done | accepted |

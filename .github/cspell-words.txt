@@ -12,3 +12,5 @@ pkcs
 setWebhook
 userinfobot
 workerd
+tdlib
+deployen

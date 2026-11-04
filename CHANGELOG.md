@@ -7,6 +7,12 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.2.2](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.1...v0.2.2) (2026-11-04)
+
+### Bug fixes
+
+- Each answer to your text stays in the thread that you wrote it in, now that the bot has threads: `/help`, an error, and the answer of the control repository with its ✅ Confirm button. A text from General, and an answer whose thread is gone, get theirs in the main view.
+
 ## [0.2.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.0...v0.2.1) (2026-11-04)
 
 ### Bug fixes

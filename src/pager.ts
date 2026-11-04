@@ -29,6 +29,8 @@ export interface Context {
   now: () => number;
   /** Wait, such as for GitHub to work out whether a pull request can merge. */
   sleep: (milliseconds: number) => Promise<void>;
+  /** Run a change of the state after every change before it, as src/serial.ts does. */
+  exclusive: <T>(work: () => Promise<T>) => Promise<T>;
 }
 
 /** How often to ask again while GitHub still works out whether a pull request can merge. */
@@ -178,6 +180,10 @@ async function releaseCheck(
     const sha = pull.head?.sha ?? "";
     const known = await releaseItem(context, signal.repo);
     const same = known !== null && known.version === version ? known : null;
+    // A new version of a release that is still shown, such as 0.10.0 after a feat
+    // on top of 0.9.0: its message replaces the old one, which goes, buttons and all.
+    const replaced =
+      known !== null && same === null && !isClosed(known) ? known : null;
     if (same?.state === "ignored") {
       outcomes.push(`#${number} ignored`);
       continue;
@@ -202,10 +208,10 @@ async function releaseCheck(
       sha,
       url: pull.html_url ?? "",
       // The same release, ready again after an update, keeps its message.
-      messageId: same?.messageId ?? null,
+      messageId: same?.messageId ?? replaced?.messageId ?? null,
       snoozedUntil: same?.snoozedUntil ?? null,
     };
-    await show(context, item);
+    await show(context, item, replaced !== null);
     outcomes.push(`#${number} ready`);
   }
   return outcomes.join("; ");

@@ -26,7 +26,7 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-The first deployment also creates the namespace of Workers KV that holds the state of the pager, and names the address of the Worker, such as `https://dennis-otto-pager.ACCOUNT.workers.dev`. Until step 3 is done, the Worker answers each webhook with `503`.
+The first deployment also creates the namespace of Workers KV that holds the state of the pager and the Durable Object that runs its changes one at a time, and names the address of the Worker, such as `https://dennis-otto-pager.ACCOUNT.workers.dev`. Until step 3 is done, the Worker answers each webhook with `503`.
 
 ## 3. The secrets of the Worker
 
@@ -97,11 +97,12 @@ Tell Telegram where to send the updates, with the secret of step 3:
 curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
   -d url=https://dennis-otto-pager.ACCOUNT.workers.dev/telegram \
   -d secret_token="$WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message","callback_query"]'
+  -d 'allowed_updates=["message","callback_query"]' \
+  -d max_connections=1
 curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 ```
 
-`getWebhookInfo` names the address and, after a failed delivery, the error.
+`max_connections=1` makes Telegram send one update at a time, so that a button pressed twice acts once. `getWebhookInfo` names the address and, after a failed delivery, the error.
 
 ## 6. Try it
 
@@ -109,7 +110,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 - In the settings of the GitHub App, under *Advanced*, the first delivery is a `ping`, which the Worker answers with `pong`.
 - Open an issue in a watched repository from another account: the message comes with its buttons.
 
-The control repository, which drafts the replies, starts the fixes and reads the free text, has its own set-up in [Dennis-Otto/dennis-otto-pager-control](https://github.com/Dennis-Otto/dennis-otto-pager-control); until it runs, its buttons send their events and wait.
+The control repository, which drafts the replies, starts the fixes and reads the free text, has its own set-up in the private repository `Dennis-Otto/dennis-otto-pager-control`; until it runs, its buttons send their events and wait.
 
 ## Later on
 

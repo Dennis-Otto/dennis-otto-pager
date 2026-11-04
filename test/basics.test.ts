@@ -19,7 +19,7 @@ import {
   toHex,
   verifySignature,
 } from "../src/crypto.ts";
-import { html, link, render } from "../src/render.ts";
+import { html, link, MAX_ENTRIES, render } from "../src/render.ts";
 import { type PagerEnv, readSettings } from "../src/settings.ts";
 import type { Contribution, Item } from "../src/store.ts";
 import { base, START } from "./helpers.ts";
@@ -305,6 +305,47 @@ describe("the text of a message", () => {
     expect(render(contribution({ pull: true }), START)).toContain(
       "New pull request",
     );
+  });
+
+  it("keeps a bundle of many entries below the limit of Telegram", () => {
+    const many = (count: number, label: (n: number) => string): Item => ({
+      ...base(ID),
+      kind: "alert",
+      state: "open",
+      entries: Array.from({ length: count }, (_, n) => ({
+        key: `alert:${n}`,
+        label: label(n),
+        url: `https://github.com/Dennis-Otto/demo/security/code-scanning/${n}`,
+      })),
+    });
+    const hundred = render(
+      many(100, (n) => `high: rule ${n}`),
+      START,
+    );
+    const listed = hundred.split("\n").filter((line) => line.startsWith("•"));
+    expect(listed).toHaveLength(MAX_ENTRIES);
+    expect(hundred).toContain(
+      '<a href="https://github.com/Dennis-Otto/demo/security/code-scanning">… and 80 more</a>',
+    );
+    const long = render(
+      many(100, (n) => `${n} ${"x".repeat(400)}`),
+      START,
+    );
+    expect(long.length).toBeLessThan(4096);
+    expect(long).toMatch(/… and \d+ more<\/a>$/);
+    const alarm = render(
+      { ...many(21, (n) => `check ${n}`), kind: "alarm" } as Item,
+      START,
+    );
+    expect(alarm).toContain(
+      '<a href="https://github.com/Dennis-Otto/demo/actions">… and 1 more</a>',
+    );
+    expect(
+      render(
+        many(MAX_ENTRIES, (n) => `${n}`),
+        START,
+      ),
+    ).not.toContain("more");
   });
 
   it("shows bundles, releases and reminders with their state, note and Later", () => {

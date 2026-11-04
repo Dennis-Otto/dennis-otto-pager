@@ -4,71 +4,21 @@
  *
  * The handlers of the Worker: the webhook of Telegram at /telegram, that of the
  * GitHub App at /github, the answers of the control repository at /control, and the
- * schedule. Each request proves where it comes from before anything else runs, and
- * no log names a secret or what an issue says.
+ * schedule. The Worker turns away what no route serves; the one Durable Object of
+ * src/serial.ts runs the rest, one change at a time. Each request proves where it
+ * comes from before anything else runs, and no log names a secret or what an issue
+ * says.
  */
-import { describe, makeContext } from "./context.ts";
-import { handleControl } from "./control.ts";
-import { safeEqual, verifySignature } from "./crypto.ts";
-import { apply, type Context } from "./pager.ts";
-import { classify, type Payload } from "./rules.ts";
-import { runSchedule } from "./schedule.ts";
+import type { Route } from "./routes.ts";
 import { type PagerEnv, readSettings, type Settings } from "./settings.ts";
-import { handleUpdate, type Update } from "./updates.ts";
 
-const ROUTES = new Set(["/telegram", "/github", "/control"]);
+export { Serial } from "./serial.ts";
 
-async function telegram(context: Context, request: Request): Promise<Response> {
-  const secret = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
-  if (!safeEqual(secret, context.settings.telegramSecret)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  let update: Update;
-  try {
-    update = await request.json<Update>();
-  } catch {
-    return new Response("Bad Request", { status: 400 });
-  }
-  try {
-    await handleUpdate(context, update);
-  } catch (error) {
-    // Telegram sends an update again until it gets a 200, and a button pressed
-    // twice could act twice: the error goes to the log, and the update is done.
-    console.error("A Telegram update failed:", describe(error));
-  }
-  return new Response("ok");
-}
-
-async function github(context: Context, request: Request): Promise<Response> {
-  const body = await request.text();
-  const signature = request.headers.get("x-hub-signature-256");
-  if (
-    !(await verifySignature(context.settings.githubSecret, body, signature))
-  ) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  const event = request.headers.get("x-github-event") ?? "";
-  if (event === "ping") {
-    return new Response("pong");
-  }
-  let payload: Payload;
-  try {
-    payload = JSON.parse(body) as Payload;
-  } catch {
-    return new Response("Bad Request", { status: 400 });
-  }
-  const outcome = classify(event, payload, context.settings.maintainer);
-  if ("ignored" in outcome) {
-    return new Response(`ignored: ${outcome.ignored}`);
-  }
-  try {
-    return new Response(await apply(context, outcome.signal));
-  } catch (error) {
-    // GitHub delivers it again when asked to, in the settings of the app.
-    console.error(`A GitHub ${event} failed:`, describe(error));
-    return new Response("failed", { status: 500 });
-  }
-}
+const ROUTES: ReadonlySet<string> = new Set<Route>([
+  "/telegram",
+  "/github",
+  "/control",
+]);
 
 function configured(env: PagerEnv): Settings | null {
   const read = readSettings(env);
@@ -77,6 +27,11 @@ function configured(env: PagerEnv): Settings | null {
     return null;
   }
   return read.settings;
+}
+
+/** The one Durable Object of the pager. */
+function serial(env: PagerEnv) {
+  return env.SERIAL.getByName("pager");
 }
 
 export default {
@@ -98,28 +53,13 @@ export default {
     if (settings === null) {
       return new Response("Service Unavailable", { status: 503 });
     }
-    const context = makeContext(settings, env);
-    switch (url.pathname) {
-      case "/telegram":
-        return telegram(context, request);
-      case "/github":
-        return github(context, request);
-      default:
-        return handleControl(context, request);
-    }
+    return serial(env).handle(settings, url.pathname as Route, request);
   },
 
   async scheduled(_controller, env, executionContext) {
     const settings = configured(env);
     if (settings !== null) {
-      executionContext.waitUntil(
-        runSchedule(makeContext(settings, env)).then(
-          () => undefined,
-          (error: unknown) => {
-            console.error("The schedule failed:", describe(error));
-          },
-        ),
-      );
+      executionContext.waitUntil(serial(env).schedule(settings));
     }
   },
 } satisfies ExportedHandler<PagerEnv>;

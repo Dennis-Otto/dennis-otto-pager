@@ -27,8 +27,34 @@ function repoLink(repo: string): string {
   return link(repo, `https://github.com/${repo}`);
 }
 
-function entries(list: Entry[]): string {
-  return list.map((entry) => `• ${link(entry.label, entry.url)}`).join("\n");
+/** The most entries that a bundle lists, and the most characters they take. */
+export const MAX_ENTRIES = 20;
+const MAX_ENTRIES_LENGTH = 3000;
+
+/**
+ * The entries of a bundle, as many as fit: Telegram takes 4096 characters at most,
+ * and a message that is too long would fail every later change of the bundle. The
+ * rest is a line with a link to where GitHub lists them all.
+ */
+function entries(list: Entry[], all: string): string {
+  const lines: string[] = [];
+  let length = 0;
+  for (const entry of list) {
+    const line = `• ${link(entry.label, entry.url)}`;
+    if (
+      lines.length === MAX_ENTRIES ||
+      length + line.length > MAX_ENTRIES_LENGTH
+    ) {
+      break;
+    }
+    lines.push(line);
+    length += line.length + 1;
+  }
+  const more = list.length - lines.length;
+  if (more > 0) {
+    lines.push(link(`… and ${more} more`, all));
+  }
+  return lines.join("\n");
 }
 
 const STATES: Record<string, string> = {
@@ -59,9 +85,9 @@ function body(item: Item): string {
       return `${head}\n\n<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>${html(item.draft, 3500)}</blockquote>`;
     }
     case "alarm":
-      return `🚨 <b>${html(item.repo)} needs you</b>\n${entries(item.entries)}`;
+      return `🚨 <b>${html(item.repo)} needs you</b>\n${entries(item.entries, `https://github.com/${item.repo}/actions`)}`;
     case "alert":
-      return `🛡 <b>Code scanning in ${html(item.repo)}</b>\n${entries(item.entries)}`;
+      return `🛡 <b>Code scanning in ${html(item.repo)}</b>\n${entries(item.entries, `https://github.com/${item.repo}/security/code-scanning`)}`;
     case "release": {
       const head = `📦 <b>Release ${html(item.version, 50)}</b> of ${repoLink(item.repo)}: ${link(`#${item.number}`, item.url)}`;
       if (item.state === "ready") {

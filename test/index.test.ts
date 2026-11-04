@@ -15,8 +15,9 @@ import { hmacHex } from "../src/crypto.ts";
 import { forget, GitHubError } from "../src/github.ts";
 import worker from "../src/index.ts";
 import type { PagerEnv } from "../src/settings.ts";
+import { type Contribution, itemId, keys } from "../src/store.ts";
 import { TelegramError } from "../src/telegram.ts";
-import { appKey, CHAT, json, Net, settings } from "./helpers.ts";
+import { appKey, base, CHAT, json, Net, REPO, settings } from "./helpers.ts";
 
 let net: Net;
 let errors: string[];
@@ -218,6 +219,119 @@ describe("the webhook of GitHub", () => {
   });
 });
 
+describe("one change at a time", () => {
+  const repository = {
+    full_name: "Dennis-Otto/demo",
+    default_branch: "main",
+    owner: { login: "Dennis-Otto" },
+  };
+
+  function failed(name: string) {
+    return {
+      action: "completed",
+      installation: { id: 9 },
+      repository,
+      check_run: {
+        name,
+        conclusion: "failure",
+        html_url: `https://github.com/Dennis-Otto/demo/runs/${name}`,
+        check_suite: { head_branch: "main" },
+      },
+    };
+  }
+
+  it("bundles two required checks that fail at the same moment into one message", async () => {
+    net.on("GET", /rules\/branches\/main$/, () =>
+      json([
+        {
+          type: "required_status_checks",
+          parameters: {
+            required_status_checks: [{ context: "lint" }, { context: "test" }],
+          },
+        },
+      ]),
+    );
+    const answers = await Promise.all([
+      call(await fromGitHub("check_run", failed("lint"))),
+      call(await fromGitHub("check_run", failed("test"))),
+    ]);
+    expect(await Promise.all(answers.map((each) => each.text()))).toEqual([
+      "alarm opened",
+      "alarm updated",
+    ]);
+    expect(net.telegram("sendMessage")).toHaveLength(1);
+    const store = makeContext(await settings(), env as PagerEnv).store;
+    const bundle = await store.get(await itemId(keys.alarm(REPO)));
+    expect(bundle).toMatchObject({
+      entries: [{ key: "check:lint" }, { key: "check:test" }],
+    });
+  });
+
+  it("posts a draft once when Send is pressed twice", async () => {
+    net.on("POST", "/repos/Dennis-Otto/demo/issues/12/comments", () =>
+      json({ html_url: "https://github.com/c" }, 201),
+    );
+    const id = await itemId(keys.contribution(REPO, 12));
+    const drafted: Contribution = {
+      ...base(id),
+      kind: "contribution",
+      state: "draft",
+      number: 12,
+      pull: false,
+      title: "It breaks",
+      url: "https://github.com/Dennis-Otto/demo/issues/12",
+      author: "octocat",
+      draft: "Thanks!",
+      draftVersion: 1,
+    };
+    await makeContext(await settings(), env as PagerEnv).store.put(drafted);
+    const environment = {
+      ...(await secrets()),
+      GITHUB_USER_TOKEN: "user-token",
+    } as PagerEnv;
+    const press = (query: string) =>
+      call(
+        post(
+          "/telegram",
+          JSON.stringify({
+            callback_query: {
+              id: query,
+              from: { id: CHAT },
+              data: `send:${id}:1`,
+            },
+          }),
+          { "x-telegram-bot-api-secret-token": "telegram-secret" },
+        ),
+        environment,
+      );
+    await Promise.all([press("q1"), press("q2")]);
+    expect(net.github("/comments")).toHaveLength(1);
+  });
+
+  it("goes on after a change that failed", async () => {
+    net.on("GET", /rules\/branches\/main$/, () =>
+      json({ message: "Boom" }, 502),
+    );
+    const answers = await Promise.all([
+      call(await fromGitHub("check_run", failed("lint"))),
+      call(
+        await fromGitHub("issues", {
+          action: "opened",
+          installation: { id: 9 },
+          repository,
+          issue: {
+            number: 12,
+            title: "Hi",
+            html_url: "https://github.com/x",
+            user: { login: "octocat" },
+          },
+        }),
+      ),
+    ]);
+    expect(answers.map((each) => each.status)).toEqual([500, 200]);
+  });
+});
+
 describe("the route of the control repository", () => {
   it("is served by the control handler", async () => {
     const response = await call(post("/control", "{}"));
@@ -264,6 +378,11 @@ describe("the schedule", () => {
 });
 
 describe("the context", () => {
+  it("runs a change at once outside the Durable Object", async () => {
+    const context = makeContext(await settings(), env as PagerEnv);
+    expect(await context.exclusive(async () => "done")).toBe("done");
+  });
+
   it("waits with a timer of the runtime", async () => {
     const context = makeContext(await settings(), env as PagerEnv);
     const before = Date.now();

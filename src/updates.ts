@@ -32,7 +32,7 @@ export const MAX_DRAFT = 3000;
 const HELP = [
   "👋 This is your pager. It writes only when something needs you, one message per thing, and edits that message as the thing changes.",
   "",
-  "The buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here and asks before it acts.",
+  "The buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here: an answer never acts, only a button does.",
 ].join("\n");
 
 async function pressed(

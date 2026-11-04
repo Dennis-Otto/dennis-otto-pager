@@ -56,10 +56,15 @@ The pager sends no text of an issue: the workflow reads it from GitHub itself, a
 
 - the header `X-Pager-Timestamp`, the time in seconds since 1970, which may be five minutes off at most;
 - the header `X-Pager-Signature`, `sha256=` and the HMAC with SHA-256, under `CONTROL_SECRET`, of the timestamp, a dot and the body;
-- a body of JSON, one of:
-    - `{"type": "draft", "item": "<id>", "text": "<reply>"}`: the draft of a reply for a contribution, at most 3000 characters, shown as a new message with ✅ Send;
-    - `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix;
-    - `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text.
+- a body of JSON, one of the three below.
+
+The body is one of:
+
+- `{"type": "draft", "item": "<id>", "text": "<reply>"}`: the draft of a reply for a contribution, at most 3000 characters, shown as a new message with ✅ Send;
+- `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix;
+- `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text.
+
+No body makes the pager act: free text gets an answer only, and every action needs a button of the allowlist. A proposal of the control repository, shown with a ✅ Confirm button that runs one action of the allowlist, is the next change of this contract.
 
 ```sh
 body='{"type":"note","text":"The fix is in #12."}'
@@ -73,3 +78,5 @@ Whatever it sends is shown, escaped, and never run: an action always needs a but
 ## State
 
 Workers KV holds one record per thing: its kind, state, repository, the id of its message and, for a contribution, the draft; a closed thing expires after 30 days. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, and the prompt of an edit lives for a day. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+
+Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

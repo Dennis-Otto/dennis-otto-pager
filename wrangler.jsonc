@@ -14,6 +14,13 @@
   // The state of the pager: one small record per thing that it shows, and nothing
   // secret. The first `npx wrangler deploy` creates the namespace and binds it.
   "kv_namespaces": [{ "binding": "PAGER" }],
+  // The one Durable Object of the pager, src/serial.ts, which runs every change of
+  // that state one after another, in one place. It keeps nothing itself; SQLite is
+  // the storage that the Free plan of Workers offers for it.
+  "durable_objects": {
+    "bindings": [{ "name": "SERIAL", "class_name": "Serial" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Serial"] }],
   // Every 15 minutes: the things that "Later" put aside come back when their time
   // is up, and the reminder of the Claude token comes in time.
   "triggers": { "crons": ["*/15 * * * *"] },

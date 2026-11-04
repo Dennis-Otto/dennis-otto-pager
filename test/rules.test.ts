@@ -594,11 +594,52 @@ describe("code scanning", () => {
   });
 
   it("closes an alert that was fixed or dismissed", () => {
-    for (const action of ["fixed", "closed_by_user", "auto_dismissed"]) {
+    for (const action of ["fixed", "auto_dismissed"]) {
       expect(
         classify("code_scanning_alert", event({ action, alert, ref }), ME),
       ).toEqual({ signal: { ...at, type: "alert-closed", key: "alert:4" } });
     }
+    // A person's dismissal comes with an empty ref, as GitHub sends it.
+    const elsewhere = {
+      ...alert,
+      most_recent_instance: { ref: "refs/heads/topic" },
+    };
+    for (const dismissed of [alert, elsewhere]) {
+      expect(
+        classify(
+          "code_scanning_alert",
+          event({ action: "closed_by_user", alert: dismissed, ref: "" }),
+          ME,
+        ),
+      ).toEqual({ signal: { ...at, type: "alert-closed", key: "alert:4" } });
+    }
+  });
+
+  it("pages for an alert that a person reopened, with the empty ref of GitHub", () => {
+    const onMain = {
+      ...alert,
+      most_recent_instance: { ...alert.most_recent_instance, ref },
+    };
+    for (const reopened of [alert, onMain]) {
+      expect(
+        classify(
+          "code_scanning_alert",
+          event({ action: "reopened_by_user", alert: reopened, ref: "" }),
+          ME,
+        ),
+      ).toMatchObject({ signal: { type: "alert-open", key: "alert:4" } });
+    }
+    const elsewhere = {
+      ...alert,
+      most_recent_instance: { ref: "refs/heads/topic" },
+    };
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({ action: "reopened_by_user", alert: elsewhere, ref: "" }),
+        ME,
+      ),
+    ).toEqual({ ignored: "an alert of another branch" });
   });
 
   it("drops milder alerts, other branches and other actions", () => {

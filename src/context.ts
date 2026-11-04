@@ -16,6 +16,7 @@ export function makeContext(
   now: () => number = Date.now,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  exclusive: Context["exclusive"] = (work) => work(),
 ): Context {
   return {
     settings,
@@ -30,6 +31,7 @@ export function makeContext(
     ),
     now,
     sleep,
+    exclusive,
   };
 }
 

@@ -249,6 +249,30 @@ describe("a release", () => {
     expect(w.net.telegram("sendMessage")).toHaveLength(2);
   });
 
+  it("replaces the message of a release whose version changed while it was shown", async () => {
+    const w = await world();
+    serve(w);
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    const first = (await stored(w, keys.release(REPO)))?.messageId;
+    serve(w, {
+      ...pull,
+      title: "chore: release 1.3.0",
+      head: { ...pull.head, sha: "def" },
+    });
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    expect(w.net.telegram("deleteMessage")).toEqual([
+      expect.objectContaining({
+        body: expect.objectContaining({ message_id: first }),
+      }),
+    ]);
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      version: "1.3.0",
+      sha: "def",
+      state: "ready",
+    });
+  });
+
   it("knows no release that it never showed", async () => {
     const w = await world();
     expect(

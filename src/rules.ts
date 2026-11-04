@@ -82,7 +82,7 @@ export interface Payload {
       description?: string;
       security_severity_level?: string | null;
     };
-    most_recent_instance?: { location?: { path?: string } };
+    most_recent_instance?: { ref?: string; location?: { path?: string } };
   };
   ref?: string;
   release?: { tag_name?: string; prerelease?: boolean };
@@ -352,10 +352,16 @@ function codeScanning(payload: Payload, at: Where): Outcome {
   const alert = payload.alert;
   const key = `alert:${alert?.number ?? 0}`;
   const defaultRef = `refs/heads/${payload.repository?.default_branch ?? ""}`;
-  if (payload.ref !== defaultRef) {
+  const action = payload.action ?? "";
+  // What a person does to an alert comes with an empty ref, as GitHub sends it: a
+  // dismissal closes the alert on every branch, and a reopened one counts where
+  // it was last seen.
+  const ref = action.endsWith("_by_user")
+    ? (alert?.most_recent_instance?.ref ?? defaultRef)
+    : payload.ref;
+  if (action !== "closed_by_user" && ref !== defaultRef) {
     return { ignored: "an alert of another branch" };
   }
-  const action = payload.action ?? "";
   if (["fixed", "closed_by_user", "auto_dismissed"].includes(action)) {
     return { signal: { ...at, type: "alert-closed", key } };
   }

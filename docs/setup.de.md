@@ -26,7 +26,7 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-Das erste Deployment legt auch den Namensraum von Workers KV an, der den Zustand des Pagers hält, und nennt die Adresse des Workers, etwa `https://dennis-otto-pager.ACCOUNT.workers.dev`. Bis Schritt 3 erledigt ist, beantwortet der Worker jeden Webhook mit `503`.
+Das erste Deployment legt auch den Namensraum von Workers KV an, der den Zustand des Pagers hält, und das Durable Object, das seine Änderungen nacheinander ausführt, und nennt die Adresse des Workers, etwa `https://dennis-otto-pager.ACCOUNT.workers.dev`. Bis Schritt 3 erledigt ist, beantwortet der Worker jeden Webhook mit `503`.
 
 ## 3. Die Geheimnisse des Workers
 
@@ -97,11 +97,12 @@ Sag Telegram, wohin es die Updates schicken soll, mit dem Geheimnis aus Schritt 
 curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
   -d url=https://dennis-otto-pager.ACCOUNT.workers.dev/telegram \
   -d secret_token="$WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message","callback_query"]'
+  -d 'allowed_updates=["message","callback_query"]' \
+  -d max_connections=1
 curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 ```
 
-`getWebhookInfo` nennt die Adresse und, nach einer gescheiterten Zustellung, den Fehler.
+`max_connections=1` lässt Telegram ein Update nach dem anderen schicken, damit ein zweimal gedrückter Knopf nur einmal wirkt. `getWebhookInfo` nennt die Adresse und, nach einer gescheiterten Zustellung, den Fehler.
 
 ## 6. Ausprobieren
 
@@ -109,7 +110,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 - In den Einstellungen der GitHub-App, unter *Advanced*, ist die erste Zustellung ein `ping`, den der Worker mit `pong` beantwortet.
 - Eröffne von einem anderen Konto ein Issue in einem beobachteten Repository: Die Nachricht kommt mit ihren Knöpfen.
 
-Das Steuer-Repository, das die Antworten entwirft, die Fixes startet und den freien Text liest, hat seine eigene Einrichtung in [Dennis-Otto/dennis-otto-pager-control](https://github.com/Dennis-Otto/dennis-otto-pager-control); bis es läuft, schicken seine Knöpfe ihre Ereignisse und warten.
+Das Steuer-Repository, das die Antworten entwirft, die Fixes startet und den freien Text liest, hat seine eigene Einrichtung in dem privaten Repository `Dennis-Otto/dennis-otto-pager-control`; bis es läuft, schicken seine Knöpfe ihre Ereignisse und warten.
 
 ## Später
 

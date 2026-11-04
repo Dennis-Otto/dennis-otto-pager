@@ -8,7 +8,7 @@
  * as before topics.
  */
 import type { Context } from "./pager.ts";
-import { plain, render } from "./render.ts";
+import { render } from "./render.ts";
 import { type Item, isClosed, type Kind, type Topic } from "./store.ts";
 import { type Keyboard, TOPIC_COLORS, type TopicColor } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
@@ -158,7 +158,10 @@ export interface About {
   version?: string;
   /** Where GitHub shows it: the issue or pull request, or the pages of a bundle and each entry. */
   links: string[];
-  /** Its message as the maintainer sees it, without HTML. */
+  /**
+   * Its message as the maintainer sees it, in the HTML of Telegram, which escapes
+   * what comes from GitHub: the control repository reads it as data, never as markup.
+   */
   text: string;
 }
 
@@ -197,6 +200,6 @@ export function about(item: Item, now: number, t: Texts): About {
     links: links
       .filter((url) => url.startsWith("https://github.com/"))
       .slice(0, MAX_LINKS),
-    text: cut(plain(render(item, now, t)), MAX_ABOUT),
+    text: cut(render(item, now, t), MAX_ABOUT),
   };
 }

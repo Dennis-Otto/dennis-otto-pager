@@ -551,7 +551,7 @@ describe("a text in a topic", () => {
             `https://github.com/${REPO}/actions`,
             `https://github.com/${REPO}/actions/runs/1`,
           ],
-          text: "🚨 Dennis-Otto/demo needs you\n• A bot fails: check:lint fails",
+          text: `🚨 <b>Dennis-Otto/demo needs you</b>\n• <a href="https://github.com/${REPO}/actions/runs/1">A bot fails: check:lint fails</a>`,
         },
         language: "en",
       },
@@ -637,11 +637,11 @@ describe("what a text in a topic tells about its thing", () => {
       number: 30,
       version: "1.2.3",
       links: [PULL_URL],
-      text: '📦 Release 1.2.3 of Dennis-Otto/demo: #30\nEvery check is green, and "Merge" publishes it.',
+      text: `📦 <b>Release 1.2.3</b> of <a href="https://github.com/${REPO}">${REPO}</a>: <a href="${PULL_URL}">#30</a>\nEvery check is green, and "Merge" publishes it.`,
     });
   });
 
-  it("gives the message as plain text, and links of GitHub only", () => {
+  it("gives the message in the HTML of Telegram, with what GitHub says escaped, and links of GitHub only", () => {
     const told = about(
       issue({
         title: `<b>"Crash" & burn</b>`,
@@ -654,7 +654,7 @@ describe("what a text in a topic tells about its thing", () => {
     expect(told).toMatchObject({ kind: "contribution", number: 12, links: [] });
     expect(told).not.toHaveProperty("version");
     expect(told.text).toBe(
-      `🙋 New issue in Dennis-Otto/demo by octocat\n#12 <b>"Crash" & burn</b>\nLooked at it.`,
+      `🙋 <b>New issue</b> in <a href="https://github.com/${REPO}">${REPO}</a> by <b>octocat</b>\n#12 &lt;b&gt;&quot;Crash&quot; &amp; burn&lt;/b&gt;\n<i>Looked at it.</i>`,
     );
   });
 

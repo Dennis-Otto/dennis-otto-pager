@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.3.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.2...v0.3.0) (2026-11-04)
+
+
+### Features
+
+* one Telegram topic per item, so a thread keeps everything about it ([#32](https://github.com/Dennis-Otto/dennis-otto-pager/issues/32)) ([b68cb6e](https://github.com/Dennis-Otto/dennis-otto-pager/commit/b68cb6e24e4d66be1f9214d292135d0811ccce39))
+
 ## [0.2.2](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.1...v0.2.2) (2026-11-04)
 
 ### Bug fixes

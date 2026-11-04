@@ -132,7 +132,7 @@ async function freeText(
     text,
     message: message.message_id,
     ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
-    ...(item === null ? {} : { item: about(item, context.now(), context.t) }),
+    ...(item === null ? {} : { thing: about(item, context.now(), context.t) }),
     language: context.t.language,
   });
   await context.telegram.react(message.message_id, REACTIONS.taken);

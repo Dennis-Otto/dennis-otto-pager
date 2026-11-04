@@ -160,17 +160,40 @@ export class Telegram {
     thread: Thread,
     replyTo: number | null = null,
   ): Promise<Sent> {
-    return this.deliver(
-      {
-        chat_id: this.chatId,
-        text,
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
-        reply_markup: { inline_keyboard: keyboard },
-      },
-      thread,
-      replyTo,
-    );
+    return this.deliver(this.message(text, keyboard), thread, replyTo);
+  }
+
+  /**
+   * Send a message as send() does, but into the thread alone: when Telegram
+   * doesn't find the thread, nothing is sent, and it returns null.
+   */
+  async postInto(
+    text: string,
+    keyboard: Keyboard,
+    thread: number,
+  ): Promise<number | null> {
+    try {
+      return await this.sendMessage({
+        ...this.message(text, keyboard),
+        message_thread_id: thread,
+      });
+    } catch (error) {
+      if (!threadNotFound(error)) {
+        throw error;
+      }
+      console.warn(`Telegram sendMessage: thread ${thread} not found`);
+      return null;
+    }
+  }
+
+  private message(text: string, keyboard: Keyboard): object {
+    return {
+      chat_id: this.chatId,
+      text,
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      reply_markup: { inline_keyboard: keyboard },
+    };
   }
 
   /**

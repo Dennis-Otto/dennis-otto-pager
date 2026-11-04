@@ -296,6 +296,35 @@ describe("a topic per thing", () => {
     });
   });
 
+  it("opens a bundle again in a new topic when the maintainer deleted its old one", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    await apply(w.context, failing("check:lint"));
+    await apply(w.context, { ...at, type: "recovered", key: "check:lint" });
+    let tries = 0;
+    w.net.on("POST", /\/sendMessage$/, () =>
+      tries++ === 0
+        ? refused("Bad Request: message thread not found")()
+        : json({ ok: true, result: { message_id: 9 } }),
+    );
+    expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
+    expect(sent(w).map((body) => body.message_thread_id)).toEqual([
+      900, 900, 901,
+    ]);
+    expect(names(w, "createForumTopic")).toEqual([
+      "🚨 demo needs you",
+      "🚨 demo needs you",
+    ]);
+    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
+      messageId: 9,
+      topic: { thread: 901, name: "🚨 demo needs you" },
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram sendMessage: thread 900 not found",
+    );
+    warn.mockRestore();
+  });
+
   it("follows a release: a new version renames it, and the next release gets its own", async () => {
     const w = await chat();
     const pull = {
@@ -446,6 +475,45 @@ describe("without topics", () => {
     warn.mockRestore();
   });
 
+  it("deletes a new topic when its first message fails, such as with too many requests", async () => {
+    const w = await chat();
+    w.net.on("POST", /\/sendMessage$/, () =>
+      json({ ok: false, description: "Too Many Requests: retry after 5" }, 429),
+    );
+    await expect(apply(w.context, contribution)).rejects.toThrow(
+      "Too Many Requests",
+    );
+    expect(w.net.telegram("deleteForumTopic").map((c) => c.body)).toEqual([
+      { chat_id: CHAT, message_thread_id: 900 },
+    ]);
+    expect(await stored(w, keys.contribution(REPO, 12))).toBeNull();
+    expect(await links()).toEqual([]);
+  });
+
+  it("passes on a failure of a message in the main view, with no topic to delete", async () => {
+    const w = await world();
+    w.net.on("POST", /\/sendMessage$/, () =>
+      json({ ok: false, description: "Too Many Requests: retry after 5" }, 429),
+    );
+    await expect(apply(w.context, contribution)).rejects.toThrow(
+      "Too Many Requests",
+    );
+    expect(w.net.telegram("deleteForumTopic")).toHaveLength(0);
+  });
+
+  it("passes on a broken network when a bundle goes back into its topic", async () => {
+    const w = await chat();
+    await apply(w.context, failing("check:lint"));
+    await apply(w.context, { ...at, type: "recovered", key: "check:lint" });
+    w.net.on("POST", /\/sendMessage$/, () =>
+      json({ ok: false, description: "Internal Server Error" }, 500),
+    );
+    await expect(apply(w.context, failing("check:lint"))).rejects.toThrow(
+      "Internal Server Error",
+    );
+    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+  });
+
   it("goes on in the main view when the topic of a thing is gone", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const w = await chat();
@@ -542,7 +610,7 @@ describe("a text in a topic", () => {
       {
         text: "Why?",
         message: 500,
-        item: {
+        thing: {
           id: await itemId(keys.alarm(REPO)),
           kind: "alarm",
           repo: REPO,
@@ -575,7 +643,7 @@ describe("a text in a topic", () => {
       w.context,
       text("Still red?", { message_id: 502, message_thread_id: 900 }),
     );
-    expect(payloads(w).map((payload) => "item" in payload)).toEqual([
+    expect(payloads(w).map((payload) => "thing" in payload)).toEqual([
       false,
       false,
       false,

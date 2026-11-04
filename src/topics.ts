@@ -10,7 +10,12 @@
 import type { Context } from "./pager.ts";
 import { render } from "./render.ts";
 import { type Item, isClosed, type Kind, type Topic } from "./store.ts";
-import { type Keyboard, TOPIC_COLORS, type TopicColor } from "./telegram.ts";
+import {
+  type Keyboard,
+  type Sent,
+  TOPIC_COLORS,
+  type TopicColor,
+} from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 
 /** The longest name of a topic that Telegram takes, in characters of UTF-16. */
@@ -81,8 +86,10 @@ export function topicName(item: Item, t: Texts): string {
 /**
  * Send a new message of a thing: into its topic, which its first message opens, or
  * into the main view when the chat has no topics, Telegram refuses one, or the topic
- * is gone. A topic that the pager opened for this message and that took none is
- * deleted again, so that no empty topic stays. Returns the id of the message.
+ * is gone. A bundle that opens again goes back into its topic, or into a new one
+ * when the maintainer deleted the old one. A topic that the pager opened for this
+ * message and that took none is deleted again, so that no empty topic stays.
+ * Returns the id of the message.
  */
 export async function sendThing(
   context: Context,
@@ -91,6 +98,17 @@ export async function sendThing(
   buttons: Keyboard,
 ): Promise<number> {
   let topic: Topic | null = item.topic ?? null;
+  if (topic !== null && item.messageId === null) {
+    const message = await context.telegram.postInto(
+      text,
+      buttons,
+      topic.thread,
+    );
+    if (message !== null) {
+      return message;
+    }
+    topic = null;
+  }
   let opened = false;
   if (topic === null && item.messageId === null) {
     const name = topicName(item, context.t);
@@ -100,11 +118,17 @@ export async function sendThing(
       opened = true;
     }
   }
-  const sent = await context.telegram.post(
-    text,
-    buttons,
-    topic?.thread ?? null,
-  );
+  let sent: Sent;
+  try {
+    sent = await context.telegram.post(text, buttons, topic?.thread ?? null);
+  } catch (error) {
+    // Such as too many requests at once: the topic took nothing, and the next
+    // signal of the thing opens it again.
+    if (opened && topic !== null) {
+      await context.telegram.removeTopic(topic.thread);
+    }
+    throw error;
+  }
   if (topic !== null && sent.thread === null) {
     if (opened) {
       await context.telegram.removeTopic(topic.thread);

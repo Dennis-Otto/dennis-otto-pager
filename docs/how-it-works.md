@@ -51,11 +51,11 @@ The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` r
 | --- | --- | --- |
 | `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull`, `language` |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language` |
-| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `item`: the thing whose topic the text came from, if any; `language` |
+| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
 
 `language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
-A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. So is a text in the topic of a thing, which carries the thing as `item`: its `id`, `kind`, `repo` and `state`, the `number` of a contribution or a release and the `version` of a release, `links` to where GitHub shows it (its issue or pull request, or the page of a bundle and its entries, 21 at most) and `text`, its message as the maintainer sees it, in the HTML of Telegram, with what comes from GitHub escaped, 1500 characters at most. A workflow that doesn't know `item` passes it over, so either side may deploy first. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
+A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. So is a text in the topic of a thing, which carries the thing as `thing`: its `id`, `kind`, `repo` and `state`, the `number` of a contribution or a release and the `version` of a release, `links` to where GitHub shows it (its issue or pull request, or the page of a bundle and its entries, 21 at most) and `text`, its message as the maintainer sees it, in the HTML of Telegram, with what comes from GitHub escaped, 1500 characters at most. The key is `thing`, not `item`: the control workflow runs the jobs of one `item` one at a time, and a text keeps a run of its own. A workflow that doesn't know `thing` passes it over, so either side may deploy first. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
 
 - the header `X-Pager-Timestamp`, the time in seconds since 1970, which may be five minutes off at most;
 - the header `X-Pager-Signature`, `sha256=` and the HMAC with SHA-256, under `CONTROL_SECRET`, of the timestamp, a dot and the body;
@@ -142,7 +142,7 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 </picture>
 
 - **Everything about the thing is in its topic.** Its message with the buttons comes first, and its changes edit it in place, as before. A draft, a job that failed, the message that ⏰ Later brings back, the prompt of ✏️ Edit and the answers to texts written in the topic follow there.
-- **A text in the topic of a thing is about that thing.** It goes to the control repository with the thing as `item`, as the table above says, so a question such as *why?* needs no more words. A topic that the maintainer opens, and General, have no thing: a text there starts a conversation of its own, as before.
+- **A text in the topic of a thing is about that thing.** It goes to the control repository with the thing as `thing`, as the table above says, so a question such as *why?* needs no more words. A topic that the maintainer opens, and General, have no thing: a text there starts a conversation of its own, as before.
 - **One topic per thing, never one per change.** The bundle of what fails in a repository keeps its topic, also when it opens again after it turned green, and so does its code scanning. A new version of a release that is still shown keeps the topic of the one that it replaces, renamed; the next release, after one was published or ignored, gets its own.
 - **✅ once it is done.** A thing that is closed, or a release that is merged, gets ✅ in front of the name of its topic with `editForumTopic`, and a bundle that opens again loses it. Done topics stay, as the history of their things, as [decision 0005](decisions/0005-one-topic-per-thing-kept-when-done.md) explains: the maintainer deletes one by hand when it is no longer needed.
 - **Topics of the maintainer.** The service message `forum_topic_created` of a topic that the maintainer opens is passed over, and each text in it is answered in it. Telegram may send the first text of a topic opened on a phone without its thread: its answer then goes into the main view.
@@ -152,7 +152,7 @@ Without topics, the pager writes into the main view, as before, and the thing wo
 - `getMe` doesn't say `has_topics_enabled`, since Threaded Mode is off;
 - Telegram refuses `createForumTopic`;
 - Telegram opens the topic but refuses the message in it with `message thread not found`, as a rollout of Telegram did in [tdlib/telegram-bot-api#847](https://github.com/tdlib/telegram-bot-api/issues/847): the pager deletes the empty topic again;
-- the topic of a thing is gone, such as one that the maintainer deleted: the next message of the thing goes into the main view, and so do the ones after it.
+- the topic of a thing is gone, such as one that the maintainer deleted: the next message of the thing goes into the main view, and so do the ones after it. A bundle that opens again after its topic was deleted gets a new topic instead, so that the new incident has one of its own.
 
 The prompt of ✏️ Edit then answers the message of its thing, so that it is clear what it is about, and a thing from before topics stays in the main view until it closes. Each of these cases logs a warning with Telegram's answer, never the name of the topic or a text.
 

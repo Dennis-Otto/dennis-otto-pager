@@ -1,0 +1,27 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Die Reaktion auf einen Text
+    accDescr: Dennis schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.
+
+    dennis["Dennis schreibt dem Bot einen Text"]
+    taken["`**👀** Der Pager schickt ihn an das Steuer-Repository, das Claude ausführt`"]
+    answered["`**👍** Die Antwort oder ein Vorschlag kam, mit ihrer Fußzeile, etwa Opus 5.5 · Hoch · 48.213 Tokens`"]
+    failed["`**😢** Keine Antwort: Der Job schlug fehl, oder binnen einer Stunde kam keine`"]
+
+    dennis --> taken
+    taken -- "die Antwort" --> answered
+    taken -- "der Job schlug fehl, oder der Zeitplan findet ihn nach einer Stunde" --> failed
+    failed -- "eine späte Antwort" --> answered
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class dennis you
+    class taken bot
+    class answered done
+    class failed warn

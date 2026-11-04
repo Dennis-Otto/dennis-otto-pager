@@ -4,25 +4,22 @@
  * a job that failed. Its workflow signs each request with CONTROL_SECRET, over the
  * time and the body, and the pager takes a request for five minutes only. What it
  * says is shown, escaped, and never run: an action needs a button of the
- * allowlist, which a proposal only offers, and the maintainer presses.
+ * allowlist, which a proposal only offers, and the maintainer presses. An answer to
+ * a text of the maintainer turns the 👀 on that text into 👍, or 😢 when no answer
+ * came to be.
  */
 import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { type Context, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import { type Item, itemId, keys } from "./store.ts";
-import type { Keyboard } from "./telegram.ts";
+import { type Keyboard, REACTIONS } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { MAX_DRAFT } from "./updates.ts";
+import { footer, type Usage, usageOf } from "./usage.ts";
 
 /** How old a signed request of the control repository may be, in seconds. */
 export const WINDOW = 300;
-
-/** What a run of Claude took from the maintainer's weekly limit. */
-export interface Usage {
-  turns: number;
-  seconds: number;
-}
 
 /** The thing that a proposal acts on, named as the control repository knows it. */
 export type Target =
@@ -50,30 +47,19 @@ export const PROPOSABLE: Partial<Record<Action, readonly Target["kind"][]>> = {
   ignore: ALL,
 };
 
+/**
+ * A body of the control repository. A note or a failure without an item, and a
+ * proposal, answer in the chat; their message names the text of the maintainer that
+ * they answer, if any.
+ */
 export type Message = (
   | { type: "draft"; item: string; text: string }
   | { type: "note"; item?: string; text: string }
-  | { type: "failed"; item: string; text: string }
+  | { type: "failed"; item?: string; text: string }
   | { type: "proposal"; text: string; action: Action; target: Target }
-) & { usage?: Usage };
+) & { usage?: Usage; message?: number };
 
 type Fields = Partial<Record<string, unknown>>;
-
-function count(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-/** The usage of a body: undefined when it has none, null when it is wrong. */
-function usageOf(value: unknown): Usage | null | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const usage = value as Fields | null;
-  if (!count(usage?.turns) || !count(usage?.seconds)) {
-    return null;
-  }
-  return { turns: usage.turns, seconds: usage.seconds };
-}
 
 function targetOf(action: unknown, value: unknown): Target | null {
   // Only an own key: "constructor" or "__proto__" would find the prototype's.
@@ -107,9 +93,9 @@ function shape(message: Fields): Message | null {
   }
   switch (type) {
     case "draft":
-    case "failed":
       return typeof item === "string" ? { type, item, text } : null;
     case "note":
+    case "failed":
       if (item === undefined) {
         return { type, text };
       }
@@ -135,28 +121,46 @@ function parse(body: string): Message | null {
   const fields = (value ?? {}) as Fields;
   const message = shape(fields);
   const usage = usageOf(fields.usage);
-  if (message === null || usage === null) {
+  const asked = fields.message;
+  if (
+    message === null ||
+    usage === null ||
+    (asked !== undefined &&
+      !(Number.isSafeInteger(asked) && (asked as number) > 0))
+  ) {
     return null;
   }
-  return usage === undefined ? message : { ...message, usage };
+  return {
+    ...message,
+    ...(usage === undefined ? {} : { usage }),
+    ...(asked === undefined ? {} : { message: asked as number }),
+  };
 }
 
-/** The line that says what a run of Claude took from the weekly limit. */
-export function usageLine(usage: Usage | undefined, t: Texts): string | null {
-  if (usage === undefined) {
-    return null;
-  }
-  const turns =
-    usage.turns === 1
-      ? t("usage.one")
-      : t("usage.many", { turns: usage.turns });
-  return t("usage.line", { turns, seconds: usage.seconds });
-}
-
-/** A note below a thing, with the usage of Claude on a line of its own. */
+/** A note below a thing, with the footer of Claude on a line of its own. */
 function noted(text: string, usage: Usage | undefined, t: Texts): string {
-  const line = usageLine(usage, t);
+  const line = footer(usage, t);
   return line === null ? text : `${text}\n${line}`;
+}
+
+/**
+ * The end of a text of the maintainer that a chat answer answers: its 👀 becomes 👍
+ * when the answer came, or 😢 when none came to be, and it waits no longer. A late
+ * answer, after the schedule gave up on it, still turns it into 👍.
+ */
+async function settle(
+  context: Context,
+  message: Message,
+  answered: boolean,
+): Promise<void> {
+  if (message.message === undefined) {
+    return;
+  }
+  await context.telegram.react(
+    message.message,
+    answered ? REACTIONS.answered : REACTIONS.failed,
+  );
+  await context.store.settle([message.message]);
 }
 
 /** Whether a request carries a fresh signature of the control repository. */
@@ -242,11 +246,12 @@ async function propose(
       ],
     ];
   }
-  const line = usageLine(message.usage, t);
+  const line = footer(message.usage, t);
   if (line !== null) {
-    lines.push(`<i>${line}</i>`);
+    lines.push(`<i>${html(line)}</i>`);
   }
   await context.telegram.send(lines.join("\n\n"), keyboard);
+  await settle(context, message, true);
   return new Response(keyboard.length === 0 ? "said" : "proposed");
 }
 
@@ -278,10 +283,11 @@ export async function handleControl(
     return propose(context, message);
   }
   if (message.item === undefined) {
-    const line = usageLine(message.usage, context.t);
+    const line = footer(message.usage, context.t);
     await context.telegram.say(
-      `🤖 ${html(message.text, MAX_DRAFT)}${line === null ? "" : `\n\n<i>${line}</i>`}`,
+      `🤖 ${html(message.text, MAX_DRAFT)}${line === null ? "" : `\n\n<i>${html(line)}</i>`}`,
     );
+    await settle(context, message, message.type !== "failed");
     return new Response("said");
   }
   const item = await context.store.get(message.item);
@@ -319,7 +325,7 @@ export async function handleControl(
   item.draft = message.text;
   item.draftVersion += 1;
   item.state = "draft";
-  item.note = usageLine(message.usage, context.t);
+  item.note = footer(message.usage, context.t);
   // A new message, which notifies: the maintainer asked for the draft.
   await show(context, item, true);
   return new Response("drafted");

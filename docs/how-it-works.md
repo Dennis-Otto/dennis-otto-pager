@@ -40,7 +40,7 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
 - **✅ Send** posts the draft whose version its button carries, exactly as the message showed it; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
-- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer says how much it took; a job that fails brings its button back.
+- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a job that fails brings its button back.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
 
 ## The control repository
@@ -67,9 +67,31 @@ The body is one of:
 - `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix;
 - `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text;
 - `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
-- `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again.
+- `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again;
+- `{"type": "failed", "text": "<why>"}`: free text whose answer didn't come to be, shown as a message of its own.
 
-Each body may carry `"usage": {"turns": <number>, "seconds": <number>}`: what the run of Claude took from the weekly limit of the subscription. The message shows it as *🧮 Claude: 4 turns, 52 s, from your weekly limit*, in the language of the pager.
+An answer to free text, a note or a failure without `item` or a proposal, carries `"message": <id>`, the `message` of its `pager-text`. The pager then turns the 👀 on that text into 👍, or into 😢 for a failure; a job started by hand in the Actions tab has no text, and leaves it out.
+
+Each body may carry what the run of Claude took from the weekly limit of the subscription:
+
+```json
+"usage": {
+  "turns": 4,
+  "seconds": 52,
+  "effort": "high",
+  "models": [{"model": "claude-opus-5-5", "tokens": 48213}]
+}
+```
+
+`effort` is the `--effort` that the workflow set: `low`, `medium`, `high`, `xhigh` or `max`. `models` names each model that worked, as many as five, with every token that it read and wrote, the cache included, from the `modelUsage` of the result in the transcript of the Claude Code action. The message shows it below the answer, on one line, in the language of the pager:
+
+| Usage | English | German |
+| --- | --- | --- |
+| One model | *🧮 Opus 5.5 · high · 48,213 tokens* | *🧮 Opus 5.5 · Hoch · 48.213 Tokens* |
+| Two models | *🧮 Opus 5.5 93%, Haiku 5.5 7% · extra high · 48,213 tokens* | *🧮 Opus 5.5 93 %, Haiku 5.5 7 % · Extra Hoch · 48.213 Tokens* |
+| Without `models` | *🧮 Claude: 4 turns, 52 s, from your weekly limit* | *🧮 Claude: 4 Runden, 52 s, von deinem Wochenlimit* |
+
+A model goes by its short name, such as *Opus 5.5* for `claude-opus-5-5`, *Haiku 3.5* for `claude-3-5-haiku-20241022` and *Fable 5.1* for `claude-fable-5-1`; an id of another form stays as it is. The effort in German is *Niedrig*, *Mittel*, *Hoch*, *Extra Hoch* or *Max*, and an effort that the pager doesn't know yet stays as Claude Code names it.
 
 A proposal names its thing as the control repository knows it, and the pager looks it up:
 
@@ -91,6 +113,17 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 No body makes the pager act: whatever the control repository sends is shown, escaped, and never run, and every action needs the press of a button of the allowlist. The answer goes to the Worker rather than straight to Telegram, as [decision 0003](decisions/0003-the-control-repository-answers-the-worker.md) explains: the token of the bot stays in Cloudflare, and the Worker keeps the state that a draft, a failed job and a proposal need.
 
+## The reaction on a text
+
+A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.dark.svg">
+  <img src="images/diagrams/the-reaction-on-a-text.svg" alt="The reaction on a text: Dennis writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.">
+</picture>
+
+The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍.
+
 ## Texts and languages
 
 Every text that the pager sends comes from `src/texts.ts`, one catalog per language, English and German, and `LANGUAGE` in `wrangler.jsonc` chooses one: the messages and their states, the buttons, `/help`, the answers of the buttons, the errors that it shows and the reminder of the token. A text names its parts in braces, such as `{repo}`, and what fills them, such as the title of an issue or the name of a check, goes in as GitHub says it. The rules hand on what they mean, such as why a release may not merge yet, as a key of the catalog with its values, and the pager words it; the logs stay in English. Both catalogs have the same keys, which the compiler checks, and the same placeholders, tags and emojis, which `test/texts.test.ts` checks: a new text takes an entry in both.
@@ -99,6 +132,6 @@ After a change of `LANGUAGE`, a message speaks the new language once its thing c
 
 ## State
 
-Workers KV holds one record per thing: its kind, state, repository, the id of its message and, for a contribution, the draft; a closed thing expires after 30 days. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, and the prompt of an edit lives for a day. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+Workers KV holds one record per thing: its kind, state, repository, the id of its message and, for a contribution, the draft; a closed thing expires after 30 days. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
 Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

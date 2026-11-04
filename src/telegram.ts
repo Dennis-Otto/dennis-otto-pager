@@ -17,6 +17,20 @@ export interface Button {
 
 export type Keyboard = Button[][];
 
+/**
+ * The reactions of the pager on a text of the maintainer that goes to the control
+ * repository: taken, answered, and no answer. A bot may react only with an emoji of
+ * the fixed list of ReactionTypeEmoji in Telegram's Bot API, which has no ✅: 👍 is
+ * the closest to it, and 😢 says plainly that no answer came.
+ */
+export const REACTIONS = {
+  taken: "👀",
+  answered: "👍",
+  failed: "😢",
+} as const;
+
+export type Reaction = (typeof REACTIONS)[keyof typeof REACTIONS];
+
 export class TelegramError extends Error {
   readonly method: string;
   readonly description: string;
@@ -170,12 +184,22 @@ export class Telegram {
     await this.send(text, []);
   }
 
-  /** React to a message of the maintainer, which says "taken" without a new message. */
-  async react(messageId: number, emoji: string): Promise<void> {
-    await this.call("setMessageReaction", {
-      chat_id: this.chatId,
-      message_id: messageId,
-      reaction: [{ type: "emoji", emoji }],
-    });
+  /**
+   * React to a message of the maintainer, which says where its text is without a new
+   * message: a bot has one reaction per message, so it replaces the one before. A
+   * message that is gone is no error.
+   */
+  async react(messageId: number, emoji: Reaction): Promise<void> {
+    try {
+      await this.call("setMessageReaction", {
+        chat_id: this.chatId,
+        message_id: messageId,
+        reaction: [{ type: "emoji", emoji }],
+      });
+    } catch (error) {
+      if (!(error instanceof TelegramError)) {
+        throw error;
+      }
+    }
   }
 }

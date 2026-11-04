@@ -157,6 +157,45 @@ export class Store {
     return due;
   }
 
+  /**
+   * The texts of the maintainer that went to the control repository and wait for
+   * its answer: the id of each message, and when it went. One record for them all,
+   * which the schedule reads once per run, and a write only when one comes or goes.
+   */
+  private async asked(): Promise<Record<string, number>> {
+    return (await this.kv.get<Record<string, number>>("asked", "json")) ?? {};
+  }
+
+  /** Keep a text of the maintainer that waits for the answer of the control repository. */
+  async ask(message: number, now: number): Promise<void> {
+    const asked = await this.asked();
+    asked[message] = now;
+    await this.kv.put("asked", JSON.stringify(asked));
+  }
+
+  /** The texts that wait for their answer since before a time. */
+  async waiting(before: number): Promise<number[]> {
+    return Object.entries(await this.asked())
+      .filter(([, since]) => since < before)
+      .map(([message]) => Number(message));
+  }
+
+  /** Forget the texts that got their answer, or none in time; a write only when one waited. */
+  async settle(messages: number[]): Promise<void> {
+    const asked = await this.asked();
+    const left = Object.entries(asked).filter(
+      ([message]) => !messages.includes(Number(message)),
+    );
+    if (left.length === Object.keys(asked).length) {
+      return;
+    }
+    if (left.length === 0) {
+      await this.kv.delete("asked");
+    } else {
+      await this.kv.put("asked", JSON.stringify(Object.fromEntries(left)));
+    }
+  }
+
   async pendingEdit(): Promise<PendingEdit | null> {
     return this.kv.get<PendingEdit>("edit", "json");
   }

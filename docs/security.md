@@ -16,6 +16,7 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 1. **Internet → Worker.** Every request, its headers and its body are untrusted input.
 2. **Worker → bindings and other services.** Only those of `wrangler.jsonc` and the addresses that its code names, with the secrets that Cloudflare keeps.
 3. **Repository → Cloudflare.** Workers Builds builds every push to `main`, and only a release goes live.
+4. **Control repository → Worker.** The private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run.
 
 ## Threats and countermeasures
 
@@ -25,6 +26,8 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 | A secret reaches the repository or a log | Secrets live in Cloudflare, set with `npx wrangler secret put`; `.dev.vars` of `wrangler dev` never reaches git |
 | A change goes live without its checks | Only a release deploys, from `main`, which takes no change without every required check |
 | A key of Cloudflare leaks from GitHub | None is stored there: Cloudflare builds and deploys with Workers Builds |
+| An issue, a comment or a log steers Claude | Claude reads them as data, with tools that only read, behind a firewall; both sides check its answer against the allowlist, and only a press acts |
+| A forged answer of the control repository | The Worker takes only a body signed with `CONTROL_SECRET` within five minutes; a proposal gets a button only while its thing offers the action |
 | A package that it depends on runs code as it installs | Every install, in the CI, the dev container, Workers Builds and the documentation, is `npm ci --ignore-scripts`; Workers Builds skips its own install with `SKIP_DEPENDENCY_INSTALL` |
 
 ## Residual risks

@@ -4,7 +4,7 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/how-the-pager-works.dark.svg">
-  <img src="images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft or a note that a button has to approve.">
+  <img src="images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.">
 </picture>
 
 ## What counts
@@ -40,31 +40,45 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
 - **✅ Send** posts the draft whose version its button carries, exactly as the message showed it; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
+- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer says how much it took; a job that fails brings its button back.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
 
 ## The control repository
 
-The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code with the maintainer's own subscription. The pager sends it a [repository dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), with a token of the app for that repository alone:
+The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code with the maintainer's own subscription; its README describes its jobs, its safety and its set-up. The pager sends it a [repository dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), with a token of the app for that repository alone:
 
 | Event type | Sent by | Client payload |
 | --- | --- | --- |
 | `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull` |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url` |
-| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat) |
+| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), and `reply`: the first 1000 characters of the message that the text answers, if any |
 
-The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
+A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. The pager sends no text of an issue: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
 
 - the header `X-Pager-Timestamp`, the time in seconds since 1970, which may be five minutes off at most;
 - the header `X-Pager-Signature`, `sha256=` and the HMAC with SHA-256, under `CONTROL_SECRET`, of the timestamp, a dot and the body;
-- a body of JSON, one of the three below.
+- a body of JSON, one of those below.
 
 The body is one of:
 
 - `{"type": "draft", "item": "<id>", "text": "<reply>"}`: the draft of a reply for a contribution, at most 3000 characters, shown as a new message with ✅ Send;
 - `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix;
-- `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text.
+- `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text;
+- `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
+- `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again.
 
-No body makes the pager act: free text gets an answer only, and every action needs a button of the allowlist. A proposal of the control repository, shown with a ✅ Confirm button that runs one action of the allowlist, is the next change of this contract.
+Each body may carry `"usage": {"turns": <number>, "seconds": <number>}`: what the run of Claude took from the weekly limit of the subscription. The message shows it as *🧮 Claude: 4 turns, 52 s, from your weekly limit*.
+
+A proposal names its thing as the control repository knows it, and the pager looks it up:
+
+| Action | Kind of thing | `number` |
+| --- | --- | --- |
+| `merge` | `release` | none |
+| `assistant`, `draft` | `contribution` | the issue or pull request |
+| `fix` | `alarm`, `alert` | none |
+| `later`, `ignore` | any of the four | for a contribution |
+
+✅ Confirm carries the data of the thing's own button, so a press runs the action only while the thing still offers it, as any press does, and then the button goes. A thing that the pager doesn't show, or that doesn't offer the action now, gets the answer without a button. ✅ Send and ✏️ Edit can't be proposed: they stay with the message of the draft, which shows the text that they post.
 
 ```sh
 body='{"type":"note","text":"The fix is in #12."}'
@@ -73,7 +87,7 @@ signature=$(printf '%s.%s' "$stamp" "$body" | openssl dgst -sha256 -hmac "$PAGER
 curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signature: sha256=$signature" -d "$body"
 ```
 
-Whatever it sends is shown, escaped, and never run: an action always needs a button of the allowlist.
+No body makes the pager act: whatever the control repository sends is shown, escaped, and never run, and every action needs the press of a button of the allowlist. The answer goes to the Worker rather than straight to Telegram, as [decision 0003](decisions/0003-the-control-repository-answers-the-worker.md) explains: the token of the bot stays in Cloudflare, and the Worker keeps the state that a draft, a failed job and a proposal need.
 
 ## State
 

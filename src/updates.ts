@@ -13,7 +13,7 @@ interface Message {
   chat?: { id?: number };
   from?: { id?: number };
   text?: string;
-  reply_to_message?: { message_id?: number };
+  reply_to_message?: { message_id?: number; text?: string };
 }
 
 export interface Update {
@@ -23,16 +23,23 @@ export interface Update {
     id: string;
     from?: { id?: number };
     data?: string;
+    /** The message whose button was pressed. */
+    message?: { message_id?: number };
   };
 }
 
 /** The longest draft that a message shows whole, so "Send" posts what it showed. */
 export const MAX_DRAFT = 3000;
 
+/** The most of the message that a free text answers which goes along with it. */
+export const MAX_REPLY = 1000;
+
 const HELP = [
   "👋 This is your pager. It writes only when something needs you, one message per thing, and edits that message as the thing changes.",
   "",
-  "The buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here: an answer never acts, only a button does.",
+  "The buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Reply to a message of the pager to ask about its thing.",
+  "",
+  "Each answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
 ].join("\n");
 
 async function pressed(
@@ -47,10 +54,20 @@ async function pressed(
   const item = await context.store.get(parsed.id);
   if (item === null) {
     await context.telegram.answer(query.id, "This thing is gone.", true);
+    // Its own message went with it, so this is a proposal's: its button goes too.
+    if (query.message?.message_id !== undefined) {
+      await context.telegram.clear(query.message.message_id);
+    }
     return "a button of a thing that is gone";
   }
   const reply = await press(context, item, parsed);
   await context.telegram.answer(query.id, reply.text, reply.alert);
+  // A button of another message than the thing's own is that of a proposal of the
+  // control repository: it acts once, so it goes.
+  const shownIn = query.message?.message_id;
+  if (shownIn !== undefined && shownIn !== item.messageId) {
+    await context.telegram.clear(shownIn);
+  }
   return `${parsed.action}: ${reply.text}`;
 }
 
@@ -99,9 +116,13 @@ async function freeText(
     );
     return "free text without a control repository";
   }
+  // The message that the text answers, if any, says what "it" is: the control
+  // repository reads it as data, as everything else.
+  const answered = message.reply_to_message?.text?.trim() ?? "";
   await context.github.dispatch(installation, repo, "pager-text", {
     text,
     message: message.message_id,
+    ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
   });
   await context.telegram.react(message.message_id, "👀");
   return "free text sent";

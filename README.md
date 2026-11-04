@@ -28,9 +28,11 @@ The pager writes only when something needs its maintainer, never to say that all
 
 Every message also has ⏰ **Later**, which brings it back after four hours, and ✖ **Ignore**. Each thing gets **one message**, which the pager edits in place as the thing changes, such as *Merging… → Merged → ✅ Published*; what fails in one repository is bundled into one message, which turns green again by itself when it is fixed. Only a new thing notifies.
 
+Any other text to the bot goes to the private control repository, which answers with Claude Code and the maintainer's own subscription; reply to a message to ask about its thing. An answer that proposes an action, such as merging the release you asked about, comes with one ✅ **Confirm** button, and nothing acts without its press. Every answer, draft and fix shows what its run of Claude took from the weekly limit.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/diagrams/how-the-pager-works.dark.svg">
-  <img src="docs/images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft or a note that a button has to approve.">
+  <img src="docs/images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.">
 </picture>
 
 [How it works](docs/how-it-works.md) lists the rules, the buttons and what the control repository sends back.

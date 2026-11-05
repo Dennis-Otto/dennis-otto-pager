@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.4.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.3.1...v0.4.0) (2026-11-05)
+
+
+### Features
+
+* a button reruns the failed jobs of a run that failed on main ([#48](https://github.com/Dennis-Otto/dennis-otto-pager/issues/48)) ([7c29de3](https://github.com/Dennis-Otto/dennis-otto-pager/commit/7c29de3d1da2c227819623bc89ef69bb78dd9795))
+
 ## [0.3.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.3.0...v0.3.1) (2026-11-05)
 
 ### Bug fixes

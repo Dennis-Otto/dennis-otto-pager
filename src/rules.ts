@@ -76,6 +76,7 @@ export interface Payload {
     conclusion?: string | null;
     html_url?: string;
     head_branch?: string | null;
+    run_attempt?: unknown;
   };
   alert?: {
     number?: number;
@@ -326,6 +327,20 @@ function checkSuite(payload: Payload, at: Where): Outcome {
   return { signal: { ...at, type: "release-check", numbers } };
 }
 
+/**
+ * The address of the attempt of a run that failed, such as
+ * https://github.com/owner/repo/actions/runs/3/attempts/2, which GitHub shows as
+ * that attempt. The jobs of a run without its attempt are those of its newest, a
+ * rerun that may still run, which a fix would read in place of the failure.
+ */
+function attemptUrl(run: Payload["workflow_run"]): string {
+  const url = run?.html_url ?? "";
+  const attempt = run?.run_attempt;
+  return url !== "" && Number.isSafeInteger(attempt) && (attempt as number) > 0
+    ? `${url}/attempts/${attempt as number}`
+    : url;
+}
+
 function workflowRun(payload: Payload, at: Where): Outcome {
   const run = payload.workflow_run;
   const path = run?.path ?? "";
@@ -344,7 +359,7 @@ function workflowRun(payload: Payload, at: Where): Outcome {
         type: "failing",
         key,
         label: { key: "entry.release", values: { name: run?.name ?? path } },
-        url: run?.html_url ?? "",
+        url: attemptUrl(run),
       },
     };
   }

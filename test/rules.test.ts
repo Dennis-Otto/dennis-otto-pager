@@ -333,6 +333,28 @@ describe("releases", () => {
     });
   });
 
+  it("names the attempt that failed, so that a fix reads its jobs and not those of a rerun", () => {
+    const urlOf = (run: object) =>
+      (
+        classify(
+          "workflow_run",
+          event({ action: "completed", workflow_run: { ...workflow, ...run } }),
+          ME,
+        ) as { signal: { url: string } }
+      ).signal.url;
+    expect(urlOf({ run_attempt: 2 })).toBe(
+      "https://github.com/Dennis-Otto/demo/actions/runs/3/attempts/2",
+    );
+    // The first attempt too: a rerun may start before the fix reads the run.
+    expect(urlOf({ run_attempt: 1 })).toBe(
+      "https://github.com/Dennis-Otto/demo/actions/runs/3/attempts/1",
+    );
+    // An attempt that GitHub doesn't name, or a run without an address, stays as it is.
+    expect(urlOf({ run_attempt: 0 })).toBe(workflow.html_url);
+    expect(urlOf({ run_attempt: "2" })).toBe(workflow.html_url);
+    expect(urlOf({ html_url: undefined, run_attempt: 2 })).toBe("");
+  });
+
   it("names a release run without a name by its path", () => {
     const nameless = {
       path: ".github/workflows/verify-release.yml",

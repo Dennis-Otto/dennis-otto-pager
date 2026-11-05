@@ -313,7 +313,11 @@ export async function handleControl(
   }
   if (message.type === "note") {
     item.note = noted(message.text, message.usage, context.t);
-    await show(context, item);
+    // The note that ends a job, such as a fix with its pull request, is a new
+    // message in the thing's topic, which notifies, as its failure is: the
+    // maintainer waits for it. Any other note edits the message in place.
+    const ends = RUNNING[`${item.kind}:${item.state}`] !== undefined;
+    await show(context, item, ends);
     return new Response("noted");
   }
   if (message.type === "failed") {

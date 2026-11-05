@@ -314,6 +314,10 @@ describe("main failing", () => {
     expect(
       healthRun('text <!-- bot-health {"a": {"b": 1}, "run": 8} -->'),
     ).toBe(8);
+    // The bot writes each "--" of its JSON as "--", which JSON reads as "--".
+    expect(
+      healthRun('<!-- bot-health {"run": 9, "where": "a-\\u002db"} -->\nText'),
+    ).toBe(9);
     for (const body of [
       undefined,
       null,
@@ -324,9 +328,19 @@ describe("main failing", () => {
       '<!-- bot-health {"run": 0} -->',
       '<!-- bot-health {"run": 1.5} -->',
       '<!-- bot-health {"run": 7,} -->',
+      '<!-- bot-health {"run": 7}',
+      "<!-- bot-health null -->",
+      "<!-- bot-health 7 -->",
     ]) {
       expect(healthRun(body)).toBeUndefined();
     }
+  });
+
+  it("reads a long body of a bot-health issue at once", () => {
+    // What makes a regular expression go back and forth, longer than GitHub lets a
+    // body be, takes two searches of the text, well within the time of a test.
+    expect(healthRun("<!-- bot-health {{".repeat(50000))).toBeUndefined();
+    expect(healthRun(`<!-- bot-health {${" ".repeat(70000)}}`)).toBeUndefined();
   });
 
   it("names the run of a check of GitHub Actions, and of no other app", () => {

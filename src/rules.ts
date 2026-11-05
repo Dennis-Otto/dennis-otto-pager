@@ -229,21 +229,33 @@ function withRun(run: number | undefined): { run?: number } {
   return run === undefined ? {} : { run };
 }
 
-/** The state that the bot-health bot keeps in the body of its issue, as JSON. */
-const HEALTH_MARKER = /<!-- bot-health (\{.*?\}) -->/;
+/**
+ * The marker in which the bot-health bot keeps the state of its issue, as JSON. Its
+ * JSON never holds " -->": the bot writes each "--" as "--", so that the
+ * comment of HTML goes on.
+ */
+const HEALTH_START = "<!-- bot-health ";
+const HEALTH_END = " -->";
 
 /**
  * The run that an issue of the bot-health bot names: the newest that failed, which
  * the bot writes into the marker of its body, such as
- * <!-- bot-health {"attempt": 1, "run": 3, ...} -->, at each failure.
+ * <!-- bot-health {"attempt": 1, "run": 3, ...} -->, at each failure. Two searches
+ * for text, not a regular expression, so that no body can make it slow.
  */
 export function healthRun(body: string | null | undefined): number | undefined {
-  const marker = HEALTH_MARKER.exec(body ?? "");
-  if (marker === null) {
+  const text = body ?? "";
+  const start = text.indexOf(HEALTH_START);
+  const end =
+    start < 0 ? -1 : text.indexOf(HEALTH_END, start + HEALTH_START.length);
+  if (end < 0) {
     return undefined;
   }
   try {
-    return runId((JSON.parse(marker[1] as string) as { run?: unknown }).run);
+    const state: unknown = JSON.parse(
+      text.slice(start + HEALTH_START.length, end),
+    );
+    return runId((state as { run?: unknown } | null)?.run);
   } catch {
     return undefined;
   }

@@ -40,6 +40,3 @@ jobs:
           output-file: ${{ github.event.repository.name }}.spdx.json
           upload-release-assets: false
           syft-version: v1.52.0
-# Changed once so that GitHub registers this workflow, which the first push of the
-# repository didn't (Dennis-Otto/repo-blueprint#652); the next pull request takes
-# these lines out again.

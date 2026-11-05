@@ -9,10 +9,9 @@ requests when there is none.
 
 ## [0.3.1](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.3.0...v0.3.1) (2026-11-05)
 
-
 ### Bug fixes
 
-* a fix job reads the log of what failed and answers in the thing's topic ([#42](https://github.com/Dennis-Otto/dennis-otto-pager/issues/42)) ([9009d4d](https://github.com/Dennis-Otto/dennis-otto-pager/commit/9009d4da03debcff050df926d5503dfd5e4c2d47))
+- The answer of 🛠 Start fix comes into the topic of its thing as a new message that notifies you, also when the fix opened a pull request; only a thing without a topic shows it in the main view. The alarm of a release run that failed names the attempt that failed, so that the fix reads the jobs and logs of that attempt instead of a rerun that still runs, and can say that the rerun is on its way.
 
 ## [0.3.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.2.2...v0.3.0) (2026-11-04)
 

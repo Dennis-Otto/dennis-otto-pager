@@ -314,7 +314,7 @@ describe("main failing", () => {
     expect(
       healthRun('text <!-- bot-health {"a": {"b": 1}, "run": 8} -->'),
     ).toBe(8);
-    // The bot writes each "--" of its JSON as "--", which JSON reads as "--".
+    // The bot writes each "--" of its JSON as "-\u002d", which JSON.parse reads as "--".
     expect(
       healthRun('<!-- bot-health {"run": 9, "where": "a-\\u002db"} -->\nText'),
     ).toBe(9);

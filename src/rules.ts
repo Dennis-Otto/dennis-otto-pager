@@ -231,8 +231,8 @@ function withRun(run: number | undefined): { run?: number } {
 
 /**
  * The marker in which the bot-health bot keeps the state of its issue, as JSON. Its
- * JSON never holds " -->": the bot writes each "--" as "--", so that the
- * comment of HTML goes on.
+ * JSON never holds " -->": the bot writes each "--" of it as "-\u002d", which
+ * JSON.parse reads back as "--", so " -->" can only be the end of the marker.
  */
 const HEALTH_START = "<!-- bot-health ";
 const HEALTH_END = " -->";

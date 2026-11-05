@@ -1,6 +1,6 @@
 {
   "name": "dennis-otto-pager",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.",
   "homepage": "https://github.com/Dennis-Otto/dennis-otto-pager#readme",

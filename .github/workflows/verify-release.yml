@@ -448,3 +448,6 @@ jobs:
             sleep 1
           done
           echo "::warning::Harden-Runner still removes Docker after two minutes; the job may hang until its timeout."
+# Changed once so that GitHub registers this workflow, which the first push of the
+# repository didn't (Dennis-Otto/repo-blueprint#652); the next pull request takes
+# these lines out again.

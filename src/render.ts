@@ -42,7 +42,8 @@ function entries(list: Entry[], all: string, t: Texts): string {
   const lines: string[] = [];
   let length = 0;
   for (const entry of list) {
-    const line = `• ${link(entry.label, entry.url)}`;
+    const rerun = entry.rerun === true ? ` — ${t("message.rerunning")}` : "";
+    const line = `• ${link(entry.label, entry.url)}${rerun}`;
     if (
       lines.length === MAX_ENTRIES ||
       length + line.length > MAX_ENTRIES_LENGTH

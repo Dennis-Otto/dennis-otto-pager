@@ -12,6 +12,7 @@ export const ACTIONS = [
   "merge",
   "assistant",
   "fix",
+  "rerun",
   "draft",
   "send",
   "edit",
@@ -47,7 +48,12 @@ export function allowed(item: Item): Action[] {
     case "alert":
       switch (item.state) {
         case "open":
-          return ["fix", "later", "ignore"];
+          // 🔁 Rerun where an entry of an alarm names a run that failed: it
+          // costs no run of Claude.
+          return item.kind === "alarm" &&
+            item.entries.some((entry) => entry.run !== undefined)
+            ? ["rerun", "fix", "later", "ignore"]
+            : ["fix", "later", "ignore"];
         case "fixing":
           return ["later", "ignore"];
         default:

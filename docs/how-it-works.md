@@ -16,12 +16,12 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 | `issues` opened, `pull_request` opened | Its author is neither the maintainer (`MAINTAINER_LOGIN`) nor a bot | A contribution, one message each |
 | `check_run` completed on the default branch | The check is required by the rulesets of the branch and failed, timed out or didn't start | An entry of the alarm of the repository; a pass of the same check takes it out |
 | `workflow_run` completed | `release.yml`, `build-release.yml` or `verify-release.yml` failed, outside a pull request | An entry of the alarm; a pass takes it out |
-| `issues` opened by a bot | It has the label `bot-failure` of the bot-health bot | An entry of the alarm; its closing takes it out |
+| `issues` opened by a bot | It has the label `bot-failure` of the bot-health bot | An entry of the alarm; an edit of the open issue, as the bot makes one at each new failure, changes the entry and opens nothing; its closing takes it out |
 | `code_scanning_alert` created or reopened on the default branch | Its severity is high or critical | An entry of the code-scanning message of the repository; fixed or dismissed takes it out |
 | `check_suite` completed on a branch of release-please | GitHub calls the pull request clean: open, no draft, into the default branch, every required check green and up to date | The release message with 🔀 **Merge** |
 | `pull_request` synchronize, closed and merged; `release` published | It is the release that the message shows | The same message: *updated*, *merged*, *✅ published* |
 
-A bundle whose last entry is gone turns green by itself, and a new failure after that opens a new message, which notifies.
+A bundle whose last entry is gone turns green by itself, and a new failure after that opens a new message, which notifies. An entry of the alarm keeps the run of GitHub Actions that failed, where it names one: a required check by the address of its job, such as `…/actions/runs/31/job/2`, a release run by its id, and an issue of the bot-health bot by the run in the marker of its body, `<!-- bot-health {"run": 31, …} -->`, which the bot writes anew at each failure. Such an entry gives the alarm 🔁 **Rerun**.
 
 ## The buttons
 
@@ -32,7 +32,8 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Contribution | new | ✍️ Draft a reply, 🤖 Assistant again (issues only), ⏰ Later, ✖ Ignore |
 | Contribution | drafting | ⏰ Later, ✖ Ignore |
 | Contribution | draft | ✅ Send, ✏️ Edit, ⏰ Later, ✖ Ignore |
-| Alarm, code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
+| Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix, ⏰ Later, ✖ Ignore |
+| Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |
 | Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
 | Reminder | open | ✅ Renewed, ⏰ Later |
@@ -40,8 +41,14 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
 - **✅ Send** posts the draft whose version its button carries, exactly as the message showed it; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
-- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a job that fails brings its button back.
+- **🔁 Rerun** reads each run that the entries name, with a token of the app for `actions: read`, and runs its failed jobs again, as *Re-run failed jobs* on GitHub does, with a token for `actions: write`. A run that still runs, or whose newer attempt runs, and one that passed on a retry stay as they are, and the button says so. The entries of a run that runs again show *🔁 running again…* in the message, edited in place, until the run fails again or passes: a pass closes the issue of the bot-health bot or ends the failure of the release, which takes the entry out, and the last one turns the alarm ✅. It costs no run of Claude, so it comes first, for a short outage of GitHub, such as a download that answered 504.
+- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.dark.svg">
+  <img src="images/diagrams/the-rerun-of-a-run.svg" alt="The rerun of a run that failed: An entry of the alarm names a run of GitHub Actions that failed on main, such as that of a required check, a release or an issue of the bot-health bot. Dennis presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the entry says so in the message. When they fail again, the entry shows the failure, and Rerun can run them once more. When they pass, the bot-health bot closes its issue or the release run passes, the entry goes, and the last one turns the alarm green.">
+</picture>
 
 ## The control repository
 
@@ -100,6 +107,7 @@ A proposal names its thing as the control repository knows it, and the pager loo
 | `merge` | `release` | none |
 | `assistant`, `draft` | `contribution` | the issue or pull request |
 | `fix` | `alarm`, `alert` | none |
+| `rerun` | `alarm` | none |
 | `later`, `ignore` | any of the four | for a contribution |
 
 ✅ Confirm carries the data of the thing's own button, so a press runs the action only while the thing still offers it, as any press does, and then the button goes. A thing that the pager doesn't show, or that doesn't offer the action now, gets the answer without a button. ✅ Send and ✏️ Edit can't be proposed: they stay with the message of the draft, which shows the text that they post.
@@ -182,6 +190,6 @@ After a change of `LANGUAGE`, a message speaks the new language once its thing c
 
 ## State
 
-Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later" is in the metadata of its record, so the schedule finds what is due with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
 Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

@@ -9,13 +9,19 @@ import { json, REPO, type World, world } from "./helpers.ts";
 
 const at = { repo: REPO, installation: 9 };
 
-function failing(key: string, title = `${key} fails`): Signal {
+function failing(
+  key: string,
+  title = `${key} fails`,
+  run?: number,
+  type: "failing" | "still-failing" = "failing",
+): Signal {
   return {
     ...at,
-    type: "failing",
+    type,
     key,
     label: { key: "entry.bot", values: { title } },
     url: "https://github.com/x",
+    ...(run === undefined ? {} : { run }),
   };
 }
 
@@ -92,6 +98,104 @@ describe("the alarm of a repository", () => {
     );
     expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
     expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("keeps the run of an entry, follows it and writes only what changed", async () => {
+    const w = await world();
+    const bot = (type: "failing" | "still-failing", run: number) =>
+      failing("issue:5", "CI fails on main", run, type);
+    expect(await apply(w.context, bot("still-failing", 31))).toBe(
+      "no open alarm",
+    );
+    expect(await apply(w.context, bot("failing", 31))).toBe("alarm opened");
+    expect(await apply(w.context, bot("failing", 31))).toBe("alarm unchanged");
+    expect(await apply(w.context, bot("still-failing", 31))).toBe(
+      "alarm unchanged",
+    );
+    expect(w.net.telegram("editMessageText")).toHaveLength(0);
+    expect(await apply(w.context, bot("still-failing", 32))).toBe(
+      "alarm updated",
+    );
+    expect(
+      await apply(w.context, failing("issue:6", "x", 40, "still-failing")),
+    ).toBe("not part of the alarm");
+    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
+      entries: [{ key: "issue:5", run: 32 }],
+    });
+    // A check of GitHub Actions names its run as well.
+    w.net.on("GET", /\/rules\/branches\/main$/, () =>
+      json([
+        {
+          type: "required_status_checks",
+          parameters: { required_status_checks: [{ context: "lint" }] },
+        },
+      ]),
+    );
+    await apply(w.context, {
+      ...at,
+      type: "check",
+      name: "lint",
+      failed: true,
+      branch: "main",
+      url: `https://github.com/${REPO}/actions/runs/50/job/1`,
+      run: 50,
+    });
+    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
+      entries: [{ run: 32 }, { key: "check:lint", run: 50 }],
+    });
+    // The last entry goes: the alarm is closed, and an edit opens nothing.
+    for (const key of ["issue:5", "check:lint"]) {
+      await apply(w.context, { ...at, type: "recovered", key });
+    }
+    expect(await apply(w.context, bot("still-failing", 33))).toBe(
+      "no open alarm",
+    );
+  });
+
+  it("shows a rerun until its entry fails again or passes", async () => {
+    const w = await world();
+    const id = await itemId(keys.alarm(REPO));
+    const entry = (key: string, run: number) => ({
+      key,
+      label: `${key} fails`,
+      url: `https://github.com/${REPO}/issues/5`,
+      run,
+      rerun: true as const,
+    });
+    await show(w.context, {
+      id,
+      ...at,
+      kind: "alarm",
+      state: "open",
+      messageId: null,
+      note: null,
+      snoozedUntil: null,
+      entries: [entry("issue:5", 31), entry("workflow:release", 40)],
+    });
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "issue:5 fails</a> — 🔁 running again…",
+    );
+    // The rerun of the release failed: its entry shows the failure again.
+    expect(
+      await apply(w.context, failing("workflow:release", "release", 40)),
+    ).toBe("alarm updated");
+    const text = w.net.telegram("editMessageText")[0]?.body.text as string;
+    expect(text).toContain("issue:5 fails</a> — 🔁 running again…");
+    expect(text).toMatch(/A bot fails: release<\/a>$/);
+    expect(text.match(/running again/g)).toHaveLength(1);
+    // The rerun of the bot passed: the bot-health bot closes its issue.
+    await apply(w.context, { ...at, type: "recovered", key: "issue:5" });
+    await apply(w.context, {
+      ...at,
+      type: "recovered",
+      key: "workflow:release",
+    });
+    const green = w.net.telegram("editMessageText").at(-1)?.body.text;
+    expect(green).toContain("✅ Green again.");
+    expect(green).not.toContain("running again");
+    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
+      state: "recovered",
+    });
   });
 
   it("counts only the checks that the rules of the branch require", async () => {

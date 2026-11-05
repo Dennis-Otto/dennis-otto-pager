@@ -4,7 +4,9 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
+  checkRunOf,
   classify,
+  healthRun,
   isBot,
   isMaintainer,
   isRequired,
@@ -264,6 +266,104 @@ describe("main failing", () => {
     );
   });
 
+  it("names the run that the bot-health bot names, and follows it as the bot edits its issue", () => {
+    const marker = (state: object) =>
+      `<!-- bot-health ${JSON.stringify(state)} -->\nThe workflow **CI** fails.`;
+    const issue = {
+      number: 5,
+      title: "CI fails on main",
+      body: marker({ attempt: 1, key: "ci", run: 31, where: "lint" }),
+      state: "open",
+      html_url: "https://github.com/Dennis-Otto/demo/issues/5",
+      user: bot,
+      labels: [{ name: "bot-failure" }],
+    };
+    expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
+      signal: {
+        ...at,
+        type: "failing",
+        key: "issue:5",
+        label: { key: "entry.bot", values: { title: "CI fails on main" } },
+        url: issue.html_url,
+        run: 31,
+      },
+    });
+    // A failure again, such as of a rerun, edits the open issue: its entry follows,
+    // but only an open alarm changes, so an edit never pages.
+    const again = { ...issue, body: marker({ attempt: 2, run: 31 }) };
+    expect(
+      classify("issues", event({ action: "edited", issue: again }), ME),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "still-failing",
+        key: "issue:5",
+        label: { key: "entry.bot", values: { title: "CI fails on main" } },
+        url: issue.html_url,
+        run: 31,
+      },
+    });
+    const closed = { ...again, state: "closed" };
+    expect(
+      classify("issues", event({ action: "edited", issue: closed }), ME),
+    ).toEqual({ ignored: "the edited of a bot-failure issue" });
+  });
+
+  it("reads a run only from a marker of the bot-health bot that names one", () => {
+    expect(healthRun('<!-- bot-health {"run": 7} -->')).toBe(7);
+    expect(
+      healthRun('text <!-- bot-health {"a": {"b": 1}, "run": 8} -->'),
+    ).toBe(8);
+    // The bot writes each "--" of its JSON as "-\u002d", which JSON.parse reads as "--".
+    expect(
+      healthRun('<!-- bot-health {"run": 9, "where": "a-\\u002db"} -->\nText'),
+    ).toBe(9);
+    for (const body of [
+      undefined,
+      null,
+      "",
+      "No marker here.",
+      '<!-- bot-health {"key": "renovate", "quiet": 0} -->',
+      '<!-- bot-health {"run": "7"} -->',
+      '<!-- bot-health {"run": 0} -->',
+      '<!-- bot-health {"run": 1.5} -->',
+      '<!-- bot-health {"run": 7,} -->',
+      '<!-- bot-health {"run": 7}',
+      "<!-- bot-health null -->",
+      "<!-- bot-health 7 -->",
+    ]) {
+      expect(healthRun(body)).toBeUndefined();
+    }
+  });
+
+  it("reads a long body of a bot-health issue at once", () => {
+    // What makes a regular expression go back and forth, longer than GitHub lets a
+    // body be, takes two searches of the text, well within the time of a test.
+    expect(healthRun("<!-- bot-health {{".repeat(50000))).toBeUndefined();
+    expect(healthRun(`<!-- bot-health {${" ".repeat(70000)}}`)).toBeUndefined();
+  });
+
+  it("names the run of a check of GitHub Actions, and of no other app", () => {
+    const actions = {
+      ...run,
+      html_url: "https://github.com/Dennis-Otto/demo/actions/runs/42/job/7",
+    };
+    expect(
+      classify(
+        "check_run",
+        event({ action: "completed", check_run: actions }),
+        ME,
+      ),
+    ).toMatchObject({ signal: { type: "check", run: 42 } });
+    expect(checkRunOf(run.html_url)).toBeUndefined();
+    expect(
+      checkRunOf("https://github.com/o/r/actions/runs/99999999999999999/job/1"),
+    ).toBeUndefined();
+    expect(
+      checkRunOf("https://example.com/o/r/actions/runs/42/job/7"),
+    ).toBeUndefined();
+  });
+
   it("takes a bot-failure issue without its fields as empty", () => {
     const issue = { user: bot, labels: [{ name: "bot-failure" }, {}] };
     expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
@@ -353,6 +453,20 @@ describe("releases", () => {
     expect(urlOf({ run_attempt: 0 })).toBe(workflow.html_url);
     expect(urlOf({ run_attempt: "2" })).toBe(workflow.html_url);
     expect(urlOf({ html_url: undefined, run_attempt: 2 })).toBe("");
+  });
+
+  it("names the run that failed, for a rerun of its failed jobs", () => {
+    const runOf = (id: unknown) =>
+      (
+        classify(
+          "workflow_run",
+          event({ action: "completed", workflow_run: { ...workflow, id } }),
+          ME,
+        ) as { signal: { run?: number } }
+      ).signal.run;
+    expect(runOf(3)).toBe(3);
+    expect(runOf("3")).toBeUndefined();
+    expect(runOf(-3)).toBeUndefined();
   });
 
   it("names a release run without a name by its path", () => {

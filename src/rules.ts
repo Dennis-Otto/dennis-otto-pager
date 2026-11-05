@@ -46,6 +46,8 @@ export interface Payload {
   issue?: {
     number?: number;
     title?: string;
+    body?: string | null;
+    state?: string;
     html_url?: string;
     user?: Account;
     labels?: { name?: string }[];
@@ -70,6 +72,7 @@ export interface Payload {
     pull_requests?: { number?: number }[];
   };
   workflow_run?: {
+    id?: unknown;
     name?: string;
     path?: string;
     event?: string;
@@ -97,6 +100,14 @@ interface Where {
   installation: number;
 }
 
+/** What fails: an entry of the alarm, and the run of GitHub Actions that it names, if any. */
+interface Failure {
+  key: string;
+  label: Phrase;
+  url: string;
+  run?: number;
+}
+
 export type Signal = Where &
   (
     | {
@@ -107,7 +118,7 @@ export type Signal = Where &
         url: string;
         author: string;
       }
-    | { type: "failing"; key: string; label: Phrase; url: string }
+    | ({ type: "failing" | "still-failing" } & Failure)
     | { type: "recovered"; key: string }
     | {
         type: "check";
@@ -115,6 +126,8 @@ export type Signal = Where &
         failed: boolean;
         branch: string;
         url: string;
+        /** The run of GitHub Actions of the check, if it is one. */
+        run?: number;
       }
     | { type: "release-check"; numbers: number[] }
     | { type: "release-updated"; number: number; sha: string }
@@ -204,6 +217,60 @@ function where(payload: Payload, maintainer: string): Where | string {
   return { repo, installation };
 }
 
+/** The id of a run of GitHub Actions, when it is one. */
+function runId(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) > 0
+    ? (value as number)
+    : undefined;
+}
+
+/** The field of a run in a signal: none for a failure that names no run. */
+function withRun(run: number | undefined): { run?: number } {
+  return run === undefined ? {} : { run };
+}
+
+/**
+ * The marker in which the bot-health bot keeps the state of its issue, as JSON. Its
+ * JSON never holds " -->": the bot writes each "--" of it as "-\u002d", which
+ * JSON.parse reads back as "--", so " -->" can only be the end of the marker.
+ */
+const HEALTH_START = "<!-- bot-health ";
+const HEALTH_END = " -->";
+
+/**
+ * The run that an issue of the bot-health bot names: the newest that failed, which
+ * the bot writes into the marker of its body, such as
+ * <!-- bot-health {"attempt": 1, "run": 3, ...} -->, at each failure. Two searches
+ * for text, not a regular expression, so that no body can make it slow.
+ */
+export function healthRun(body: string | null | undefined): number | undefined {
+  const text = body ?? "";
+  const start = text.indexOf(HEALTH_START);
+  const end =
+    start < 0 ? -1 : text.indexOf(HEALTH_END, start + HEALTH_START.length);
+  if (end < 0) {
+    return undefined;
+  }
+  try {
+    const state: unknown = JSON.parse(
+      text.slice(start + HEALTH_START.length, end),
+    );
+    return runId((state as { run?: unknown } | null)?.run);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The job of a run of GitHub Actions, as the address of its check run names it. */
+const ACTIONS_JOB =
+  /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/(\d+)\/job\/\d+$/;
+
+/** The run of GitHub Actions of a check run, by its address, if it is one. */
+export function checkRunOf(url: string): number | undefined {
+  const job = ACTIONS_JOB.exec(url);
+  return job === null ? undefined : runId(Number(job[1]));
+}
+
 function labels(payload: Payload): string[] {
   return (payload.issue?.labels ?? []).map((label) => label.name ?? "");
 }
@@ -212,16 +279,19 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
   const issue = payload.issue;
   const number = issue?.number ?? 0;
   if (labels(payload).includes(BOT_FAILURE) && isBot(issue?.user)) {
+    const failure: Failure = {
+      key: `issue:${number}`,
+      label: { key: "entry.bot", values: { title: issue?.title ?? "" } },
+      url: issue?.html_url ?? "",
+      ...withRun(healthRun(issue?.body)),
+    };
     if (payload.action === "opened" || payload.action === "reopened") {
-      return {
-        signal: {
-          ...at,
-          type: "failing",
-          key: `issue:${number}`,
-          label: { key: "entry.bot", values: { title: issue?.title ?? "" } },
-          url: issue?.html_url ?? "",
-        },
-      };
+      return { signal: { ...at, type: "failing", ...failure } };
+    }
+    // Each new failure of its bot edits the open issue, with the run that failed
+    // now: its entry follows, and a rerun that failed again shows as failed.
+    if (payload.action === "edited" && issue?.state === "open") {
+      return { signal: { ...at, type: "still-failing", ...failure } };
     }
     if (payload.action === "closed") {
       return { signal: { ...at, type: "recovered", key: `issue:${number}` } };
@@ -306,6 +376,7 @@ function checkRun(payload: Payload, at: Where): Outcome {
       failed: FAILED.has(conclusion),
       branch,
       url: run?.html_url ?? "",
+      ...withRun(checkRunOf(run?.html_url ?? "")),
     },
   };
 }
@@ -360,6 +431,7 @@ function workflowRun(payload: Payload, at: Where): Outcome {
         key,
         label: { key: "entry.release", values: { name: run?.name ?? path } },
         url: attemptUrl(run),
+        ...withRun(runId(run?.id)),
       },
     };
   }

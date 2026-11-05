@@ -1,0 +1,30 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: The rerun of a run that failed
+    accDescr: An entry of the alarm names a run of GitHub Actions that failed on main, such as that of a required check, a release or an issue of the bot-health bot. Dennis presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the entry says so in the message. When they fail again, the entry shows the failure, and Rerun can run them once more. When they pass, the bot-health bot closes its issue or the release run passes, the entry goes, and the last one turns the alarm green.
+
+    alarm["`**🚨** An entry of the alarm names a run that failed on main`"]
+    press["Dennis presses 🔁 Rerun"]
+    read["The pager reads the run"]
+    nothing["`**ℹ️** It still runs, or passed on a retry: the button says so, and nothing starts`"]
+    again["`**🔁** Its failed jobs run again, and the entry says *running again…*`"]
+    green["`**✅** They pass: the issue of the bot-health bot closes, the entry goes, and the last one turns the alarm green`"]
+
+    alarm --> press --> read
+    read -- "still running, or green" --> nothing
+    read -- "failed" --> again
+    again -- "they fail again: the entry shows the failure" --> alarm
+    again -- "a pass" --> green
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class press you
+    class read,nothing,again bot
+    class green done
+    class alarm warn

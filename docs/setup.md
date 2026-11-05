@@ -71,7 +71,7 @@ Without it, the pager works as well, and those two buttons say what is missing.
 
 ## 4. The GitHub App
 
-The app sends the events of your repositories to the Worker and merges a release with its own, scoped tokens. `github-app.json` is its manifest, with the least permissions that the pager needs. Register it with your Worker's address:
+The app sends the events of your repositories to the Worker and merges a release and reruns the failed jobs of a run with its own, scoped tokens. `github-app.json` is its manifest, with the least permissions that the pager needs. Register it with your Worker's address:
 
 ```sh
 node scripts/register-app.mjs https://dennis-otto-pager.ACCOUNT.workers.dev
@@ -83,13 +83,15 @@ The app is private, so only your account can install it. Its permissions:
 
 | Permission | Access | For |
 | --- | --- | --- |
-| Actions | Read | A release workflow that fails |
+| Actions | Read and write | A release workflow that fails; 🔁 Rerun, which reads a run that failed and runs its failed jobs again |
 | Checks | Read | A required check that fails on `main`; a release whose checks finished |
 | Code scanning alerts | Read | An alert of severity high or critical |
 | Contents | Read and write | 🔀 Merge of a release; the events to the control repository |
 | Issues | Read | A new issue; a `bot-failure` issue |
 | Metadata | Read | Required by GitHub; the required checks of `main` |
 | Pull requests | Read | A new pull request; the state of a release pull request |
+
+An app that you registered before 🔁 **Rerun** came has *Actions: Read*: raise it to *Read and write* in the settings of the app, under *Permissions & events*, and accept the new permission for each installation, as GitHub asks you in a mail. Until then, the button says that GitHub refused it.
 
 ## 5. The webhook of Telegram
 

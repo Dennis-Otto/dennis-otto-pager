@@ -21,7 +21,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | What happens on GitHub | What the message offers |
 | --- | --- |
 | Someone other than the maintainer or a bot opens an issue or a pull request | ✍️ **Draft a reply** in the maintainer's voice, which ✅ **Send** posts exactly as shown; 🤖 **Assistant again** for an issue |
-| A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🛠 **Start fix** |
+| A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🔁 **Rerun**, which runs the failed jobs of the run again, for a short outage of GitHub; 🛠 **Start fix** |
 | A code-scanning alert of severity high or critical appears on `main` | 🛠 **Start fix** |
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
 | The token of Claude in the control repository expires in three weeks | ✅ **Renewed** |

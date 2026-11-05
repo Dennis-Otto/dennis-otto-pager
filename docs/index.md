@@ -9,6 +9,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | 🔀 Merge | Merges a green release pull request, which publishes the release |
 | ✍️ Draft a reply, ✅ Send, ✏️ Edit | A reply in the maintainer's voice from the private control repository, posted exactly as shown |
 | 🤖 Assistant again | Lets the issue assistant answer an issue again, past its rule of one comment |
+| 🔁 Rerun | Runs the failed jobs of a run that failed on `main` again, without a run of Claude |
 | 🛠 Start fix | Sends what fails to the control repository, which prepares a fix |
 | ✅ Confirm | Runs the one action that an answer to your text proposes, such as a merge, while its thing still offers it |
 | ⏰ Later, ✖ Ignore | Brings the thing back after four hours, or closes it |

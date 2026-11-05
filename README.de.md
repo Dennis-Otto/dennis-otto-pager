@@ -21,7 +21,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | Was auf GitHub passiert | Was die Nachricht anbietet |
 | --- | --- |
 | Jemand anderes als der Maintainer oder ein Bot eröffnet ein Issue oder einen Pull Request | ✍️ **Antwort entwerfen**: ein Entwurf in der Stimme des Maintainers, den ✅ **Senden** genau so postet, wie er angezeigt wird; 🤖 **Assistent nochmal** bei einem Issue |
-| Ein Pflicht-Check schlägt auf `main` fehl, ein Release-Workflow scheitert, oder der Bot-Health-Bot eröffnet ein Issue mit `bot-failure` | 🛠 **Fix starten** |
+| Ein Pflicht-Check schlägt auf `main` fehl, ein Release-Workflow scheitert, oder der Bot-Health-Bot eröffnet ein Issue mit `bot-failure` | 🔁 **Neu starten**, das die gescheiterten Jobs des Laufs erneut startet, für einen kurzen Ausfall von GitHub; 🛠 **Fix starten** |
 | Ein Code-Scanning-Alarm mit Schweregrad high oder critical erscheint auf `main` | 🛠 **Fix starten** |
 | Ein Release-Pull-Request ist grün und aktuell | 🔀 **Mergen**, das das Release veröffentlicht |
 | Das Token von Claude im Steuer-Repository läuft in drei Wochen ab | ✅ **Erneuert** |

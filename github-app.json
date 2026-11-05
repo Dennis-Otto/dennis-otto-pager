@@ -9,7 +9,7 @@
   },
   "redirect_url": "http://127.0.0.1/done",
   "default_permissions": {
-    "actions": "read",
+    "actions": "write",
     "checks": "read",
     "contents": "write",
     "issues": "read",

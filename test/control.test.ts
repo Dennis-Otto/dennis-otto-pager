@@ -680,6 +680,75 @@ describe("the thread of an answer", () => {
   });
 });
 
+describe("the answer of a job for a thing", () => {
+  const topic = { thread: 900, name: "🚨 demo needs you" };
+  const alarm: Alarm = {
+    ...base(ID),
+    kind: "alarm",
+    state: "fixing",
+    entries: [
+      {
+        key: "issue:367",
+        label: "A bot fails: Mutation fails on main",
+        url: `https://github.com/${REPO}/issues/367`,
+      },
+    ],
+  };
+  // Each answer that a job of the control repository sends for its thing, and the
+  // state of the thing while its job runs.
+  const answers: [string, Item, object][] = [
+    ["a draft", contribution, { type: "draft", text: "Thanks!" }],
+    [
+      "a draft that failed",
+      contribution,
+      { type: "failed", text: "No draft." },
+    ],
+    ["a fix with its pull request", alarm, { type: "note", text: "🛠 #3" }],
+    ["a fix that failed", alarm, { type: "failed", text: "No fix: a 504." }],
+  ];
+
+  it.each(answers)(
+    "goes into the thing's topic, as a new message that notifies: %s",
+    async (_, item, answer) => {
+      const w = await world();
+      await w.context.store.put({ ...item, topic });
+      expect((await send(w, { ...answer, item: ID })).status).toBe(200);
+      const [message] = w.net.telegram("sendMessage").map((call) => call.body);
+      expect(message?.message_thread_id).toBe(900);
+      expect(message?.text).toContain((answer as { text: string }).text);
+      // The old message of the thing goes, and the new one is its message now.
+      expect(w.net.telegram("deleteMessage")[0]?.body.message_id).toBe(7);
+      expect(await w.context.store.get(ID)).toMatchObject({
+        messageId: 100,
+        topic: { thread: 900 },
+      });
+    },
+  );
+
+  it.each(answers)(
+    "goes into the main view only for a thing without a topic: %s",
+    async (_, item, answer) => {
+      const w = await world();
+      await w.context.store.put({ ...item, topic: null });
+      await send(w, { ...answer, item: ID });
+      const [message] = w.net.telegram("sendMessage").map((call) => call.body);
+      expect(message).toBeDefined();
+      expect("message_thread_id" in message).toBe(false);
+    },
+  );
+
+  it("edits a note in place when no job of its thing runs", async () => {
+    const w = await world();
+    await w.context.store.put({ ...alarm, state: "open", topic });
+    expect(await send(w, { type: "note", item: ID, text: "Later." })).toEqual({
+      status: 200,
+      text: "noted",
+    });
+    expect(w.net.telegram("sendMessage")).toEqual([]);
+    expect(w.net.telegram("editMessageText")[0]?.body.message_id).toBe(7);
+  });
+});
+
 describe("the schedule", () => {
   it("brings back what Later put aside, as a new message", async () => {
     const w = await world();

@@ -2,7 +2,7 @@
 
 A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.
 
-The pager writes only when something needs its maintainer, never to say that all is well: a contribution from outside, `main` failing, a release that fails, a code-scanning alert of severity high or critical, a release pull request that is green, and the token of Claude in the control repository before it expires. Each thing gets **one message** with its buttons, in a topic of its own once Threaded Mode is on for the bot, which the pager edits in place as the thing changes; what fails in one repository is bundled, and only a new thing notifies. A question in the topic of a thing goes to the control repository with that thing, and a done thing gets ✅ in front of its topic.
+The pager writes only when something needs its maintainer, never to say that all is well: a contribution from outside, `main` failing, a release that fails, a code-scanning alert of severity high or critical, a release pull request that is green, and the token of Claude in the control repository before it expires. Each thing gets **one message** with its buttons, in a topic of its own once Threaded Mode is on for the bot, which the pager edits in place as the thing changes; what fails in one repository is bundled, and only a new thing, and the answer of a draft or a fix that you started, notifies. A question in the topic of a thing goes to the control repository with that thing, and a done thing gets ✅ in front of its topic.
 
 | Button | What it does |
 | --- | --- |

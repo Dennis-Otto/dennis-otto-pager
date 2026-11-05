@@ -1,0 +1,30 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Der Neustart eines gescheiterten Laufs
+    accDescr: Ein Eintrag im Alarm nennt einen Lauf von GitHub Actions, der auf main scheiterte, etwa den eines Pflicht-Checks, eines Releases oder eines Issues des Bot-Health-Bots. Dennis drückt Neu starten, und der Pager liest den Lauf. Solange er noch läuft oder wenn er bei einem neuen Versuch schon grün wurde, sagt der Knopf das, und nichts startet. Sonst laufen seine gescheiterten Jobs erneut, und der Eintrag sagt das in der Nachricht. Scheitern sie wieder, zeigt der Eintrag den Fehlschlag, und Neu starten kann sie noch einmal starten. Werden sie grün, schließt der Bot-Health-Bot sein Issue oder der Release-Lauf gelingt, der Eintrag verschwindet, und der letzte macht den Alarm grün.
+
+    alarm["`**🚨** Ein Eintrag im Alarm nennt einen Lauf, der auf main scheiterte`"]
+    press["Dennis drückt 🔁 Neu starten"]
+    read["Der Pager liest den Lauf"]
+    nothing["`**ℹ️** Er läuft noch oder wurde bei einem neuen Versuch grün: Der Knopf sagt das, und nichts startet`"]
+    again["`**🔁** Seine gescheiterten Jobs laufen erneut, und der Eintrag sagt *läuft erneut …*`"]
+    green["`**✅** Sie werden grün: Das Issue des Bot-Health-Bots schließt sich, der Eintrag verschwindet, und der letzte macht den Alarm grün`"]
+
+    alarm --> press --> read
+    read -- "läuft noch oder ist grün" --> nothing
+    read -- "gescheitert" --> again
+    again -- "sie scheitern wieder: Der Eintrag zeigt den Fehlschlag" --> alarm
+    again -- "ein Erfolg" --> green
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class press you
+    class read,nothing,again bot
+    class green done
+    class alarm warn

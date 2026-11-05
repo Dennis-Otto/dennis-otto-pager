@@ -84,19 +84,37 @@ function base(id: string, repo: string, installation: number) {
   };
 }
 
-/** Add an entry to the bundle of a repository; a closed bundle opens anew. */
+/** Whether two entries of a bundle show the same. */
+function sameEntry(one: Entry, other: Entry): boolean {
+  return (
+    one.label === other.label &&
+    one.url === other.url &&
+    one.run === other.run &&
+    one.rerun === other.rerun
+  );
+}
+
+/**
+ * Add an entry to the bundle of a repository, or change the one with its key; a
+ * closed bundle opens anew. With only, only an entry of an open bundle changes,
+ * and nothing opens. An entry that shows the same writes nothing.
+ */
 async function addEntry(
   context: Context,
   kind: "alarm" | "alert",
   repo: string,
   installation: number,
   entry: Entry,
+  only: "change" | null = null,
 ): Promise<string> {
   const id = await itemId(
     kind === "alarm" ? keys.alarm(repo) : keys.alert(repo),
   );
   const known = (await context.store.get(id)) as Alarm | Alert | null;
   if (known === null || isClosed(known)) {
+    if (only === "change") {
+      return `no open ${kind}`;
+    }
     const item = {
       ...base(id, repo, installation),
       kind,
@@ -111,10 +129,16 @@ async function addEntry(
     return `${kind} opened`;
   }
   const index = known.entries.findIndex((each) => each.key === entry.key);
-  if (index >= 0) {
-    known.entries[index] = entry;
-  } else {
+  const shown = known.entries[index];
+  if (shown === undefined) {
+    if (only === "change") {
+      return `not part of the ${kind}`;
+    }
     known.entries.push(entry);
+  } else if (sameEntry(shown, entry)) {
+    return `${kind} unchanged`;
+  } else {
+    known.entries[index] = entry;
   }
   await show(context, known);
   return `${kind} updated`;
@@ -272,11 +296,20 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       return "contribution shown";
     }
     case "failing":
-      return addEntry(context, "alarm", signal.repo, signal.installation, {
-        key: signal.key,
-        label: context.t.phrase(signal.label),
-        url: signal.url,
-      });
+    case "still-failing":
+      return addEntry(
+        context,
+        "alarm",
+        signal.repo,
+        signal.installation,
+        {
+          key: signal.key,
+          label: context.t.phrase(signal.label),
+          url: signal.url,
+          ...(signal.run === undefined ? {} : { run: signal.run }),
+        },
+        signal.type === "still-failing" ? "change" : null,
+      );
     case "recovered":
       return removeEntry(context, "alarm", signal.repo, signal.key);
     case "check": {
@@ -299,6 +332,7 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
           branch: signal.branch,
         }),
         url: signal.url,
+        ...(signal.run === undefined ? {} : { run: signal.run }),
       });
     }
     case "alert-open":

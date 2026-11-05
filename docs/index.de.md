@@ -9,6 +9,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | 🔀 Mergen | Merged einen grünen Release-Pull-Request, was das Release veröffentlicht |
 | ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird |
 | 🤖 Assistent nochmal | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
+| 🔁 Neu starten | Startet die gescheiterten Jobs eines Laufs, der auf `main` scheiterte, erneut, ohne einen Lauf von Claude |
 | 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
 | ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort auf deinen Text vorschlägt, etwa ein Merge, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |

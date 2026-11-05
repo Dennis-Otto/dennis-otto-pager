@@ -12,7 +12,7 @@ import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { type Context, show } from "./pager.ts";
 import { html, link } from "./render.ts";
-import { type Item, itemId, keys } from "./store.ts";
+import { beforeJob, type Item, itemId, keys } from "./store.ts";
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { MAX_DRAFT } from "./updates.ts";
@@ -43,6 +43,7 @@ export const PROPOSABLE: Partial<Record<Action, readonly Target["kind"][]>> = {
   assistant: ["contribution"],
   draft: ["contribution"],
   fix: ["alarm", "alert"],
+  rerun: ["alarm"],
   later: ALL,
   ignore: ALL,
 };
@@ -271,13 +272,6 @@ async function propose(
   return new Response(keyboard.length === 0 ? "said" : "proposed");
 }
 
-/** The states in which a job of the control repository runs, and the one before. */
-const RUNNING: Partial<Record<string, Item["state"]>> = {
-  "contribution:drafting": "new",
-  "alarm:fixing": "open",
-  "alert:fixing": "open",
-};
-
 /** Handle a request of the control repository. */
 export async function handleControl(
   context: Context,
@@ -311,17 +305,19 @@ export async function handleControl(
   if (item === null) {
     return new Response("Not Found", { status: 404 });
   }
+  // An answer ends the wait for the job, so the schedule leaves the thing alone.
+  delete item.jobStarted;
   if (message.type === "note") {
     item.note = noted(message.text, message.usage, context.t);
     // The note that ends a job, such as a fix with its pull request, is a new
     // message in the thing's topic, which notifies, as its failure is: the
     // maintainer waits for it. Any other note edits the message in place.
-    const ends = RUNNING[`${item.kind}:${item.state}`] !== undefined;
+    const ends = beforeJob(item) !== undefined;
     await show(context, item, ends);
     return new Response("noted");
   }
   if (message.type === "failed") {
-    const before = RUNNING[`${item.kind}:${item.state}`];
+    const before = beforeJob(item);
     if (before === undefined) {
       return new Response("Conflict", { status: 409 });
     }

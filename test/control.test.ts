@@ -312,7 +312,14 @@ describe("the answers of Claude", () => {
       ...base(await itemId(keys.alarm(REPO))),
       kind: "alarm",
       state: "open",
-      entries: [],
+      entries: [
+        {
+          key: "workflow:.github/workflows/release.yml",
+          label: "The release fails: Release",
+          url: `https://github.com/${REPO}/actions/runs/3/attempts/1`,
+          run: 3,
+        },
+      ],
     };
     const alert: Item = {
       ...alarm,
@@ -331,6 +338,7 @@ describe("the answers of Claude", () => {
       },
       { action: "fix", target: { kind: "alarm", repo: REPO } },
       { action: "fix", target: { kind: "alert", repo: REPO } },
+      { action: "rerun", target: { kind: "alarm", repo: REPO } },
     ];
     for (const proposal of proposals) {
       expect(
@@ -362,6 +370,7 @@ describe("the answers of Claude", () => {
       [[{ text: "✅ Confirm", callback_data: `assistant:${issue.id}` }]],
       [[{ text: "✅ Confirm", callback_data: `fix:${alarm.id}` }]],
       [[{ text: "✅ Confirm", callback_data: `fix:${alert.id}` }]],
+      [[{ text: "✅ Confirm", callback_data: `rerun:${alarm.id}` }]],
     ]);
     expect(sent[1]?.text).toContain(`>${REPO}#12</a>`);
     expect(sent[2]?.text).toContain(`/${REPO}/actions">${REPO}</a>`);
@@ -770,7 +779,7 @@ describe("the schedule", () => {
       messageId: 100,
     });
     expect(w.net.telegram("deleteMessage")[0]?.body.message_id).toBe(7);
-    expect(await w.context.store.due(START)).toEqual([]);
+    expect((await w.context.store.pending(START, 0)).due).toEqual([]);
   });
 
   it("forgets the Later of a thing that is closed, or gone in between", async () => {
@@ -782,7 +791,7 @@ describe("the schedule", () => {
     };
     await w.context.store.put({ ...closed, state: "new" });
     await w.context.store.put(closed);
-    expect(await w.context.store.due(START + 1e12)).toEqual([]);
+    expect((await w.context.store.pending(START + 1e12, 0)).due).toEqual([]);
     const gone = {
       ...contribution,
       state: "new" as const,
@@ -813,10 +822,102 @@ describe("the schedule", () => {
     await w.context.store.put({
       ...contribution,
       id: "i444444444444444",
-      state: "new",
+      jobStarted: START - 1,
     });
-    expect(await w.context.store.due(START, 1)).toHaveLength(3);
-    expect(await w.context.store.due(START - 1, 2)).toEqual([]);
+    expect((await w.context.store.pending(START, 0, 1)).due).toHaveLength(3);
+    expect((await w.context.store.pending(START - 1, 0, 2)).due).toEqual([]);
+    // The things whose job waits come from the same list, the Later aside.
+    expect(await w.context.store.pending(START - 1, START, 1)).toEqual({
+      due: [],
+      waiting: ["i444444444444444"],
+    });
+    expect((await w.context.store.pending(START, START - 1)).waiting).toEqual(
+      [],
+    );
+  });
+
+  describe("a job of the control repository that never answers", () => {
+    const fixing: Alarm = {
+      ...base("i555555555555555"),
+      kind: "alarm",
+      state: "fixing",
+      entries: [{ key: "check:lint", label: "lint fails", url: "" }],
+      jobStarted: START,
+    };
+    const drafting: Contribution = { ...contribution, jobStarted: START };
+
+    it("gives the thing its buttons back after the hour, once, with a note", async () => {
+      const w = await world();
+      await w.context.store.put(fixing);
+      await w.context.store.put(drafting);
+      w.clock.now = START + ANSWER_WITHIN;
+      expect(await runSchedule(w.context)).toEqual([]);
+      w.clock.now = START + ANSWER_WITHIN + 15 * 60000;
+      expect((await runSchedule(w.context)).sort()).toEqual(
+        [ID, fixing.id].sort(),
+      );
+      const note =
+        "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.";
+      for (const [id, state] of [
+        [fixing.id, "open"],
+        [ID, "new"],
+      ]) {
+        const item = await w.context.store.get(id as string);
+        expect(item).toMatchObject({ state, note });
+        expect(item).not.toHaveProperty("jobStarted");
+      }
+      // A new message for each, which notifies, with the buttons of the state before.
+      const sent = w.net.telegram("sendMessage").map((call) => call.body);
+      expect(sent).toHaveLength(2);
+      const buttons = sent.map((body) =>
+        body.reply_markup.inline_keyboard
+          .flat()
+          .map((button: { text: string }) => button.text),
+      );
+      expect(buttons).toContainEqual(["🛠 Start fix", "⏰ Later", "✖ Ignore"]);
+      expect(buttons).toContainEqual([
+        "✍️ Draft a reply",
+        "🤖 Assistant again",
+        "⏰ Later",
+        "✖ Ignore",
+      ]);
+      expect(w.net.telegram("deleteMessage")).toHaveLength(2);
+      w.clock.now += 24 * 3600000;
+      expect(await runSchedule(w.context)).toEqual([]);
+    });
+
+    it("leaves a thing alone whose job answered, also with a note that keeps it fixing", async () => {
+      const w = await world();
+      await w.context.store.put({ ...fixing, id: ID });
+      expect(
+        await send(w, { type: "note", item: ID, text: "🛠 The fix is in #3." }),
+      ).toEqual({ status: 200, text: "noted" });
+      const answered = await w.context.store.get(ID);
+      expect(answered).toMatchObject({ state: "fixing" });
+      expect(answered).not.toHaveProperty("jobStarted");
+      w.clock.now = START + 2 * ANSWER_WITHIN;
+      expect(await runSchedule(w.context)).toEqual([]);
+      expect(await w.context.store.get(ID)).toMatchObject({ state: "fixing" });
+    });
+
+    it("trusts only the record, which the list may lag behind", async () => {
+      const w = await world();
+      // Gone in between, answered in between, and in a state of no job.
+      await w.context.store.put(fixing);
+      await w.context.store.put(drafting);
+      await w.context.store.put({
+        ...fixing,
+        id: "i666666666666666",
+        state: "open",
+      });
+      vi.spyOn(w.context.store, "get")
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...contribution });
+      w.clock.now = START + 2 * ANSWER_WITHIN;
+      expect(await runSchedule(w.context)).toEqual([]);
+      expect(w.net.calls).toHaveLength(0);
+      vi.restoreAllMocks();
+    });
   });
 
   it("reminds of the token of Claude three weeks before, once", async () => {

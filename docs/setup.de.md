@@ -71,7 +71,7 @@ Ohne es arbeitet der Pager auch, und diese zwei Knöpfe sagen, was fehlt.
 
 ## 4. Die GitHub-App
 
-Die App schickt die Ereignisse deiner Repositorys an den Worker und merged ein Release mit ihren eigenen, eingeschränkten Tokens. `github-app.json` ist ihr Manifest, mit den geringsten Rechten, die der Pager braucht. Registriere sie mit der Adresse deines Workers:
+Die App schickt die Ereignisse deiner Repositorys an den Worker und merged ein Release und startet die gescheiterten Jobs eines Laufs erneut, mit ihren eigenen, eingeschränkten Tokens. `github-app.json` ist ihr Manifest, mit den geringsten Rechten, die der Pager braucht. Registriere sie mit der Adresse deines Workers:
 
 ```sh
 node scripts/register-app.mjs https://dennis-otto-pager.ACCOUNT.workers.dev
@@ -83,13 +83,15 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |
-| Actions | Read | Ein Release-Workflow, der scheitert |
+| Actions | Read and write | Ein Release-Workflow, der scheitert; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet |
 | Checks | Read | Ein Pflicht-Check, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
 | Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
 | Issues | Read | Ein neues Issue; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
 | Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests |
+
+Eine App, die du vor 🔁 **Neu starten** registriert hast, hat *Actions: Read*: Setz es in den Einstellungen der App unter *Permissions & events* auf *Read and write* und nimm die neue Berechtigung für jede Installation an, wie GitHub dich per Mail bittet. Bis dahin sagt der Knopf, dass GitHub ihn ablehnte.
 
 ## 5. Der Webhook von Telegram
 

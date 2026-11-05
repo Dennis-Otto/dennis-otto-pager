@@ -11,6 +11,10 @@ export interface Entry {
   key: string;
   label: string;
   url: string;
+  /** The run of GitHub Actions that failed, which 🔁 Rerun runs again, if the entry names one. */
+  run?: number;
+  /** 🔁 Rerun started its failed jobs again; the next failure or pass of the entry ends it. */
+  rerun?: true;
 }
 
 /** The topic of the chat that a thing has: its thread, and the name that it shows now. */
@@ -37,6 +41,11 @@ interface Base {
    * topics, which has none.
    */
   topic?: Topic | null;
+  /**
+   * When the thing went to the control repository, in milliseconds since 1970,
+   * while it waits for the answer of that job: any answer ends the wait.
+   */
+  jobStarted?: number;
 }
 
 /** An issue or pull request that someone other than the maintainer opened. */
@@ -96,6 +105,18 @@ const CLOSED: ReadonlySet<string> = new Set([
   "done",
 ]);
 
+/** The states in which a job of the control repository runs, and the one before. */
+const RUNNING: Partial<Record<string, Item["state"]>> = {
+  "contribution:drafting": "new",
+  "alarm:fixing": "open",
+  "alert:fixing": "open",
+};
+
+/** The state of a thing before the job of the control repository that runs for it, if one runs. */
+export function beforeJob(item: Item): Item["state"] | undefined {
+  return RUNNING[`${item.kind}:${item.state}`];
+}
+
 /** Whether a thing is done with, so that its record may expire. */
 export function isClosed(item: Item): boolean {
   return CLOSED.has(item.state);
@@ -134,6 +155,22 @@ export interface PendingEdit {
   prompt: number;
 }
 
+/** What the schedule has to look at, from one list of the records. */
+export interface Pending {
+  /** The things whose "Later" is over. */
+  due: string[];
+  /** The things whose job of the control repository went before a time and didn't answer. */
+  waiting: string[];
+}
+
+/** The metadata of the record of a thing, which the list reads. */
+interface Marks {
+  /** When its "Later" is over. */
+  until?: number;
+  /** When its job went to the control repository. */
+  job?: number;
+}
+
 export class Store {
   private readonly kv: KVNamespace;
 
@@ -146,39 +183,58 @@ export class Store {
   }
 
   /**
-   * Keep a thing, with one write: the time of its "Later" goes into the metadata of
-   * its record, which the list of due() reads without a read of each record.
+   * Keep a thing, with one write: the time of its "Later" and that of its job of
+   * the control repository go into the metadata of its record, which the list of
+   * pending() reads without a read of each record.
    */
   async put(item: Item): Promise<void> {
     const options: KVNamespacePutOptions = {};
+    const marks: Marks = {};
+    if (item.snoozedUntil !== null) {
+      marks.until = item.snoozedUntil;
+    }
+    if (item.jobStarted !== undefined) {
+      marks.job = item.jobStarted;
+    }
     if (isClosed(item)) {
       options.expirationTtl = MONTH;
-    } else if (item.snoozedUntil !== null) {
-      options.metadata = { until: item.snoozedUntil };
+    } else if (Object.keys(marks).length > 0) {
+      options.metadata = marks;
     }
     await this.kv.put(`item:${item.id}`, JSON.stringify(item), options);
   }
 
-  /** The ids of the things whose "Later" is over at now, page by page of the list. */
-  async due(now: number, limit = 1000): Promise<string[]> {
-    const due: string[] = [];
+  /**
+   * The ids of the things whose "Later" is over at now, and of those whose job of
+   * the control repository went before jobsBefore, page by page of one list: the
+   * free plan of KV allows a thousand lists a day, and the schedule runs 96 times.
+   */
+  async pending(
+    now: number,
+    jobsBefore: number,
+    limit = 1000,
+  ): Promise<Pending> {
+    const pending: Pending = { due: [], waiting: [] };
     let cursor: string | null = null;
     do {
-      const listed: KVNamespaceListResult<{ until?: number }> =
-        await this.kv.list({
-          prefix: "item:",
-          limit,
-          ...(cursor === null ? {} : { cursor }),
-        });
+      const listed: KVNamespaceListResult<Marks> = await this.kv.list({
+        prefix: "item:",
+        limit,
+        ...(cursor === null ? {} : { cursor }),
+      });
       for (const key of listed.keys) {
-        const until = key.metadata?.until;
+        const id = key.name.slice("item:".length);
+        const { until, job } = key.metadata ?? {};
         if (until !== undefined && until <= now) {
-          due.push(key.name.slice("item:".length));
+          pending.due.push(id);
+        }
+        if (job !== undefined && job < jobsBefore) {
+          pending.waiting.push(id);
         }
       }
       cursor = listed.list_complete ? null : listed.cursor;
     } while (cursor !== null);
-    return due;
+    return pending;
   }
 
   /**

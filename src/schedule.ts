@@ -1,11 +1,12 @@
 /**
  * The schedule of the Worker, every 15 minutes: a thing that "Later" put aside
- * comes back as a new message when its time is up, a text of the maintainer whose
- * answer didn't come in time gets its 😢, and the reminder of the token of Claude
- * comes three weeks before it expires.
+ * comes back as a new message when its time is up, a thing whose job of the
+ * control repository didn't answer in time gets its buttons back, a text of the
+ * maintainer whose answer didn't come in time gets its 😢, and the reminder of the
+ * token of Claude comes three weeks before it expires.
  */
 import { type Context, show } from "./pager.ts";
-import { itemId, keys } from "./store.ts";
+import { beforeJob, type Item, itemId, keys } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -13,10 +14,11 @@ const DAY = 24 * 60 * 60 * 1000;
 export const REMIND_DAYS = 21;
 
 /**
- * How long a text of the maintainer waits for the answer of the control repository,
- * in milliseconds. Its jobs take 40 minutes at most (prepare 5, ask 30, answer 5),
- * and the rest is for the queue of GitHub Actions; with the schedule every 15
- * minutes, the 😢 comes between 60 and 75 minutes after the text.
+ * How long a text of the maintainer, and a thing whose button started a job, wait
+ * for the answer of the control repository, in milliseconds. Its jobs take 40
+ * minutes at most (prepare 5, ask 30, answer 5), and the rest is for the queue of
+ * GitHub Actions; with the schedule every 15 minutes, the 😢 and the buttons come
+ * back between 60 and 75 minutes after the text or the press.
  */
 export const ANSWER_WITHIN = 60 * 60 * 1000;
 
@@ -38,15 +40,46 @@ async function giveUp(context: Context): Promise<void> {
   await context.store.giveUp(late, context.now() - KEEP_LATE);
 }
 
-async function bringBack(context: Context): Promise<string[]> {
+async function bringBack(context: Context, due: string[]): Promise<string[]> {
   const done: string[] = [];
-  for (const id of await context.store.due(context.now())) {
+  for (const id of due) {
     const item = await context.store.get(id);
     if (item === null) {
       // Expired between the list and the read.
       continue;
     }
     item.snoozedUntil = null;
+    await show(context, item, true);
+    done.push(id);
+  }
+  return done;
+}
+
+/**
+ * Give a thing whose job of the control repository didn't answer within the hour
+ * its buttons back, once, as a job that failed does: a new message, which
+ * notifies, in the state before its button, with a note that no answer came. An
+ * answer that comes later still shows, as a draft or a note.
+ */
+async function noAnswer(
+  context: Context,
+  waiting: string[],
+): Promise<string[]> {
+  const done: string[] = [];
+  for (const id of waiting) {
+    // The list may lag behind a write: only the record says whether it still waits.
+    const item = await context.store.get(id);
+    const before = item === null ? undefined : beforeJob(item);
+    if (
+      item === null ||
+      before === undefined ||
+      (item.jobStarted ?? context.now()) > context.now() - ANSWER_WITHIN
+    ) {
+      continue;
+    }
+    (item as { state: Item["state"] }).state = before;
+    delete item.jobStarted;
+    item.note = context.t("note.noAnswer");
     await show(context, item, true);
     done.push(id);
   }
@@ -98,7 +131,14 @@ async function remind(context: Context): Promise<string | null> {
 
 /** One run of the schedule; returns the ids of the things that it showed. */
 export async function runSchedule(context: Context): Promise<string[]> {
-  const shown = await bringBack(context);
+  const pending = await context.store.pending(
+    context.now(),
+    context.now() - ANSWER_WITHIN,
+  );
+  const shown = [
+    ...(await bringBack(context, pending.due)),
+    ...(await noAnswer(context, pending.waiting)),
+  ];
   await giveUp(context);
   const reminder = await remind(context);
   return reminder === null ? shown : [...shown, reminder];

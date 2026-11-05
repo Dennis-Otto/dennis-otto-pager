@@ -2,8 +2,9 @@
 // text, and everything that comes from anyone but the maintainer.
 import { describe, expect, it } from "vitest";
 
-import { callbackData, headTag } from "../src/buttons.ts";
+import { allowed, callbackData, headTag, keyboard } from "../src/buttons.ts";
 import type { Alarm, Contribution, Item, Release } from "../src/store.ts";
+import { texts } from "../src/texts.ts";
 import { handleUpdate } from "../src/updates.ts";
 import {
   base,
@@ -84,7 +85,9 @@ describe("buttons", () => {
     );
     expect(answer).toMatchObject({ text: "Back in 4 h.", show_alert: false });
     expect(item?.snoozedUntil).toBe(START + 4 * 3600000);
-    expect(await w.context.store.due(START + 4 * 3600000)).toEqual([ID]);
+    expect((await w.context.store.pending(START + 4 * 3600000, 0)).due).toEqual(
+      [ID],
+    );
     expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
       "⏰ Back in 4 h.",
     );
@@ -269,7 +272,8 @@ describe("buttons", () => {
         () => new Response(null, { status: 204 }),
       );
       const fixing = await pressing(w, alarm, `fix:${ID}`);
-      expect(fixing.item?.state).toBe("fixing");
+      // The time of the job, after which the schedule gives the buttons back.
+      expect(fixing.item).toMatchObject({ state: "fixing", jobStarted: START });
       expect(w.net.github("/dispatches")[0]?.body).toEqual({
         event_type: "pager-fix",
         client_payload: {
@@ -281,7 +285,10 @@ describe("buttons", () => {
         },
       });
       const drafting = await pressing(w, contribution(), `draft:${ID}`);
-      expect(drafting.item?.state).toBe("drafting");
+      expect(drafting.item).toMatchObject({
+        state: "drafting",
+        jobStarted: START,
+      });
       expect(w.net.github("/dispatches")[1]?.body).toEqual({
         event_type: "pager-draft",
         client_payload: {
@@ -307,6 +314,155 @@ describe("buttons", () => {
       expect(fix.item?.state).toBe("open");
       const draft = await pressing(w, contribution(), `draft:${ID}`);
       expect(draft.item?.state).toBe("new");
+      expect(draft.item?.jobStarted).toBeUndefined();
+    });
+  });
+
+  describe("Rerun", () => {
+    const RUNS = `https://github.com/${REPO}/actions/runs`;
+    // A bot that fails and its required check, from one run, and a release that
+    // fails in another; a check of another app names no run.
+    const failed: Alarm = {
+      ...alarm,
+      entries: [
+        {
+          key: "issue:5",
+          label: "A bot fails: CI fails on main",
+          url: `https://github.com/${REPO}/issues/5`,
+          run: 31,
+        },
+        {
+          key: "check:lint",
+          label: "lint fails on main",
+          url: `${RUNS}/31/job/2`,
+          run: 31,
+        },
+        {
+          key: "workflow:.github/workflows/release.yml",
+          label: "The release fails: Release",
+          url: `${RUNS}/40/attempts/1`,
+          run: 40,
+        },
+        { key: "check:other", label: "other", url: "https://github.com/run" },
+      ],
+    };
+    const API = "/repos/Dennis-Otto/demo/actions/runs";
+
+    function runs(w: World, answers: Record<number, object>): void {
+      for (const [id, run] of Object.entries(answers)) {
+        w.net
+          .on("GET", `${API}/${id}`, () => json(run))
+          .on(
+            "POST",
+            `${API}/${id}/rerun-failed-jobs`,
+            () => new Response(null, { status: 201 }),
+          );
+      }
+    }
+
+    it("is offered only where an entry names a run, and costs no run of Claude", () => {
+      const t = texts("de");
+      expect(allowed(alarm)).toEqual(["fix", "later", "ignore"]);
+      expect(keyboard(failed, t)).toEqual([
+        [
+          { text: "🔁 Neu starten", callback_data: `rerun:${ID}` },
+          { text: "🛠 Fix starten", callback_data: `fix:${ID}` },
+        ],
+        [
+          { text: "⏰ Später", callback_data: `later:${ID}` },
+          { text: "✖ Ignorieren", callback_data: `ignore:${ID}` },
+        ],
+      ]);
+      expect(allowed({ ...failed, state: "fixing" })).toEqual([
+        "later",
+        "ignore",
+      ]);
+    });
+
+    it("runs the failed jobs of each run again, once, and says so in the message", async () => {
+      const w = await world();
+      runs(w, {
+        31: { status: "completed", conclusion: "failure" },
+        40: { status: "completed", conclusion: "timed_out" },
+      });
+      const { answer, item } = await pressing(w, failed, `rerun:${ID}`);
+      expect(answer).toMatchObject({
+        text: "The failed jobs run again: a pass takes the entry out, a failure says so.",
+        show_alert: false,
+      });
+      expect(
+        w.net.github("/rerun-failed-jobs").map((call) => call.url),
+      ).toEqual([
+        `https://api.github.com${API}/31/rerun-failed-jobs`,
+        `https://api.github.com${API}/40/rerun-failed-jobs`,
+      ]);
+      expect(
+        w.net.github("/access_tokens").map((call) => call.body.permissions),
+      ).toEqual([{ actions: "read" }, { actions: "write" }]);
+      expect(item).toMatchObject({
+        state: "open",
+        entries: [
+          { run: 31, rerun: true },
+          { run: 31, rerun: true },
+          { run: 40, rerun: true },
+          { key: "check:other" },
+        ],
+      });
+      expect((item as Alarm).entries[3]).not.toHaveProperty("rerun");
+      // The message is edited in place, with its buttons.
+      const [edit] = w.net.telegram("editMessageText").map((call) => call.body);
+      expect(edit?.message_id).toBe(7);
+      expect(edit?.text.match(/🔁 running again…/g)).toHaveLength(3);
+      expect(edit?.reply_markup.inline_keyboard[0][0].text).toBe("🔁 Rerun");
+    });
+
+    it("does nothing while a run still runs, or once it passed on a retry", async () => {
+      const one: Alarm = { ...failed, entries: failed.entries.slice(2) };
+      for (const [run, text] of [
+        [
+          { status: "in_progress", conclusion: null },
+          "It still runs, or a newer attempt of it runs: nothing was started.",
+        ],
+        [{ status: "queued" }, "It still runs"],
+        [
+          { status: "completed", conclusion: "success" },
+          "It passed already on a retry: nothing was started.",
+        ],
+        // A run without a conclusion counts as failed, and GitHub has the last word.
+        [{ status: "completed" }, "GitHub refused: Validation Failed"],
+      ] as const) {
+        const w = await world();
+        runs(w, { 40: run });
+        w.net.on("POST", `${API}/40/rerun-failed-jobs`, () =>
+          json({ message: "Validation Failed" }, 422),
+        );
+        const { answer, item } = await pressing(w, one, `rerun:${ID}`);
+        expect(answer.text).toContain(text);
+        expect(answer.show_alert).toBe(true);
+        expect(item).toEqual(one);
+        expect(w.net.telegram("editMessageText")).toHaveLength(0);
+      }
+    });
+
+    it("says why GitHub refused, and still shows the run that it started", async () => {
+      const w = await world();
+      runs(w, { 31: { status: "completed", conclusion: "failure" } });
+      const { answer, item } = await pressing(w, failed, `rerun:${ID}`);
+      expect(answer).toMatchObject({
+        text: "GitHub refused: Not Found",
+        show_alert: true,
+      });
+      expect(
+        (item as Alarm).entries.map((entry) => entry.rerun ?? false),
+      ).toEqual([true, true, false, false]);
+      expect(w.net.telegram("editMessageText")).toHaveLength(1);
+    });
+
+    it("refuses an alarm whose entries name no run", async () => {
+      const w = await world();
+      const plain = await pressing(w, alarm, `rerun:${ID}`);
+      expect(plain.answer.text).toBe("This button is out of date.");
+      expect(w.net.github("/rerun-failed-jobs")).toHaveLength(0);
     });
   });
 

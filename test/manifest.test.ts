@@ -15,8 +15,9 @@ describe("the manifest of the GitHub App", () => {
   it("is private and asks only for what the pager uses", () => {
     expect(manifest.public).toBe(false);
     expect(manifest.default_permissions).toEqual({
-      // The events of workflow runs, for a release that fails.
-      actions: "read",
+      // The events of workflow runs, for a release that fails, and 🔁 Rerun,
+      // which reads a run that failed and runs its failed jobs again.
+      actions: "write",
       // The events of checks: a required check that fails on main, and a release
       // whose checks finished.
       checks: "read",

@@ -21,6 +21,7 @@ const en = {
   "button.merge": "🔀 Merge",
   "button.assistant": "🤖 Assistant again",
   "button.fix": "🛠 Start fix",
+  "button.rerun": "🔁 Rerun",
   "button.draft": "✍️ Draft a reply",
   "button.send": "✅ Send",
   "button.edit": "✏️ Edit",
@@ -48,6 +49,7 @@ const en = {
   "message.alarm": "🚨 <b>{repo} needs you</b>\n{entries}",
   "message.alert": "🛡 <b>Code scanning in {repo}</b>\n{entries}",
   "message.more": "… and {count} more",
+  "message.rerunning": "🔁 running again…",
   "message.release": "📦 <b>Release {version}</b> of {repo}: {link}",
   "message.ready": 'Every check is green, and "Merge" publishes it.',
   "message.published": "✅ Published.",
@@ -76,6 +78,11 @@ const en = {
   "answer.merging": "Merging.",
   "answer.fixing":
     "Sent to the control repository: Claude looks for a fix, from your weekly limit.",
+  "answer.rerun":
+    "The failed jobs run again: a pass takes the entry out, a failure says so.",
+  "answer.rerunRunning":
+    "It still runs, or a newer attempt of it runs: nothing was started.",
+  "answer.rerunPassed": "It passed already on a retry: nothing was started.",
   "answer.drafting":
     "The control repository drafts a reply with Claude, from your weekly limit.",
   "answer.noOverride":
@@ -97,6 +104,8 @@ const en = {
 
   "note.assistant": "🤖 The issue assistant answers again.",
   "note.sent": "Posted in your name.",
+  "note.noAnswer":
+    "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.",
 
   "edit.prompt":
     '✏️ Reply to this message with the new text of the reply to {thing}. The message of the draft then shows your text, and "Send" posts it as it stands.',
@@ -186,6 +195,7 @@ const de: Catalog = {
   "button.merge": "🔀 Mergen",
   "button.assistant": "🤖 Assistent nochmal",
   "button.fix": "🛠 Fix starten",
+  "button.rerun": "🔁 Neu starten",
   "button.draft": "✍️ Antwort entwerfen",
   "button.send": "✅ Senden",
   "button.edit": "✏️ Bearbeiten",
@@ -214,6 +224,7 @@ const de: Catalog = {
   "message.alarm": "🚨 <b>{repo} braucht dich</b>\n{entries}",
   "message.alert": "🛡 <b>Code Scanning in {repo}</b>\n{entries}",
   "message.more": "… und {count} weitere",
+  "message.rerunning": "🔁 läuft erneut …",
   "message.release": "📦 <b>Release {version}</b> von {repo}: {link}",
   "message.ready": "Alle Checks sind grün, und „Mergen“ veröffentlicht es.",
   "message.published": "✅ Veröffentlicht.",
@@ -242,6 +253,12 @@ const de: Catalog = {
   "answer.merging": "Wird gemergt.",
   "answer.fixing":
     "Ans Steuer-Repository geschickt: Claude sucht einen Fix, von deinem Wochenlimit.",
+  "answer.rerun":
+    "Die gescheiterten Jobs laufen erneut: Ein Erfolg nimmt den Eintrag heraus, ein Fehlschlag sagt es.",
+  "answer.rerunRunning":
+    "Der Lauf läuft noch, oder ein neuerer Versuch von ihm läuft: Nichts wurde gestartet.",
+  "answer.rerunPassed":
+    "Der Lauf ist bei einem neuen Versuch schon grün geworden: Nichts wurde gestartet.",
   "answer.drafting":
     "Das Steuer-Repository entwirft mit Claude eine Antwort, von deinem Wochenlimit.",
   "answer.noOverride":
@@ -263,6 +280,8 @@ const de: Catalog = {
 
   "note.assistant": "🤖 Der Issue-Assistent antwortet noch einmal.",
   "note.sent": "In deinem Namen gepostet.",
+  "note.noAnswer":
+    "⌛ Keine Antwort vom Steuer-Repository binnen einer Stunde: Sein Lauf im Actions-Tab sagt, warum.",
 
   "edit.prompt":
     "✏️ Antworte auf diese Nachricht mit dem neuen Text der Antwort an {thing}. Die Nachricht des Entwurfs zeigt dann deinen Text, und „Senden“ postet ihn genau so.",

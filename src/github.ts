@@ -120,6 +120,12 @@ export interface PullRequest {
   base?: { ref?: string; repo?: { default_branch?: string } };
 }
 
+/** The parts of a run of GitHub Actions that 🔁 Rerun reads: those of its newest attempt. */
+export interface WorkflowRun {
+  status?: string;
+  conclusion?: string | null;
+}
+
 export type Permissions = Record<string, "read" | "write">;
 
 export class GitHub {
@@ -245,6 +251,35 @@ export class GitHub {
         sha,
       }),
     );
+  }
+
+  /** A run of GitHub Actions, as its newest attempt stands. */
+  async workflowRun(
+    installation: number,
+    repo: string,
+    id: number,
+  ): Promise<WorkflowRun> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    return this.json<WorkflowRun>(
+      await this.call(token, "GET", `/repos/${repo}/actions/runs/${id}`),
+    );
+  }
+
+  /** Run the failed jobs of a run again, and the jobs that need them, as a new attempt. */
+  async rerunFailedJobs(
+    installation: number,
+    repo: string,
+    id: number,
+  ): Promise<void> {
+    const token = await this.token(installation, repo, { actions: "write" });
+    const response = await this.call(
+      token,
+      "POST",
+      `/repos/${repo}/actions/runs/${id}/rerun-failed-jobs`,
+    );
+    if (!response.ok) {
+      await this.json(response);
+    }
   }
 
   /** The checks that the rulesets of a branch require, for ten minutes. */

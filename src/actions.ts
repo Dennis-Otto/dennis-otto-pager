@@ -6,7 +6,7 @@
 import { allowed, headTag, type Press } from "./buttons.ts";
 import { GitHubError, NoUserToken } from "./github.ts";
 import { type Context, show } from "./pager.ts";
-import { releaseBlocker } from "./rules.ts";
+import { PASSED, releaseBlocker } from "./rules.ts";
 import type {
   Alarm,
   Alert,
@@ -95,8 +95,57 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
     return failed;
   }
   item.state = "fixing";
+  item.jobStarted = context.now();
   await show(context, item);
   return done(context.t("answer.fixing"));
+}
+
+/**
+ * Run the failed jobs of each run that the entries name again, as GitHub's "Re-run
+ * failed jobs" does, after a look at the run: one that still runs, or whose newer
+ * attempt runs, and one that passed on a retry stay as they are. The entries of a
+ * run that runs again say so, until it fails or passes; a pass closes the issue of
+ * the bot-health bot or the failure of the release, which takes the entry out.
+ */
+async function rerun(context: Context, item: Alarm): Promise<Reply> {
+  const runs = new Set(
+    item.entries.flatMap((entry) =>
+      entry.run === undefined ? [] : [entry.run],
+    ),
+  );
+  const started = new Set<number>();
+  let running = false;
+  try {
+    for (const id of runs) {
+      const run = await context.github.workflowRun(
+        item.installation,
+        item.repo,
+        id,
+      );
+      if (run.status !== "completed") {
+        running = true;
+      } else if (!PASSED.has(run.conclusion ?? "")) {
+        await context.github.rerunFailedJobs(item.installation, item.repo, id);
+        started.add(id);
+      }
+    }
+  } finally {
+    // A run that GitHub started again shows it, also when the next one failed.
+    if (started.size > 0) {
+      for (const entry of item.entries) {
+        if (entry.run !== undefined && started.has(entry.run)) {
+          entry.rerun = true;
+        }
+      }
+      await show(context, item);
+    }
+  }
+  if (started.size > 0) {
+    return done(context.t("answer.rerun"));
+  }
+  return refused(
+    context.t(running ? "answer.rerunRunning" : "answer.rerunPassed"),
+  );
 }
 
 async function draft(context: Context, item: Contribution): Promise<Reply> {
@@ -110,6 +159,7 @@ async function draft(context: Context, item: Contribution): Promise<Reply> {
     return failed;
   }
   item.state = "drafting";
+  item.jobStarted = context.now();
   await show(context, item);
   return done(context.t("answer.drafting"));
 }
@@ -186,6 +236,8 @@ export async function press(
         return await merge(context, item as Release, pressed.version);
       case "fix":
         return await fix(context, item as Alarm | Alert);
+      case "rerun":
+        return await rerun(context, item as Alarm);
       case "draft":
         return await draft(context, item as Contribution);
       case "assistant":

@@ -26,7 +26,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
 | The token of Claude in the control repository expires in three weeks | ✅ **Renewed** |
 
-Every message also has ⏰ **Later**, which brings it back after four hours, and ✖ **Ignore**. Each thing gets **one message**, which the pager edits in place as the thing changes, such as *Merging… → Merged → ✅ Published*; what fails in one repository is bundled into one message, which turns green again by itself when it is fixed. Only a new thing notifies.
+Every message also has ⏰ **Later**, which brings it back after four hours, and ✖ **Ignore**. Each thing gets **one message**, which the pager edits in place as the thing changes, such as *Merging… → Merged → ✅ Published*; what fails in one repository is bundled into one message, which turns green again by itself when it is fixed. Only a new thing, and the answer of a draft or a fix that you started, notifies.
 
 Any other text to the bot goes to the private control repository, which answers with Claude Code and the maintainer's own subscription; reply to a message to ask about its thing. An answer that proposes an action, such as merging the release you asked about, comes with one ✅ **Confirm** button, and nothing acts without its press. Your text gets a 👀 when it goes, a 👍 when its answer comes and a 😢 when none came, and every answer, draft and fix ends with one line on its run of Claude: the model, the effort and the tokens, such as *🧮 Opus 5.5 · high · 48,213 tokens*.
 

@@ -1,8 +1,8 @@
 /**
  * The pager: what a signal of the rules does to the things that the maintainer
  * sees. One message per thing, in a topic of its own, edited in place as its state
- * changes; a new message, which notifies, only for a new thing or a bundle that
- * opens again, which keeps its topic.
+ * changes; a new message, which notifies, only for a new thing, a bundle that
+ * opens again, which keeps its topic, and the answer of a draft or a fix.
  */
 import { keyboard } from "./buttons.ts";
 import type { GitHub } from "./github.ts";

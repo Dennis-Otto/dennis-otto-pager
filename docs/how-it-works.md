@@ -64,7 +64,7 @@ A text in reply to a message of the pager is about its thing: *merge it*, in rep
 The body is one of:
 
 - `{"type": "draft", "item": "<id>", "text": "<reply>"}`: the draft of a reply for a contribution, at most 3000 characters, shown as a new message with ✅ Send;
-- `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix. The note that ends a job, while the thing is still *fixing*, comes in a new message, which notifies, as a failure does; another note edits the message of the thing in place;
+- `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix. The note that ends a job, while the thing is still *fixing* (or a contribution *drafting*), comes in a new message, which notifies, as a failure does; another note edits the message of the thing in place;
 - `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text;
 - `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
 - `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again;
@@ -138,7 +138,7 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.dark.svg">
-  <img src="images/diagrams/a-topic-per-thing.svg" alt="A topic per thing: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the prompt of Edit, what Later brings back and the answers to what Dennis asks in the topic follow in it; his question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.">
+  <img src="images/diagrams/a-topic-per-thing.svg" alt="A topic per thing: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the answer of Fix, the prompt of Edit, what Later brings back and the answers to what Dennis asks in the topic follow in it; his question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.">
 </picture>
 
 - **Everything about the thing is in its topic.** Its message with the buttons comes first, and its changes edit it in place, as before. A draft, the answer of 🛠 Start fix, a job that failed, the message that ⏰ Later brings back, the prompt of ✏️ Edit and the answers to texts written in the topic follow there.

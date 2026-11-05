@@ -5,13 +5,13 @@ config:
 ---
 flowchart TB
     accTitle: Ein Thema pro Sache
-    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was Dennis im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.
+    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Antwort von Fix, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was Dennis im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.
 
     thing["Eine neue Sache: ein Alarm, ein Beitrag, ein Release, Code Scanning"]
     open["`**createForumTopic** öffnet ihr Thema, etwa 🚨 demo braucht dich`"]
     first["`Ihre Nachricht mit den Knöpfen kommt zuerst; ihre Änderungen bearbeiten sie dort`"]
     ask["`Dennis fragt im Thema: Der Text geht **mit der Sache** an das Steuer-Repository`"]
-    more["`Entwürfe, ✏️ Bearbeiten, ⏰ Später und die Antworten folgen im Thema`"]
+    more["`Entwürfe, die Antwort von 🛠 Fix, ✏️ Bearbeiten, ⏰ Später und die Antworten folgen im Thema`"]
     done["`**✅** vor ihrem Namen, wenn sie erledigt ist; das Thema bleibt`"]
     main["`**Hauptansicht**, wie bisher: kein Threaded Mode, ein abgelehntes Thema oder eine abgelehnte Nachricht, oder ein Thema, das es nicht mehr gibt`"]
 

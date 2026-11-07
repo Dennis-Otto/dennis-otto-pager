@@ -21,6 +21,11 @@ export const RELEASE_WORKFLOWS = new Set([
   ".github/workflows/build-release.yml",
   ".github/workflows/verify-release.yml",
 ]);
+/**
+ * The visual check of a repository of the blueprint, whose artifact holds each
+ * picture that looks different, before and after.
+ */
+export const VISUAL_WORKFLOW = ".github/workflows/visual.yml";
 /** The label of the issues of the bot-health bot about a bot that fails on main. */
 export const BOT_FAILURE = "bot-failure";
 /** The severities of a code-scanning alert that page the maintainer. */
@@ -79,7 +84,10 @@ export interface Payload {
     conclusion?: string | null;
     html_url?: string;
     head_branch?: string | null;
+    head_sha?: string;
     run_attempt?: unknown;
+    /** The pull requests of the repository itself whose head the run ran on; none of a fork. */
+    pull_requests?: { number?: number; head?: { sha?: string } }[];
   };
   alert?: {
     number?: number;
@@ -157,6 +165,15 @@ export type Signal = Where &
     | { type: "release-updated"; number: number; sha: string }
     | { type: "release-merged"; number: number }
     | { type: "release-published"; tag: string }
+    | {
+        type: "pictures";
+        number: number;
+        /** The head of the pull request that the visual check rendered. */
+        sha: string;
+        /** The run of the visual check, which keeps the pictures. */
+        run: number;
+      }
+    | { type: "pull-closed"; number: number; merged: boolean }
     | { type: "alert-open"; key: string; label: Phrase; url: string }
     | { type: "alert-closed"; key: string }
   );
@@ -186,14 +203,42 @@ export function releaseVersion(title: string): string | null {
   return /^chore(?:\([^)]*\))?: release (\S+)$/.exec(title)?.[1] ?? null;
 }
 
-/** The parts of a pull request that decide whether a release may merge. */
+/** The parts of a pull request that decide whether a release may merge, or whose pictures count. */
 export interface PullRequestState {
   state?: string;
   title?: string;
   mergeable_state?: string;
   draft?: boolean;
-  head?: { ref?: string; sha?: string };
+  user?: Account;
+  head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   base?: { ref?: string };
+}
+
+/**
+ * Why the pictures of a visual check of a pull request don't count, or null when
+ * they do: it is open, still at the head that the check rendered, from a branch of
+ * the repository itself, and of the maintainer or of a bot. What someone else's
+ * pull request renders is theirs, so it never reaches the chat.
+ */
+export function picturesBlocker(
+  pull: PullRequestState,
+  repo: string,
+  sha: string,
+  maintainer: string,
+): string | null {
+  if (pull.state !== "open") {
+    return "it isn't open";
+  }
+  if (pull.head?.sha !== sha) {
+    return "it moved on to another head";
+  }
+  if (pull.head?.repo?.full_name !== repo) {
+    return "it comes from a fork";
+  }
+  if (!isMaintainer(pull.user, maintainer) && !isBot(pull.user)) {
+    return "someone else opened it";
+  }
+  return null;
 }
 
 /**
@@ -373,6 +418,19 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
     }
     return { ignored: `a release pull request ${payload.action}` };
   }
+  // The end of a pull request of the maintainer or of a bot ends its pictures.
+  if (payload.action === "closed") {
+    return isMaintainer(pull?.user, maintainer) || isBot(pull?.user)
+      ? {
+          signal: {
+            ...at,
+            type: "pull-closed",
+            number,
+            merged: pull?.merged === true,
+          },
+        }
+      : { ignored: "a pull request of someone else closed" };
+  }
   if (payload.action !== "opened") {
     return { ignored: `a pull request ${payload.action}` };
   }
@@ -481,11 +539,45 @@ function attemptUrl(run: Payload["workflow_run"]): string {
     : url;
 }
 
+/**
+ * A visual check that passed on a pull request of the repository itself, at its
+ * head: its artifact may hold pictures that look different. Whose pull request it
+ * is, and whether a picture changed, the pager asks GitHub then.
+ */
+function visualCheck(run: Payload["workflow_run"], at: Where): Outcome {
+  if (run?.event !== "pull_request") {
+    return { ignored: "a visual check outside a pull request" };
+  }
+  if (run.conclusion !== "success") {
+    return { ignored: `a visual check that ended ${run.conclusion}` };
+  }
+  const sha = run.head_sha ?? "";
+  const pull = (run.pull_requests ?? []).find(
+    (each) => sha !== "" && each.head?.sha === sha,
+  );
+  const id = runId(run.id);
+  if (pull?.number === undefined || id === undefined) {
+    return { ignored: "a visual check of no pull request of the repository" };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "pictures",
+      number: pull.number,
+      sha,
+      run: id,
+    },
+  };
+}
+
 function workflowRun(payload: Payload, at: Where): Outcome {
   const run = payload.workflow_run;
   const path = run?.path ?? "";
   if (payload.action !== "completed") {
     return { ignored: `a workflow run ${payload.action}` };
+  }
+  if (path === VISUAL_WORKFLOW) {
+    return visualCheck(run, at);
   }
   if (!RELEASE_WORKFLOWS.has(path) || run?.event === "pull_request") {
     return { ignored: "a workflow run of no release" };

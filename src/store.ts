@@ -103,6 +103,40 @@ export interface Release extends Base {
   version: string;
   sha: string;
   url: string;
+  /** The head of the pull request whose pictures of the visual check went into its topic. */
+  album?: string;
+}
+
+/** A picture of the visual check that looks different, as its report names it. */
+export interface Changed {
+  /** Its path in the repository, such as screenshots/search.png. */
+  path: string;
+  status: "changed" | "new" | "deleted";
+  /** The share of its pixels that changed, or null when its size changed, or it is new or deleted. */
+  share: number | null;
+}
+
+/**
+ * The pictures of a pull request of the maintainer or of a bot that look different
+ * in its visual check, before and after, at its newest head that has any.
+ */
+export interface Pictures extends Base {
+  kind: "pictures";
+  state: "open" | "done" | "ignored";
+  number: number;
+  title: string;
+  /** The pull request. */
+  url: string;
+  /** The head of the pull request that the message shows, whose album went. */
+  sha: string;
+  /** The pictures that look different, the largest change first, as many as the message lists. */
+  changed: Changed[];
+  /** How many pictures look different in all; none once the newest head looks as committed. */
+  count: number;
+  /** How many of them the album shows, before and after. */
+  shown: number;
+  /** The run of the visual check, whose artifacts have every picture before and after. */
+  check: string;
 }
 
 /** A reminder of the pager itself, such as the token of Claude that expires. */
@@ -112,7 +146,7 @@ export interface Reminder extends Base {
   text: string;
 }
 
-export type Item = Contribution | Alarm | Alert | Release | Reminder;
+export type Item = Contribution | Alarm | Alert | Release | Pictures | Reminder;
 export type Kind = Item["kind"];
 
 const CLOSED: ReadonlySet<string> = new Set([
@@ -148,13 +182,15 @@ export async function itemId(key: string): Promise<string> {
 
 /**
  * The key of each kind of thing: one thing per issue, pull request or discussion,
- * whose numbers GitHub counts together, and one bundle per repository.
+ * whose numbers GitHub counts together, one bundle per repository, and the
+ * pictures of one pull request.
  */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
   alarm: (repo: string) => `a:${repo}`,
   alert: (repo: string) => `s:${repo}`,
   release: (repo: string) => `r:${repo}`,
+  pictures: (repo: string, number: number) => `p:${repo}#${number}`,
   reminder: (name: string) => `t:${name}`,
 };
 

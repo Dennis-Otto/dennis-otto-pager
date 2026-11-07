@@ -27,6 +27,7 @@ const COLORS: Readonly<Record<Kind, TopicColor>> = {
   alarm: TOPIC_COLORS.red,
   alert: TOPIC_COLORS.yellow,
   release: TOPIC_COLORS.green,
+  pictures: TOPIC_COLORS.rose,
   reminder: TOPIC_COLORS.violet,
 };
 
@@ -74,6 +75,12 @@ function what(item: Item, t: Texts): string {
       return t("topic.alert", { repo });
     case "release":
       return t("topic.release", { repo, version: item.version });
+    case "pictures":
+      return t("topic.pictures", {
+        repo,
+        number: item.number,
+        title: item.title.replace(/\s+/g, " ").trim(),
+      });
     case "reminder":
       return t("topic.reminder");
   }
@@ -181,13 +188,14 @@ export interface About {
   kind: Kind;
   repo: string;
   state: Item["state"];
-  /** The number of the issue, pull request or discussion of a contribution, or of a release. */
+  /** The number of the issue, pull request or discussion of a contribution, of a release, or of the pull request of pictures. */
   number?: number;
   /** The version of a release. */
   version?: string;
   /**
    * Where GitHub shows it: the issue, the pull request, the discussion or the
-   * comment that its reply answers, or the pages of a bundle and each entry.
+   * comment that its reply answers, the pull request of pictures, or the pages
+   * of a bundle and each entry.
    */
   links: string[];
   /**
@@ -203,6 +211,7 @@ export function about(item: Item, now: number, t: Texts): About {
   const named: Pick<About, "number" | "version"> = {};
   switch (item.kind) {
     case "contribution":
+    case "pictures":
       links.push(item.url);
       named.number = item.number;
       break;

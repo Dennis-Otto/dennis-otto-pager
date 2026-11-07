@@ -4,7 +4,7 @@
  * escaped, and every link has to point to GitHub, so a title can't add markup or a
  * link of its own.
  */
-import type { Contribution, Entry, Item } from "./store.ts";
+import type { Changed, Contribution, Entry, Item, Pictures } from "./store.ts";
 import type { Texts } from "./texts.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
@@ -57,6 +57,69 @@ function entries(list: Entry[], all: string, t: Texts): string {
   if (more > 0) {
     lines.push(link(t("message.more", { count: more }), all));
   }
+  return lines.join("\n");
+}
+
+/** How a picture changed, in words. */
+function how(picture: Changed, t: Texts): string {
+  switch (picture.status) {
+    case "new":
+      return t("picture.new");
+    case "deleted":
+      return t("picture.deleted");
+    default:
+      return picture.share === null
+        ? t("picture.resized")
+        : t("picture.changed", { share: t.percent(picture.share) });
+  }
+}
+
+/** What the text of the pictures of a pull request shows, for its own thing or a release. */
+export type PicturesView = Pick<
+  Pictures,
+  | "repo"
+  | "number"
+  | "title"
+  | "url"
+  | "sha"
+  | "changed"
+  | "count"
+  | "shown"
+  | "check"
+>;
+
+/**
+ * The pictures of a pull request that look different at a head: each with how it
+ * changed, as many as the message lists, whether the album below shows them, and a
+ * link to the run of the check, whose artifacts have them all before and after.
+ */
+export function picturesText(view: PicturesView, t: Texts): string {
+  const values = {
+    repo: repoLink(view.repo),
+    sha: `<code>${html(view.sha.slice(0, 7))}</code>`,
+    link: link(`#${view.number} ${view.title}`, view.url),
+  };
+  if (view.count === 0) {
+    return t("message.picturesSame", values);
+  }
+  const lines = [
+    view.count === 1
+      ? t("message.pictures.one", values)
+      : t("message.pictures.many", { ...values, count: view.count }),
+    ...view.changed.map(
+      (picture) =>
+        `• <code>${html(picture.path, 100)}</code>: ${how(picture, t)}`,
+    ),
+  ];
+  if (view.count > view.changed.length) {
+    lines.push(t("message.more", { count: view.count - view.changed.length }));
+  }
+  lines.push(
+    view.shown > 0
+      ? t("message.album", { shown: view.shown, count: view.count })
+      : t("message.noAlbum"),
+    link(t("message.check"), view.check),
+  );
   return lines.join("\n");
 }
 
@@ -144,6 +207,8 @@ function body(item: Item, t: Texts): string {
       }
       return head;
     }
+    case "pictures":
+      return picturesText(item, t);
     case "reminder":
       return `🔔 ${html(item.text, 1000)}`;
   }

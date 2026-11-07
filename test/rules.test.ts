@@ -11,6 +11,7 @@ import {
   isMaintainer,
   isRequired,
   type Payload,
+  picturesBlocker,
   releaseBlocker,
   releaseVersion,
 } from "../src/rules.ts";
@@ -144,7 +145,14 @@ describe("contributions from outside", () => {
         event({ action: "closed", pull_request: issue }),
         ME,
       ),
-    ).toEqual({ ignored: "a pull request closed" });
+    ).toEqual({ ignored: "a pull request of someone else closed" });
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "edited", pull_request: issue }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a pull request edited" });
   });
 
   it("takes an issue without its fields as empty", () => {
@@ -821,6 +829,131 @@ describe("releases", () => {
     );
     const { mergeable_state: _state, ...unknown } = ready;
     expect(why(unknown, "main")).toBe("its checks aren't all green (unknown)");
+  });
+});
+
+describe("the pictures of a visual change", () => {
+  const sha = "a1b2c3d4e5f6";
+  const check = {
+    id: 31,
+    name: "Visual check",
+    path: ".github/workflows/visual.yml",
+    event: "pull_request",
+    conclusion: "success",
+    head_sha: sha,
+    pull_requests: [
+      { number: 7, head: { sha: "0ld" } },
+      { number: 8, head: { sha } },
+    ],
+  };
+  const completed = (workflow_run: object) =>
+    classify("workflow_run", event({ action: "completed", workflow_run }), ME);
+
+  it("looks at a visual check that passed on a pull request, at its head", () => {
+    expect(completed(check)).toEqual({
+      signal: { ...at, type: "pictures", number: 8, sha, run: 31 },
+    });
+  });
+
+  it("stays quiet for a visual check that failed, or outside a pull request", () => {
+    expect(completed({ ...check, conclusion: "failure" })).toEqual({
+      ignored: "a visual check that ended failure",
+    });
+    expect(completed({ ...check, event: "push" })).toEqual({
+      ignored: "a visual check outside a pull request",
+    });
+    expect(
+      classify(
+        "workflow_run",
+        event({ action: "requested", workflow_run: check }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a workflow run requested" });
+  });
+
+  it("stays quiet for a visual check of a fork, or of another head", () => {
+    const none = {
+      ignored: "a visual check of no pull request of the repository",
+    };
+    // GitHub names no pull request of a fork in the run.
+    expect(completed({ ...check, pull_requests: [] })).toEqual(none);
+    const { pull_requests: _pulls, ...forked } = check;
+    expect(completed(forked)).toEqual(none);
+    expect(completed({ ...check, head_sha: "other" })).toEqual(none);
+    const { head_sha: _sha, ...headless } = check;
+    expect(
+      completed({ ...headless, pull_requests: [{ number: 8, head: {} }] }),
+    ).toEqual(none);
+    expect(completed({ ...check, pull_requests: [{ head: { sha } }] })).toEqual(
+      none,
+    );
+    expect(completed({ ...check, id: "31" })).toEqual(none);
+  });
+
+  it("ends the pictures of a pull request of the maintainer or a bot that closed", () => {
+    const pull = { number: 8, user: { login: "Dennis-Otto" }, merged: true };
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "closed", pull_request: pull }),
+        ME,
+      ),
+    ).toEqual({
+      signal: { ...at, type: "pull-closed", number: 8, merged: true },
+    });
+    expect(
+      classify(
+        "pull_request",
+        event({
+          action: "closed",
+          pull_request: { number: 9, user: bot, merged: false },
+        }),
+        ME,
+      ),
+    ).toEqual({
+      signal: { ...at, type: "pull-closed", number: 9, merged: false },
+    });
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "closed", pull_request: { user: bot } }),
+        ME,
+      ),
+    ).toEqual({
+      signal: { ...at, type: "pull-closed", number: 0, merged: false },
+    });
+  });
+
+  it("counts the pictures of an open pull request of the maintainer or a bot, at its head", () => {
+    const repo = "Dennis-Otto/demo";
+    const pull = {
+      state: "open",
+      user: { login: "dennis-otto", type: "User" },
+      head: { sha, repo: { full_name: repo } },
+    };
+    expect(picturesBlocker(pull, repo, sha, ME)).toBeNull();
+    expect(picturesBlocker({ ...pull, user: bot }, repo, sha, ME)).toBeNull();
+    expect(picturesBlocker({ ...pull, state: "closed" }, repo, sha, ME)).toBe(
+      "it isn't open",
+    );
+    expect(picturesBlocker(pull, repo, "newer", ME)).toBe(
+      "it moved on to another head",
+    );
+    expect(
+      picturesBlocker(
+        { ...pull, head: { sha, repo: { full_name: "octocat/demo" } } },
+        repo,
+        sha,
+        ME,
+      ),
+    ).toBe("it comes from a fork");
+    expect(
+      picturesBlocker({ ...pull, head: { sha, repo: null } }, repo, sha, ME),
+    ).toBe("it comes from a fork");
+    expect(picturesBlocker({ ...pull, user: stranger }, repo, sha, ME)).toBe(
+      "someone else opened it",
+    );
+    expect(picturesBlocker({}, repo, sha, ME)).toBe("it isn't open");
   });
 });
 

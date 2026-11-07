@@ -21,6 +21,8 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 | `code_scanning_alert` created or reopened on the default branch | Its severity is high or critical | An entry of the code-scanning message of the repository; fixed or dismissed takes it out |
 | `check_suite` completed on a branch of release-please | GitHub calls the pull request clean: open, no draft, into the default branch, every required check green and up to date | The release message with 🔀 **Merge** |
 | `pull_request` synchronize, closed and merged; `release` published | It is the release that the message shows | The same message: *updated*, *merged*, *✅ published* |
+| `workflow_run` completed | `visual.yml`, the visual check, passed on a pull request of the repository at its head, which is one of the maintainer or of a bot, and a picture looks different | The pictures before and after, in the topic of the release or of a thing of their own ([below](#the-pictures-of-a-visual-change)) |
+| `pull_request` closed | It is one of the maintainer or of a bot whose pictures the pager shows | Its pictures are done: ✅ in front of their topic |
 
 A bundle whose last entry is gone turns green by itself, and a new failure after that opens a new message, which notifies. An entry of the alarm keeps the run of GitHub Actions that failed, where it names one: a required check by the address of its job, such as `…/actions/runs/31/job/2`, a release run by its id, and an issue of the bot-health bot by the run in the marker of its body, `<!-- bot-health {"run": 31, …} -->`, which the bot writes anew at each failure. Such an entry gives the alarm 🔁 **Rerun**.
 
@@ -40,6 +42,7 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |
 | Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
+| Pictures | open | ✖ Ignore |
 | Reminder | open | ✅ Renewed, ⏰ Later |
 
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
@@ -65,6 +68,21 @@ The control repository runs the jobs of one thing one at a time. A comment that 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reply-to-a-discussion.dark.svg">
   <img src="images/diagrams/the-reply-to-a-discussion.svg" alt="The reply to a discussion: Someone other than Dennis or a bot opens a discussion or comments on one. A discussion of Dennis, and one whose answer was chosen, end there. Otherwise the pager shows it in its topic and asks the control repository for a draft at once, which Claude writes in Dennis's voice. The draft comes with Send, Edit and Ignore. Send posts exactly that draft as the pager's app, in the thread of the comment that it answers, or on the discussion itself. A new comment of someone else makes itself the message to answer, with a new draft, in the same topic.">
+</picture>
+
+## The pictures of a visual change
+
+A repository whose pictures show its app, such as paperless-unified-search, runs a visual check on each pull request that changes what they show: its `visual.yml` renders the pictures again, compares each with the committed one by its pixels, and keeps each one that looks different in an artifact of its run, before and after, with `report.json`, their list with the share of the pixels that changed. When the check passed on a pull request of the maintainer or of a bot, the pager shows those pictures in the chat, as [decision 0007](decisions/0007-the-pictures-of-a-visual-change-come-from-the-artifacts-of-its-check.md) explains:
+
+- **Whose:** the pager asks GitHub for the pull request first. One of someone else, one from a fork, whose run names no pull request, and one that moved on to a newer head get nothing: what someone else's pull request renders is theirs, and a newer head brings a check of its own.
+- **Where:** the release pull request that the pager shows gets them in the topic of the release, below a message of their own, so that its own message keeps 🔀 **Merge**. Any other gets a thing of its own, such as *🖼 demo#8 Make it blue*, whose message lists the pictures that look different, with how much of each changed, and links the run of the check, whose artifacts have them all, each changed pixel in red. Its one button is ✖ **Ignore**, which stops its pictures; the merge or the close of the pull request ends it, with ✅ in front of its topic.
+- **What:** an album, with `sendMediaGroup` of the Bot API, of the largest changes before and after: three pictures at most, PNG or WebP files of at most 5 MB, of a size that Telegram takes as a photo. A GIF, a video and a larger file stay behind the link. The album right after a new message comes quietly, so that both notify once.
+- **How often:** one album per head of the pull request at most. A check that runs again at the same head sends nothing, and a newer head whose pictures look different edits the message in place, with an album that notifies. A newer head whose pictures all look as committed again says so in the message, in place; a pull request whose pictures never changed sends nothing at all.
+- **How:** with a token of the app for `actions: read` of that one repository, which the app has for 🔁 **Rerun**, so no secret is new. The pager lists the artifacts of the run, `visual` or one per language, such as `visual-en`, and asks GitHub for the ZIP of each, 32 MB at most together, which answers with the address of its storage, signed for a minute. The pager follows it without the token, which goes to GitHub alone, reads the ZIP in memory, and inflates only the report and the pictures of the album, never to more than the size that the ZIP gives them. It reads the reports of each repository: their list is `pictures` or `images`, a picture is new or added, deleted or removed, and its files are named in its entry or are its path in `before/` and `after/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-pictures-of-a-visual-change.dark.svg">
+  <img src="images/diagrams/the-pictures-of-a-visual-change.svg" alt="The pictures of a visual change: Dennis or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, before and after, at most three pictures. The merge or the end of the pull request ticks the topic off.">
 </picture>
 
 ## The control repository

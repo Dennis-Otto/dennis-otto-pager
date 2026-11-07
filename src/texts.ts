@@ -60,6 +60,25 @@ const en = {
   "message.ready": 'Every check is green, and "Merge" publishes it.',
   "message.published": "✅ Published.",
   "message.back": "⏰ Back in {hours} h.",
+  "message.pictures.one":
+    "🖼 <b>1 picture looks different</b> in {repo} at {sha}: {link}",
+  "message.pictures.many":
+    "🖼 <b>{count} pictures look different</b> in {repo} at {sha}: {link}",
+  "message.picturesSame":
+    "🖼 <b>Every picture looks as committed again</b> in {repo} at {sha}: {link}",
+  "message.album": "📸 Before and after below: {shown} of {count}.",
+  "message.noAlbum":
+    "📸 No album: none of them is a PNG or WebP that Telegram shows as a photo.",
+  "message.check": "All of them before and after, each changed pixel in red",
+
+  "picture.changed": "changed, {share} of its pixels",
+  "picture.resized": "changed in size",
+  "picture.new": "new",
+  "picture.deleted": "deleted",
+  "caption.before": "◀️ Before: {path}",
+  "caption.after": "▶️ After: {path}",
+  "caption.new": "🆕 New: {path}",
+  "caption.deleted": "🗑 Deleted: {path}",
 
   "entry.bot": "A bot fails: {title}",
   "entry.release": "The release fails: {name}",
@@ -111,6 +130,9 @@ const en = {
   "note.assistant": "🤖 The issue assistant answers again.",
   "note.sent": "Posted in your name.",
   "note.replied": "Posted in the discussion as the app of the pager.",
+  "note.merged": "🔀 Merged.",
+  "note.closed": "Closed without a merge.",
+  "note.albumFailed": "Telegram refused the pictures: {detail}",
   "note.noAnswer":
     "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.",
 
@@ -152,6 +174,7 @@ const en = {
   "topic.alert": "🛡 Code scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Token of Claude",
+  "topic.pictures": "🖼 {repo}#{number} {title}",
   "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 day",
@@ -194,6 +217,8 @@ export interface Texts {
   date(day: string): string;
   /** A whole number, such as 48213, as the language writes it: 48,213 or 48.213. */
   number(value: number): string;
+  /** A share between 0 and 1, such as 0.0231, as a percentage: 2.31 % or 2,31 %. */
+  percent(share: number): string;
   readonly language: Language;
 }
 
@@ -243,6 +268,25 @@ const de: Catalog = {
   "message.ready": "Alle Checks sind grün, und „Mergen“ veröffentlicht es.",
   "message.published": "✅ Veröffentlicht.",
   "message.back": "⏰ Zurück in {hours} Std.",
+  "message.pictures.one":
+    "🖼 <b>1 Bild sieht anders aus</b> in {repo} bei {sha}: {link}",
+  "message.pictures.many":
+    "🖼 <b>{count} Bilder sehen anders aus</b> in {repo} bei {sha}: {link}",
+  "message.picturesSame":
+    "🖼 <b>Jedes Bild sieht wieder so aus wie committet</b> in {repo} bei {sha}: {link}",
+  "message.album": "📸 Vorher und nachher unten: {shown} von {count}.",
+  "message.noAlbum":
+    "📸 Kein Album: Keines davon ist ein PNG oder WebP, das Telegram als Foto zeigt.",
+  "message.check": "Alle vorher und nachher, jedes geänderte Pixel rot",
+
+  "picture.changed": "geändert, {share} seiner Pixel",
+  "picture.resized": "in der Größe geändert",
+  "picture.new": "neu",
+  "picture.deleted": "gelöscht",
+  "caption.before": "◀️ Vorher: {path}",
+  "caption.after": "▶️ Nachher: {path}",
+  "caption.new": "🆕 Neu: {path}",
+  "caption.deleted": "🗑 Gelöscht: {path}",
 
   "entry.bot": "Ein Bot scheitert: {title}",
   "entry.release": "Das Release scheitert: {name}",
@@ -295,6 +339,9 @@ const de: Catalog = {
   "note.assistant": "🤖 Der Issue-Assistent antwortet noch einmal.",
   "note.sent": "In deinem Namen gepostet.",
   "note.replied": "In der Diskussion als App des Pagers gepostet.",
+  "note.merged": "🔀 Gemergt.",
+  "note.closed": "Ohne Merge geschlossen.",
+  "note.albumFailed": "Telegram hat die Bilder abgelehnt: {detail}",
   "note.noAnswer":
     "⌛ Keine Antwort vom Steuer-Repository binnen einer Stunde: Sein Lauf im Actions-Tab sagt, warum.",
 
@@ -336,6 +383,7 @@ const de: Catalog = {
   "topic.alert": "🛡 Code Scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Claude-Token",
+  "topic.pictures": "🖼 {repo}#{number} {title}",
   "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 Tag",
@@ -356,6 +404,21 @@ const DATES: Readonly<Record<Language, (day: string) => string>> = {
 
 /** The sign between the thousands of a number in each language. */
 const THOUSANDS: Readonly<Record<Language, string>> = { en: ",", de: "." };
+
+/** The sign before the decimals of a number in each language. */
+const DECIMALS: Readonly<Record<Language, string>> = { en: ".", de: "," };
+
+/**
+ * A share as a percentage with two decimals, as the visual check writes it: a
+ * change too small for them is "< 0.01 %", and a share of 1 or more is "100 %".
+ */
+function percent(share: number, decimal: string): string {
+  if (share >= 1) {
+    return "100 %";
+  }
+  const text = share < 0.0001 ? "< 0.01" : (share * 100).toFixed(2);
+  return `${text.replace(".", decimal)} %`;
+}
 
 /**
  * A text with its placeholders filled. One pass over the text of the catalog, so a
@@ -388,6 +451,7 @@ export function texts(language: Language): Texts {
     date: DATES[language],
     number: (value: number) =>
       String(value).replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS[language]),
+    percent: (share: number) => percent(share, DECIMALS[language]),
     language,
   }) as Texts;
 }

@@ -6,7 +6,9 @@
  * says is shown, escaped, and never run: an action needs a button of the
  * allowlist, which a proposal only offers, and the maintainer presses. An answer to
  * a text of the maintainer turns the 👀 on that text into 👍, or 😢 when no answer
- * came to be, and goes into the thread that the text came from.
+ * came to be, and goes into the thread that the text came from. A job of a thing
+ * that ends without a change may propose one action of its thing, such as 🔁 Rerun
+ * after an outage of GitHub, which comes as a proposal in the thing's topic.
  */
 import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
@@ -51,22 +53,26 @@ export const PROPOSABLE: Partial<Record<Action, readonly Target["kind"][]>> = {
 /**
  * A body of the control repository. A note or a failure without an item, and a
  * proposal, answer in the chat; their message names the text of the maintainer that
- * they answer, if any.
+ * they answer, if any. The failure of a thing's job may propose an action of the
+ * allowlist for that thing, such as a fix that found an outage of GitHub.
  */
 export type Message = (
   | { type: "draft"; item: string; text: string }
   | { type: "note"; item?: string; text: string }
-  | { type: "failed"; item?: string; text: string }
+  | { type: "failed"; item?: string; text: string; action?: Action }
   | { type: "proposal"; text: string; action: Action; target: Target }
 ) & { usage?: Usage; message?: number };
 
 type Fields = Partial<Record<string, unknown>>;
 
-function targetOf(action: unknown, value: unknown): Target | null {
+/** Whether a value names an action that a proposal may carry. */
+function proposable(action: unknown): action is Action {
   // Only an own key: "constructor" or "__proto__" would find the prototype's.
-  const kinds = Object.hasOwn(PROPOSABLE, action as string)
-    ? PROPOSABLE[action as Action]
-    : undefined;
+  return typeof action === "string" && Object.hasOwn(PROPOSABLE, action);
+}
+
+function targetOf(action: unknown, value: unknown): Target | null {
+  const kinds = proposable(action) ? PROPOSABLE[action] : undefined;
   const target = value as Fields | null;
   const kind = target?.kind as Target["kind"];
   const repo = target?.repo;
@@ -96,7 +102,17 @@ function shape(message: Fields): Message | null {
     case "draft":
       return typeof item === "string" ? { type, item, text } : null;
     case "note":
+      if (item === undefined) {
+        return { type, text };
+      }
+      return typeof item === "string" ? { type, item, text } : null;
     case "failed":
+      // Only the failure of a thing's job proposes an action, for that thing.
+      if (action !== undefined) {
+        return typeof item === "string" && proposable(action)
+          ? { type, item, text, action }
+          : null;
+      }
       if (item === undefined) {
         return { type, text };
       }
@@ -218,19 +234,29 @@ function whereIs(item: Item, t: Texts): string {
   }
 }
 
+/** What a proposal shows: its answer, the action and the thing that it acts on. */
+interface Proposal {
+  text: string;
+  action: Action;
+  target: Target;
+  usage?: Usage;
+}
+
 /**
- * An answer that proposes one action: a message of its own with a single ✅ Confirm
- * button, whose data is that of the thing's own button. A press runs it only while
- * the thing still offers it, as any press does, and then the button goes.
+ * An answer that proposes one action: a message of its own in the thread given,
+ * with a single ✅ Confirm button, whose data is that of the thing's own button. A
+ * press runs it only while the thing still offers it, as any press does, and then
+ * the button goes. Returns whether the message got its button.
  */
 async function propose(
   context: Context,
-  message: Extract<Message, { type: "proposal" }>,
-): Promise<Response> {
+  message: Proposal,
+  item: Item | null,
+  thread: Thread,
+): Promise<boolean> {
   const { t } = context;
   const lines = [`🤖 ${html(message.text, MAX_DRAFT)}`];
   const { target } = message;
-  const item = await context.store.get(await itemId(keyOf(target)));
   const named = html(label(t, message.action));
   let keyboard: Keyboard = [];
   if (item === null) {
@@ -263,13 +289,8 @@ async function propose(
   if (line !== null) {
     lines.push(`<i>${html(line)}</i>`);
   }
-  await context.telegram.send(
-    lines.join("\n\n"),
-    keyboard,
-    await threadFor(context, message),
-  );
-  await settle(context, message, true);
-  return new Response(keyboard.length === 0 ? "said" : "proposed");
+  await context.telegram.send(lines.join("\n\n"), keyboard, thread);
+  return keyboard.length > 0;
 }
 
 /** Handle a request of the control repository. */
@@ -290,7 +311,15 @@ export async function handleControl(
     return new Response("Bad Request", { status: 400 });
   }
   if (message.type === "proposal") {
-    return propose(context, message);
+    const { target } = message;
+    const offered = await propose(
+      context,
+      message,
+      await context.store.get(await itemId(keyOf(target))),
+      await threadFor(context, message),
+    );
+    await settle(context, message, true);
+    return new Response(offered ? "proposed" : "said");
   }
   if (message.item === undefined) {
     const line = footer(message.usage, context.t);
@@ -335,6 +364,25 @@ export async function handleControl(
       return new Response("Conflict", { status: 409 });
     }
     (item as { state: Item["state"] }).state = before;
+    const { action } = message;
+    if (
+      action !== undefined &&
+      (item.kind === "alarm" || item.kind === "alert") &&
+      allowed(item).includes(action)
+    ) {
+      // A fix that found an outage of GitHub proposes 🔁 Rerun: the answer comes
+      // as a proposal in the thing's topic, with one ✅ Confirm button, which
+      // notifies, and the thing gets its buttons back in place.
+      item.note = message.text;
+      await show(context, item);
+      await propose(
+        context,
+        { ...message, action, target: { kind: item.kind, repo: item.repo } },
+        item,
+        item.topic?.thread ?? null,
+      );
+      return new Response("proposed");
+    }
     item.note = noted(message.text, message.usage, context.t);
     // A new message, which notifies: the maintainer waits for the job, and its
     // button is back, so that it can run again.

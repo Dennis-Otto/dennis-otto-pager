@@ -22,7 +22,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | --- | --- |
 | Someone other than the maintainer or a bot opens an issue or a pull request | ✍️ **Draft a reply** in the maintainer's voice, which ✅ **Send** posts exactly as shown; 🤖 **Assistant again** for an issue |
 | Someone other than the maintainer or a bot opens a discussion or comments on one | Its draft of a reply right away, which ✅ **Send** posts as the pager's app, in the thread of the comment that it answers; ✏️ **Edit** |
-| A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🔁 **Rerun**, which runs the failed jobs of the run again, for a short outage of GitHub; 🛠 **Start fix** |
+| A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🔁 **Rerun**, which runs the failed jobs of the run again, for a short outage of GitHub; 🛠 **Start fix**, whose answer proposes 🔁 Rerun with one ✅ **Confirm** when the logs show such an outage |
 | A code-scanning alert of severity high or critical appears on `main` | 🛠 **Start fix** |
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
 | The token of Claude in the control repository expires in three weeks | ✅ **Renewed** |

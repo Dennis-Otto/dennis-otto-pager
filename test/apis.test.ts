@@ -254,6 +254,122 @@ describe("the GitHub App", () => {
     });
   });
 
+  it("replies in a discussion as the app, in the thread of the comment that it answers", async () => {
+    // The answers of GitHub, one per call to its GraphQL API, in their order.
+    function graphql(...answers: unknown[]): Net {
+      return new Net().on("POST", "/graphql", () => json(answers.shift()));
+    }
+    const added = {
+      data: { addDiscussionComment: { comment: { id: "DC_9" } } },
+    };
+    const net = graphql({ data: { node: { replyTo: { id: "DC_1" } } } }, added);
+    const api = await github(net, null);
+    await api.reply(
+      9,
+      "Dennis-Otto/demo",
+      { node: "D_1", comment: "DC_2" },
+      "Thanks!",
+    );
+    const [thread, reply] = net.github("/graphql");
+    expect(thread?.body.variables).toEqual({ comment: "DC_2" });
+    expect(thread?.body.query).toContain("replyTo { id }");
+    // A reply to a reply goes into the thread of its parent.
+    expect(reply?.body.variables).toEqual({
+      discussion: "D_1",
+      replyTo: "DC_1",
+      body: "Thanks!",
+    });
+    expect(reply?.body.query).toContain("addDiscussionComment");
+    expect(net.github("/access_tokens")[0]?.body).toEqual({
+      repositories: ["demo"],
+      permissions: { discussions: "write" },
+    });
+
+    // A comment of the discussion itself is the start of its thread.
+    const top = graphql({ data: { node: { replyTo: null } } }, added);
+    await (await github(top)).reply(
+      9,
+      "Dennis-Otto/demo",
+      { node: "D_1", comment: "DC_2" },
+      "Thanks!",
+    );
+    expect(top.github("/graphql")[1]?.body.variables.replyTo).toBe("DC_2");
+    // A comment that is gone: GitHub answers NOT_FOUND next to no node, and the
+    // approved reply goes on the discussion itself rather than being lost.
+    const notFound = {
+      type: "NOT_FOUND",
+      message: "Could not resolve to a node with the global id of 'DC_2'",
+    };
+    const gone = graphql({ data: { node: null }, errors: [notFound] }, added);
+    await (await github(gone)).reply(
+      9,
+      "Dennis-Otto/demo",
+      { node: "D_1", comment: "DC_2" },
+      "Thanks!",
+    );
+    expect(gone.github("/graphql")[1]?.body.variables.replyTo).toBeNull();
+    // NOT_FOUND without data, or of the reply itself, still refuses.
+    const empty = graphql({ errors: [notFound] });
+    await expect(
+      (await github(empty)).reply(
+        9,
+        "Dennis-Otto/demo",
+        { node: "D_1", comment: "DC_2" },
+        "Thanks!",
+      ),
+    ).rejects.toThrow("Could not resolve");
+    const lost = graphql({
+      data: { addDiscussionComment: null },
+      errors: [notFound],
+    });
+    await expect(
+      (await github(lost)).reply(9, "Dennis-Otto/demo", { node: "D_1" }, "x"),
+    ).rejects.toThrow("Could not resolve");
+
+    // The discussion itself takes the reply as a comment of its own.
+    const own = graphql(added);
+    await (await github(own)).reply(
+      9,
+      "Dennis-Otto/demo",
+      { node: "D_1" },
+      "Thanks!",
+    );
+    expect(own.github("/graphql")).toHaveLength(1);
+    expect(own.github("/graphql")[0]?.body.variables.replyTo).toBeNull();
+  });
+
+  it("says why the GraphQL API refused, from the first of its errors", async () => {
+    const refused = new Net().on("POST", "/graphql", () =>
+      json({
+        errors: [{ message: "Resource not accessible by integration" }, {}],
+      }),
+    );
+    const error = await (await github(refused))
+      .reply(9, "Dennis-Otto/demo", { node: "D_1" }, "Thanks!")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(GitHubError);
+    expect(error).toMatchObject({
+      detail: "Resource not accessible by integration",
+    });
+    const nameless = new Net().on("POST", "/graphql", () =>
+      json({ errors: [{}] }),
+    );
+    await expect(
+      (await github(nameless)).reply(
+        9,
+        "Dennis-Otto/demo",
+        { node: "D_1" },
+        "x",
+      ),
+    ).rejects.toThrow("the GraphQL API refused");
+    const down = new Net().on("POST", "/graphql", () =>
+      json({ message: "Bad credentials" }, 401),
+    );
+    await expect(
+      (await github(down)).reply(9, "Dennis-Otto/demo", { node: "D_1" }, "x"),
+    ).rejects.toThrow("GitHub answered 401: Bad credentials");
+  });
+
   it("sends the headers of the REST API", async () => {
     const net = new Net();
     const headers: Record<string, string>[] = [];

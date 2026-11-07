@@ -164,6 +164,149 @@ describe("contributions from outside", () => {
   });
 });
 
+describe("discussions from outside", () => {
+  const discussion = {
+    number: 31,
+    title: "How do I <b>?",
+    html_url: "https://github.com/Dennis-Otto/demo/discussions/31",
+    node_id: "D_kwDOA",
+    user: stranger,
+    answer_html_url: null,
+  };
+  const comment = {
+    node_id: "DC_kwDOB",
+    html_url:
+      "https://github.com/Dennis-Otto/demo/discussions/31#discussioncomment-7",
+    user: { login: "hubot", type: "User" },
+  };
+
+  it("pages for a discussion that someone else opened, to reply on the discussion", () => {
+    expect(
+      classify("discussion", event({ action: "created", discussion }), ME),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "discussion",
+        number: 31,
+        title: "How do I <b>?",
+        url: discussion.html_url,
+        author: "octocat",
+        node: "D_kwDOA",
+      },
+    });
+  });
+
+  it("pages for a comment of someone else, to reply in its thread", () => {
+    const outcome = classify(
+      "discussion_comment",
+      event({ action: "created", discussion, comment }),
+      ME,
+    );
+    expect(outcome).toEqual({
+      signal: {
+        ...at,
+        type: "discussion",
+        number: 31,
+        title: "How do I <b>?",
+        url: comment.html_url,
+        author: "hubot",
+        node: "D_kwDOA",
+        comment: "DC_kwDOB",
+      },
+    });
+  });
+
+  it("stays quiet for the maintainer, for bots, and for a discussion with an answer", () => {
+    const mine = { ...discussion, user: { login: "dennis-otto" } };
+    expect(
+      classify(
+        "discussion",
+        event({ action: "created", discussion: mine }),
+        ME,
+      ),
+    ).toEqual({ ignored: "written by the maintainer" });
+    expect(
+      classify(
+        "discussion_comment",
+        event({
+          action: "created",
+          discussion,
+          comment: { ...comment, user: { login: ME } },
+        }),
+        ME,
+      ),
+    ).toEqual({ ignored: "written by the maintainer" });
+    // Its own reply, which comes back as a comment of the app.
+    expect(
+      classify(
+        "discussion_comment",
+        event({
+          action: "created",
+          discussion,
+          comment: { ...comment, user: { login: "dennis-otto-pager[bot]" } },
+        }),
+        ME,
+      ),
+    ).toEqual({ ignored: "written by a bot" });
+    expect(
+      classify(
+        "discussion",
+        event({ action: "created", discussion: { ...discussion, user: bot } }),
+        ME,
+      ),
+    ).toEqual({ ignored: "written by a bot" });
+    expect(
+      classify(
+        "discussion_comment",
+        event({ action: "created", discussion: mine, comment }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a discussion of the maintainer" });
+    const answered = {
+      ...discussion,
+      answer_html_url: `${discussion.html_url}#discussioncomment-5`,
+    };
+    expect(
+      classify(
+        "discussion_comment",
+        event({ action: "created", discussion: answered, comment }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a discussion with an answer" });
+  });
+
+  it("stays quiet for every other change of a discussion or a comment", () => {
+    expect(
+      classify("discussion", event({ action: "answered", discussion }), ME),
+    ).toEqual({ ignored: "a discussion answered" });
+    expect(
+      classify(
+        "discussion_comment",
+        event({ action: "edited", discussion, comment }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a discussion comment edited" });
+  });
+
+  it("takes a discussion and a comment without their fields as empty", () => {
+    const empty = {
+      ...at,
+      type: "discussion",
+      number: 0,
+      title: "",
+      url: "",
+      author: "",
+      node: "",
+    };
+    expect(
+      classify("discussion", event({ action: "created", discussion: {} }), ME),
+    ).toEqual({ signal: empty });
+    expect(
+      classify("discussion_comment", event({ action: "created" }), ME),
+    ).toEqual({ signal: empty });
+  });
+});
+
 describe("main failing", () => {
   const run = {
     name: "check (node)",
@@ -861,6 +1004,8 @@ describe("any payload", () => {
     const events = fc.constantFrom(
       "issues",
       "pull_request",
+      "discussion",
+      "discussion_comment",
       "check_run",
       "check_suite",
       "workflow_run",

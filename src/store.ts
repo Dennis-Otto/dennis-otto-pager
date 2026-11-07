@@ -48,18 +48,37 @@ interface Base {
   jobStarted?: number;
 }
 
-/** An issue or pull request that someone other than the maintainer opened. */
+/** A discussion of GitHub, which a reply in its thread answers, as the app. */
+export interface Discussion {
+  /** The id of the discussion in the GraphQL API of GitHub. */
+  node: string;
+  /** The id of the comment whose thread the reply goes into; none for the discussion itself. */
+  comment?: string;
+  /**
+   * Set when a comment came while the draft of an older one was still being
+   * written: that draft is dropped when it comes, and the next one is asked for.
+   */
+  redraft?: boolean;
+}
+
+/**
+ * An issue, a pull request or a discussion that someone other than the maintainer
+ * opened, or the newest comment of someone else on a discussion.
+ */
 export interface Contribution extends Base {
   kind: "contribution";
   state: "new" | "drafting" | "draft" | "sent" | "ignored";
   number: number;
   pull: boolean;
   title: string;
+  /** The issue, the pull request, the discussion or the comment that the reply answers. */
   url: string;
   author: string;
   draft: string | null;
   /** Counts the drafts, so that "Send" posts the one that its message showed. */
   draftVersion: number;
+  /** The discussion of a contribution that is one; none for an issue or a pull request. */
+  discussion?: Discussion;
 }
 
 /** What fails on the default branch of a repository, bundled. */
@@ -127,7 +146,10 @@ export async function itemId(key: string): Promise<string> {
   return `i${(await sha256Hex(key)).slice(0, 15)}`;
 }
 
-/** The key of each kind of thing: one thing per issue, and one bundle per repository. */
+/**
+ * The key of each kind of thing: one thing per issue, pull request or discussion,
+ * whose numbers GitHub counts together, and one bundle per repository.
+ */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
   alarm: (repo: string) => `a:${repo}`,

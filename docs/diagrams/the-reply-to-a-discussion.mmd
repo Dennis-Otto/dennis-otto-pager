@@ -1,0 +1,26 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: The reply to a discussion
+    accDescr: Someone other than Dennis or a bot opens a discussion or comments on one. A discussion of Dennis, and one whose answer was chosen, end there. Otherwise the pager shows it in its topic and asks the control repository for a draft at once, which Claude writes in Dennis's voice. The draft comes with Send, Edit and Ignore. Send posts exactly that draft as the pager's app, in the thread of the comment that it answers, or on the discussion itself. A new comment of someone else makes itself the message to answer, with a new draft, in the same topic.
+
+    asked["`**💬** Someone else opens a discussion or comments on one`"]
+    quiet["`A discussion of Dennis, or one with its answer chosen: nothing happens`"]
+    shown["The pager shows it in its topic and asks the control repository for a draft"]
+    draft["`**✍️** Claude drafts a reply in Dennis's voice: ✅ Send, ✏️ Edit, ✖ Ignore`"]
+    press["Dennis presses ✅ Send, or edits the draft first"]
+    reply["`**✅** The app posts exactly that draft, in the thread of the comment that it answers`"]
+
+    asked -- "Dennis's, or answered" --> quiet
+    asked -- "anyone else's" --> shown --> draft --> press --> reply
+    reply -- "a new comment of someone else: a new draft, in the same topic" --> shown
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class asked,press you
+    class quiet,shown,draft bot
+    class reply done

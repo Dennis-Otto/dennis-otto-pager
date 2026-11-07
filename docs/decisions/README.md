@@ -11,3 +11,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0003](0003-the-control-repository-answers-the-worker.md) | The control repository answers the Worker, and a fix gets a token of its own | accepted |
 | [0004](0004-one-language-per-pager-from-a-catalog.md) | One language per pager, from a catalog of texts | accepted |
 | [0005](0005-one-topic-per-thing-kept-when-done.md) | One topic per thing, kept when it is done | accepted |
+| [0006](0006-a-discussion-gets-its-draft-at-once-and-the-reply-of-the-app.md) | A discussion gets its draft at once, and its reply comes from the app | accepted |

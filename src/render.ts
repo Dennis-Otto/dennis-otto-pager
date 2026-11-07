@@ -4,7 +4,7 @@
  * escaped, and every link has to point to GitHub, so a title can't add markup or a
  * link of its own.
  */
-import type { Entry, Item } from "./store.ts";
+import type { Contribution, Entry, Item } from "./store.ts";
 import type { Texts } from "./texts.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
@@ -80,10 +80,22 @@ function named(state: Item["state"]): state is Named {
   return (STATES as readonly string[]).includes(state);
 }
 
+/** What a contribution is: an issue, a pull request, a discussion or a comment on one. */
+function contributionHead(
+  item: Contribution,
+): "message.issue" | "message.pull" | "message.discussion" | "message.comment" {
+  if (item.discussion !== undefined) {
+    return item.discussion.comment === undefined
+      ? "message.discussion"
+      : "message.comment";
+  }
+  return item.pull ? "message.pull" : "message.issue";
+}
+
 function body(item: Item, t: Texts): string {
   switch (item.kind) {
     case "contribution": {
-      const head = t(item.pull ? "message.pull" : "message.issue", {
+      const head = t(contributionHead(item), {
         repo: repoLink(item.repo),
         author: html(item.author, 100),
         link: link(`#${item.number} ${item.title}`, item.url),
@@ -95,7 +107,10 @@ function body(item: Item, t: Texts): string {
       ) {
         return head;
       }
-      return `${head}\n\n${t("message.draft", { draft: html(item.draft, 3500) })}`;
+      // The reply in a discussion goes as the app, any other in the maintainer's name.
+      const draft =
+        item.discussion === undefined ? "message.draft" : "message.reply";
+      return `${head}\n\n${t(draft, { draft: html(item.draft, 3500) })}`;
     }
     case "alarm":
       return t("message.alarm", {

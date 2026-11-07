@@ -44,8 +44,14 @@ const en = {
   "message.issue": "🙋 <b>New issue</b> in {repo} by <b>{author}</b>\n{link}",
   "message.pull":
     "🙋 <b>New pull request</b> in {repo} by <b>{author}</b>\n{link}",
+  "message.discussion":
+    "💬 <b>New discussion</b> in {repo} by <b>{author}</b>\n{link}",
+  "message.comment":
+    "💬 <b>New comment</b> on a discussion in {repo} by <b>{author}</b>\n{link}",
   "message.draft":
     '<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>{draft}</blockquote>',
+  "message.reply":
+    '<b>Draft of a reply</b>, which "Send" posts in the discussion as the app of the pager, as it stands here:\n<blockquote>{draft}</blockquote>',
   "message.alarm": "🚨 <b>{repo} needs you</b>\n{entries}",
   "message.alert": "🛡 <b>Code scanning in {repo}</b>\n{entries}",
   "message.more": "… and {count} more",
@@ -104,6 +110,7 @@ const en = {
 
   "note.assistant": "🤖 The issue assistant answers again.",
   "note.sent": "Posted in your name.",
+  "note.replied": "Posted in the discussion as the app of the pager.",
   "note.noAnswer":
     "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.",
 
@@ -140,6 +147,7 @@ const en = {
   "kind.release": "release",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
+  "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} needs you",
   "topic.alert": "🛡 Code scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
@@ -219,8 +227,14 @@ const de: Catalog = {
     "🙋 <b>Neues Issue</b> in {repo} von <b>{author}</b>\n{link}",
   "message.pull":
     "🙋 <b>Neuer Pull Request</b> in {repo} von <b>{author}</b>\n{link}",
+  "message.discussion":
+    "💬 <b>Neue Diskussion</b> in {repo} von <b>{author}</b>\n{link}",
+  "message.comment":
+    "💬 <b>Neuer Kommentar</b> zu einer Diskussion in {repo} von <b>{author}</b>\n{link}",
   "message.draft":
     "<b>Entwurf einer Antwort</b>, den „Senden“ genau so in deinem Namen postet:\n<blockquote>{draft}</blockquote>",
+  "message.reply":
+    "<b>Entwurf einer Antwort</b>, den „Senden“ genau so als App des Pagers in der Diskussion postet:\n<blockquote>{draft}</blockquote>",
   "message.alarm": "🚨 <b>{repo} braucht dich</b>\n{entries}",
   "message.alert": "🛡 <b>Code Scanning in {repo}</b>\n{entries}",
   "message.more": "… und {count} weitere",
@@ -280,6 +294,7 @@ const de: Catalog = {
 
   "note.assistant": "🤖 Der Issue-Assistent antwortet noch einmal.",
   "note.sent": "In deinem Namen gepostet.",
+  "note.replied": "In der Diskussion als App des Pagers gepostet.",
   "note.noAnswer":
     "⌛ Keine Antwort vom Steuer-Repository binnen einer Stunde: Sein Lauf im Actions-Tab sagt, warum.",
 
@@ -316,6 +331,7 @@ const de: Catalog = {
   "kind.release": "Release",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
+  "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} braucht dich",
   "topic.alert": "🛡 Code Scanning in {repo}",
   "topic.release": "📦 {repo} {version}",

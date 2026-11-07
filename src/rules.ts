@@ -3,9 +3,9 @@
  * maintainer, and as what. Everything else of the pager acts on the signals that
  * these rules return, and docs/how-it-works.md lists the same rules in words.
  *
- * Everything that an issue or a pull request says is data: these rules read the
- * kind of an event, its author, its branch and its state, and pass titles on only
- * to be shown, escaped. What they hand on to be read, such as the label of an entry
+ * Everything that an issue, a pull request or a discussion says is data: these
+ * rules read the kind of an event, its author, its branch and its state, and pass
+ * titles on only to be shown, escaped. What they hand on to be read, such as the label of an entry
  * or why a release may not merge, is a phrase of src/texts.ts without a language:
  * the pager words it in the language of its settings.
  */
@@ -93,6 +93,18 @@ export interface Payload {
   };
   ref?: string;
   release?: { tag_name?: string; prerelease?: boolean };
+  discussion?: {
+    number?: number;
+    title?: string;
+    html_url?: string;
+    /** The id of the discussion in the GraphQL API of GitHub, which a reply names. */
+    node_id?: string;
+    user?: Account;
+    /** The address of the answer of a discussion of Q&A, once someone chose one. */
+    answer_html_url?: string | null;
+  };
+  /** The comment of a discussion_comment event. */
+  comment?: { node_id?: string; html_url?: string; user?: Account };
 }
 
 interface Where {
@@ -117,6 +129,18 @@ export type Signal = Where &
         title: string;
         url: string;
         author: string;
+      }
+    | {
+        type: "discussion";
+        number: number;
+        title: string;
+        /** The discussion, or the comment that the reply answers. */
+        url: string;
+        author: string;
+        /** The id of the discussion in the GraphQL API of GitHub. */
+        node: string;
+        /** The id of the comment that the reply answers; none for the discussion itself. */
+        comment?: string;
       }
     | ({ type: "failing" | "still-failing" } & Failure)
     | { type: "recovered"; key: string }
@@ -355,6 +379,51 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
   return contribution(at, pull, true, maintainer);
 }
 
+/**
+ * A discussion, or a comment on one, that someone else wrote: a contribution whose
+ * reply goes into its thread. A discussion of the maintainer stays theirs, comments
+ * and all, since GitHub tells its author of each comment itself, and one of Q&A
+ * whose answer was chosen needs no reply any more.
+ */
+function discussion(
+  payload: Payload,
+  at: Where,
+  maintainer: string,
+  comment: Payload["comment"] | null,
+): Outcome {
+  const found = payload.discussion;
+  const what = comment === null ? "a discussion" : "a discussion comment";
+  if (payload.action !== "created") {
+    return { ignored: `${what} ${payload.action}` };
+  }
+  const author = comment === null ? found?.user : comment?.user;
+  if (isMaintainer(author, maintainer)) {
+    return { ignored: "written by the maintainer" };
+  }
+  if (isBot(author)) {
+    return { ignored: "written by a bot" };
+  }
+  if (isMaintainer(found?.user, maintainer)) {
+    return { ignored: "a discussion of the maintainer" };
+  }
+  if (typeof found?.answer_html_url === "string") {
+    return { ignored: "a discussion with an answer" };
+  }
+  const reply = comment?.node_id;
+  return {
+    signal: {
+      ...at,
+      type: "discussion",
+      number: found?.number ?? 0,
+      title: found?.title ?? "",
+      url: (comment === null ? found?.html_url : comment?.html_url) ?? "",
+      author: author?.login ?? "",
+      node: found?.node_id ?? "",
+      ...(reply === undefined ? {} : { comment: reply }),
+    },
+  };
+}
+
 function checkRun(payload: Payload, at: Where): Outcome {
   const run = payload.check_run;
   const branch = run?.check_suite?.head_branch ?? "";
@@ -510,6 +579,10 @@ export function classify(
       return issues(payload, at, maintainer);
     case "pull_request":
       return pullRequest(payload, at, maintainer);
+    case "discussion":
+      return discussion(payload, at, maintainer, null);
+    case "discussion_comment":
+      return discussion(payload, at, maintainer, payload.comment);
     case "check_run":
       return checkRun(payload, at);
     case "check_suite":

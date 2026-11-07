@@ -14,6 +14,7 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 | Event | Counts when | Becomes |
 | --- | --- | --- |
 | `issues` opened, `pull_request` opened | Its author is neither the maintainer (`MAINTAINER_LOGIN`) nor a bot | A contribution, one message each |
+| `discussion` created, `discussion_comment` created | Its author is neither the maintainer nor a bot, the discussion isn't one of the maintainer, and no answer of Q&A was chosen | A contribution with its draft at once, one per discussion; a new comment makes itself the message that the reply answers ([below](#a-discussion)) |
 | `check_run` completed on the default branch | The check is required by the rulesets of the branch and failed, timed out or didn't start | An entry of the alarm of the repository; a pass of the same check takes it out |
 | `workflow_run` completed | `release.yml`, `build-release.yml` or `verify-release.yml` failed, outside a pull request | An entry of the alarm; a pass takes it out |
 | `issues` opened by a bot | It has the label `bot-failure` of the bot-health bot | An entry of the alarm; an edit of the open issue, as the bot makes one at each new failure, changes the entry and opens nothing; its closing takes it out |
@@ -32,6 +33,9 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Contribution | new | ✍️ Draft a reply, 🤖 Assistant again (issues only), ⏰ Later, ✖ Ignore |
 | Contribution | drafting | ⏰ Later, ✖ Ignore |
 | Contribution | draft | ✅ Send, ✏️ Edit, ⏰ Later, ✖ Ignore |
+| Discussion | new | ✍️ Draft a reply, ✖ Ignore, only when its draft couldn't be asked for, or its job failed or didn't answer within the hour |
+| Discussion | drafting | ✖ Ignore |
+| Discussion | draft | ✅ Send, ✏️ Edit, ✖ Ignore |
 | Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |
@@ -39,7 +43,7 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Reminder | open | ✅ Renewed, ⏰ Later |
 
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
-- **✅ Send** posts the draft whose version its button carries, exactly as the message showed it; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
+- **✅ Send** posts the draft whose version its button carries, exactly as the message showed it, in the maintainer's name, and in a discussion as the app; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
 - **🔁 Rerun** reads each run that the entries name, with a token of the app for `actions: read`, and runs its failed jobs again, as *Re-run failed jobs* on GitHub does, with a token for `actions: write`. A run that still runs, or whose newer attempt runs, and one that passed on a retry stay as they are, and the button says so. The entries of a run that runs again show *🔁 running again…* in the message, edited in place, until the run fails again or passes: a pass closes the issue of the bot-health bot or ends the failure of the release, which takes the entry out, and the last one turns the alarm ✅. It costs no run of Claude, so it comes first, for a short outage of GitHub, such as a download that answered 504.
 - **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
@@ -50,13 +54,26 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
   <img src="images/diagrams/the-rerun-of-a-run.svg" alt="The rerun of a run that failed: An entry of the alarm names a run of GitHub Actions that failed on main, such as that of a required check, a release or an issue of the bot-health bot. Dennis presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the entry says so in the message. When they fail again, the entry shows the failure, and Rerun can run them once more. When they pass, the bot-health bot closes its issue or the release run passes, the entry goes, and the last one turns the alarm green.">
 </picture>
 
+## A discussion
+
+A new discussion, or a comment on one, by someone other than the maintainer or a bot is a contribution as well, with a topic of its own, such as *💬 demo#31 How do I start?*. The pager asks the control repository for its draft as it comes, since its buttons send, edit or ignore that draft, as [decision 0006](decisions/0006-a-discussion-gets-its-draft-at-once-and-the-reply-of-the-app.md) explains: the message shows the discussion, or the comment with its author, and *✍️ The control repository drafts a reply…*, and the draft follows with ✅ **Send**, ✏️ **Edit** and ✖ **Ignore**. ✅ Send posts exactly that draft with `addDiscussionComment` of GitHub's GraphQL API, with a token of the app for `discussions: write` of that one repository, so the reply shows as that of the app: on the discussion itself, or in the thread of the comment that it answers, which for a reply to a reply is the thread of its parent, since GitHub nests one level only. A draft that couldn't be asked for, as when the app isn't installed on the control repository, leaves the message with ✍️ **Draft a reply** and a note that says why.
+
+A discussion is one thing, keyed by its number, which GitHub counts together with those of issues and pull requests. A new comment of someone else makes itself the message that the reply answers, with a new draft: while the thing is open, a new message replaces the old one, and once its reply went, the thing opens again in its topic, where the old message stays as history. A discussion that the maintainer ignored stays ignored, until its record expires 30 days later. No thing comes from a discussion of the maintainer, comments included, since GitHub tells its author of each comment itself, from one of Q&A whose answer was chosen, or from the app's own replies, which come back as comments of a bot.
+
+The control repository runs the jobs of one thing one at a time. A comment that comes while the draft of an older one is still being written waits for it: the pager shows the new comment at once, drops the older draft when it comes, so that no reply to the older comment can go into the thread of the newer one, and asks for the draft of the newest comment then. ✅ Send posts on the discussion itself when the comment that it answers is gone, as GitHub's `NOT_FOUND` for it says, so that the approved reply isn't lost.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reply-to-a-discussion.dark.svg">
+  <img src="images/diagrams/the-reply-to-a-discussion.svg" alt="The reply to a discussion: Someone other than Dennis or a bot opens a discussion or comments on one. A discussion of Dennis, and one whose answer was chosen, end there. Otherwise the pager shows it in its topic and asks the control repository for a draft at once, which Claude writes in Dennis's voice. The draft comes with Send, Edit and Ignore. Send posts exactly that draft as the pager's app, in the thread of the comment that it answers, or on the discussion itself. A new comment of someone else makes itself the message to answer, with a new draft, in the same topic.">
+</picture>
+
 ## The control repository
 
 The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code with the maintainer's own subscription; its README describes its jobs, its safety and its set-up. The pager sends it a [repository dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), with a token of the app for that repository alone:
 
 | Event type | Sent by | Client payload |
 | --- | --- | --- |
-| `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull`, `language` |
+| `pager-draft` | ✍️ Draft a reply, and a discussion or a comment on one as it comes | `item`, `repo`, `number`, `pull`, `language`; for a discussion also `discussion`: `true` and `comment`, the GraphQL id of the comment that the reply answers, if any |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language`. The `url` of a release run that failed names its attempt, such as `…/actions/runs/3/attempts/2`, so that the fix reads the jobs of that attempt and not those of a rerun that still runs |
 | `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
 
@@ -105,7 +122,7 @@ A proposal names its thing as the control repository knows it, and the pager loo
 | Action | Kind of thing | `number` |
 | --- | --- | --- |
 | `merge` | `release` | none |
-| `assistant`, `draft` | `contribution` | the issue or pull request |
+| `assistant`, `draft` | `contribution` | the issue, pull request or discussion |
 | `fix` | `alarm`, `alert` | none |
 | `rerun` | `alarm` | none |
 | `later`, `ignore` | any of the four | for a contribution |
@@ -139,6 +156,7 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 | Thing | Name of its topic | Color |
 | --- | --- | --- |
 | Contribution | 🙋 demo#12 It breaks | blue |
+| Discussion | 💬 demo#31 How do I start? | blue |
 | Alarm | 🚨 demo needs you | red |
 | Code scanning | 🛡 Code scanning in demo | yellow |
 | Release | 📦 demo 1.2.3 | green |
@@ -190,6 +208,6 @@ After a change of `LANGUAGE`, a message speaks the new language once its thing c
 
 ## State
 
-Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft, with the ids of the discussion and of the comment that its reply answers for a discussion; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
 Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

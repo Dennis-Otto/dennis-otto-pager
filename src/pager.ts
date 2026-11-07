@@ -2,16 +2,19 @@
  * The pager: what a signal of the rules does to the things that the maintainer
  * sees. One message per thing, in a topic of its own, edited in place as its state
  * changes; a new message, which notifies, only for a new thing, a bundle that
- * opens again, which keeps its topic, and the answer of a draft or a fix.
+ * opens again, which keeps its topic, a new comment on a discussion, and the
+ * answer of a draft or a fix.
  */
 import { keyboard } from "./buttons.ts";
-import type { GitHub } from "./github.ts";
+import { type GitHub, GitHubError } from "./github.ts";
 import { render } from "./render.ts";
 import { releaseBlocker, releaseVersion, type Signal } from "./rules.ts";
 import type { Settings } from "./settings.ts";
 import {
   type Alarm,
   type Alert,
+  type Contribution,
+  type Discussion,
   type Entry,
   type Item,
   isClosed,
@@ -70,6 +73,77 @@ export async function show(
   }
   await retitle(context, item);
   await context.store.put(item);
+}
+
+/**
+ * Send a thing to the workflow of the control repository, as an event of its own.
+ * Returns why it couldn't go, or null once it went.
+ */
+export async function toControl(
+  context: Context,
+  eventType: string,
+  payload: Record<string, unknown>,
+): Promise<string | null> {
+  const repo = context.settings.controlRepository;
+  const installation = await context.github.installation(repo);
+  if (installation === null) {
+    return context.t("answer.notInstalled", { repo });
+  }
+  // The answers of the control repository to the maintainer come in their language.
+  await context.github.dispatch(installation, repo, eventType, {
+    ...payload,
+    language: context.t.language,
+  });
+  return null;
+}
+
+/**
+ * Ask the control repository for the draft of a reply to a contribution. Once the
+ * event went, the thing waits for the job, until any answer comes, and the caller
+ * shows it. Returns why it couldn't go, or null once it went.
+ */
+export async function askForDraft(
+  context: Context,
+  item: Contribution,
+): Promise<string | null> {
+  const discussion = item.discussion;
+  const failed = await toControl(context, "pager-draft", {
+    item: item.id,
+    repo: item.repo,
+    number: item.number,
+    pull: item.pull,
+    // A discussion names the comment that the reply answers, if it answers one.
+    ...(discussion === undefined
+      ? {}
+      : {
+          discussion: true,
+          ...(discussion.comment === undefined
+            ? {}
+            : { comment: discussion.comment }),
+        }),
+  });
+  if (failed === null) {
+    item.state = "drafting";
+    item.jobStarted = context.now();
+    // The job just asked for answers the newest comment.
+    delete discussion?.redraft;
+  }
+  return failed;
+}
+
+/** Ask for the draft of a discussion; returns why it couldn't, or null once it could. */
+export async function draftOrWhyNot(
+  context: Context,
+  item: Contribution,
+): Promise<string | null> {
+  try {
+    return await askForDraft(context, item);
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    return context.t("answer.refused", { detail: error.detail });
+  }
 }
 
 function base(id: string, repo: string, installation: number) {
@@ -168,6 +242,63 @@ async function removeEntry(
   }
   await show(context, known);
   return left.length === 0 ? `${kind} closed` : `${kind} updated`;
+}
+
+/**
+ * A discussion, or a comment on one, from someone else: a contribution whose draft
+ * the pager asks for at once, since its buttons send, edit or ignore that draft. A
+ * new comment becomes the message that the reply answers: a thing that is still
+ * open gets a new message for it, which replaces the old one, and one whose reply
+ * went opens again in its topic, where the old message stays as its history. An
+ * ignored discussion stays ignored.
+ */
+async function discussion(
+  context: Context,
+  signal: Extract<Signal, { type: "discussion" }>,
+): Promise<string> {
+  const id = await itemId(keys.contribution(signal.repo, signal.number));
+  const known = (await context.store.get(id)) as Contribution | null;
+  if (known?.state === "ignored") {
+    return "discussion ignored";
+  }
+  const open = known !== null && !isClosed(known);
+  const thread: Discussion = {
+    node: signal.node,
+    ...(signal.comment === undefined ? {} : { comment: signal.comment }),
+  };
+  const item: Contribution = {
+    ...base(id, signal.repo, signal.installation),
+    kind: "contribution",
+    state: "new",
+    number: signal.number,
+    pull: false,
+    title: signal.title,
+    url: signal.url,
+    author: signal.author,
+    draft: null,
+    // Counts on, so that no button of an older draft sends the next one.
+    draftVersion: known?.draftVersion ?? 0,
+    discussion: thread,
+    messageId: open ? known.messageId : null,
+    topic: known?.topic ?? null,
+  };
+  if (open && known.state === "drafting" && known.discussion !== undefined) {
+    // The job for the draft of an older comment is still running, and the
+    // control repository runs one job per thing at a time: its draft is dropped
+    // when it comes, and the draft for this comment is asked for then.
+    // The hour that the schedule waits counts from now, for both jobs.
+    item.state = "drafting";
+    item.jobStarted = context.now();
+    thread.redraft = true;
+    await show(context, item, true);
+    return "discussion shown anew, its draft waits for the older one";
+  }
+  const failed = await draftOrWhyNot(context, item);
+  // Without its job, the thing offers ✍️ Draft a reply, and its note says why.
+  item.note = failed;
+  await show(context, item, open);
+  const outcome = known === null ? "discussion shown" : "discussion shown anew";
+  return failed === null ? outcome : `${outcome}, without a draft`;
 }
 
 async function releaseItem(
@@ -295,6 +426,8 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       });
       return "contribution shown";
     }
+    case "discussion":
+      return discussion(context, signal);
     case "failing":
     case "still-failing":
       return addEntry(

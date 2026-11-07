@@ -14,6 +14,7 @@ Der Pager ist ein Cloudflare Worker mit drei Türen und einem Zeitplan: `/github
 | Ereignis | Zählt, wenn | Wird zu |
 | --- | --- | --- |
 | `issues` opened, `pull_request` opened | Der Autor ist weder der Maintainer (`MAINTAINER_LOGIN`) noch ein Bot | Ein Beitrag, je eine Nachricht |
+| `discussion` created, `discussion_comment` created | Der Autor ist weder der Maintainer noch ein Bot, die Diskussion ist keine des Maintainers, und keine Antwort von Q&A wurde gewählt | Ein Beitrag mit sofortigem Entwurf, einer pro Diskussion; ein neuer Kommentar wird zur Nachricht, auf die die Antwort antwortet ([unten](#eine-diskussion)) |
 | `check_run` completed auf dem Standard-Branch | Die Rulesets des Branches verlangen den Check, und er ist fehlgeschlagen, abgelaufen oder nicht gestartet | Ein Eintrag im Alarm des Repositorys; ein Erfolg desselben Checks nimmt ihn heraus |
 | `workflow_run` completed | `release.yml`, `build-release.yml` oder `verify-release.yml` ist gescheitert, außerhalb eines Pull Requests | Ein Eintrag im Alarm; ein Erfolg nimmt ihn heraus |
 | `issues` opened von einem Bot | Es trägt das Label `bot-failure` des Bot-Health-Bots | Ein Eintrag im Alarm; eine Änderung des offenen Issues, wie der Bot sie bei jedem neuen Fehlschlag macht, ändert den Eintrag und öffnet nichts; sein Schließen nimmt ihn heraus |
@@ -32,6 +33,9 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 | Beitrag | new | ✍️ Antwort entwerfen, 🤖 Assistent nochmal (nur Issues), ⏰ Später, ✖ Ignorieren |
 | Beitrag | drafting | ⏰ Später, ✖ Ignorieren |
 | Beitrag | draft | ✅ Senden, ✏️ Bearbeiten, ⏰ Später, ✖ Ignorieren |
+| Diskussion | new | ✍️ Antwort entwerfen, ✖ Ignorieren, nur wenn ihr Entwurf nicht angefragt werden konnte oder sein Job fehlschlug oder nicht innerhalb der Stunde antwortete |
+| Diskussion | drafting | ✖ Ignorieren |
+| Diskussion | draft | ✅ Senden, ✏️ Bearbeiten, ✖ Ignorieren |
 | Alarm | open | 🔁 Neu starten (wo ein Eintrag einen Lauf nennt), 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
 | Code Scanning | open | 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
 | Alarm, Code Scanning | fixing | ⏰ Später, ✖ Ignorieren |
@@ -39,7 +43,7 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 | Erinnerung | open | ✅ Erneuert, ⏰ Später |
 
 - **🔀 Mergen** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
-- **✅ Senden** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte; ein älterer Knopf derselben Sache lehnt ab. **✏️ Bearbeiten** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
+- **✅ Senden** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte, im Namen des Maintainers, und in einer Diskussion als App; ein älterer Knopf derselben Sache lehnt ab. **✏️ Bearbeiten** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
 - **🤖 Assistent nochmal** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
 - **🔁 Neu starten** liest jeden Lauf, den die Einträge nennen, mit einem Token der App für `actions: read`, und startet seine gescheiterten Jobs erneut, wie *Re-run failed jobs* auf GitHub, mit einem Token für `actions: write`. Ein Lauf, der noch läuft oder dessen neuerer Versuch läuft, und einer, der bei einem neuen Versuch schon grün wurde, bleiben, wie sie sind, und der Knopf sagt das. Die Einträge eines Laufs, der erneut läuft, zeigen *🔁 läuft erneut …* in der Nachricht, die sich an Ort und Stelle ändert, bis der Lauf wieder scheitert oder grün wird: Ein Erfolg schließt das Issue des Bot-Health-Bots oder beendet den Fehlschlag des Releases, was den Eintrag herausnimmt, und der letzte macht den Alarm ✅. Der Knopf kostet keinen Lauf von Claude, daher steht er vorn, für einen kurzen Ausfall von GitHub, etwa einen Download, der mit 504 antwortete.
 - **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort nennt sein Modell, seinen Aufwand und seine Tokens; ein Job, der fehlschlägt, bringt seinen Knopf zurück, und ebenso ein Job, der binnen einer Stunde keine Antwort schickte: Der Zeitplan gibt seiner Sache die Knöpfe einmal zurück, als neue Nachricht mit der Notiz *⌛ Keine Antwort vom Steuer-Repository*.
@@ -50,13 +54,26 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
   <img src="images/diagrams/the-rerun-of-a-run.de.svg" alt="Der Neustart eines gescheiterten Laufs: Ein Eintrag im Alarm nennt einen Lauf von GitHub Actions, der auf main scheiterte, etwa den eines Pflicht-Checks, eines Releases oder eines Issues des Bot-Health-Bots. Dennis drückt Neu starten, und der Pager liest den Lauf. Solange er noch läuft oder wenn er bei einem neuen Versuch schon grün wurde, sagt der Knopf das, und nichts startet. Sonst laufen seine gescheiterten Jobs erneut, und der Eintrag sagt das in der Nachricht. Scheitern sie wieder, zeigt der Eintrag den Fehlschlag, und Neu starten kann sie noch einmal starten. Werden sie grün, schließt der Bot-Health-Bot sein Issue oder der Release-Lauf gelingt, der Eintrag verschwindet, und der letzte macht den Alarm grün.">
 </picture>
 
+## Eine Diskussion
+
+Eine neue Diskussion, oder ein Kommentar zu einer, von jemand anderem als dem Maintainer oder einem Bot ist ebenfalls ein Beitrag, mit einem eigenen Thema, etwa *💬 demo#31 How do I start?*. Der Pager bittet das Steuer-Repository sofort um ihren Entwurf, denn ihre Knöpfe senden, bearbeiten oder ignorieren diesen Entwurf, wie [Entscheidung 0006](decisions/0006-a-discussion-gets-its-draft-at-once-and-the-reply-of-the-app.md) erklärt: Die Nachricht zeigt die Diskussion, oder den Kommentar mit seinem Autor, und *✍️ Das Steuer-Repository entwirft eine Antwort …*, und der Entwurf folgt mit ✅ **Senden**, ✏️ **Bearbeiten** und ✖ **Ignorieren**. ✅ Senden postet genau diesen Entwurf mit `addDiscussionComment` der GraphQL-API von GitHub, mit einem Token der App für `discussions: write` dieses einen Repositorys, also erscheint die Antwort als die der App: an der Diskussion selbst, oder im Thread des Kommentars, auf den sie antwortet, was bei einer Antwort auf eine Antwort der Thread ihres Elternkommentars ist, denn GitHub schachtelt nur eine Ebene. Ein Entwurf, der nicht angefragt werden konnte, etwa weil die App nicht auf dem Steuer-Repository installiert ist, lässt die Nachricht mit ✍️ **Antwort entwerfen** und einer Notiz, die sagt, warum.
+
+Eine Diskussion ist eine Sache, mit ihrer Nummer als Schlüssel, die GitHub mit denen der Issues und Pull Requests zusammen zählt. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die die Antwort antwortet, mit einem neuen Entwurf: Solange die Sache offen ist, ersetzt eine neue Nachricht die alte, und sobald ihre Antwort gesendet ist, öffnet die Sache wieder in ihrem Thema, in dem die alte Nachricht als Verlauf bleibt. Eine Diskussion, die der Maintainer ignoriert hat, bleibt ignoriert, bis ihr Eintrag 30 Tage später verfällt. Keine Sache kommt von einer Diskussion des Maintainers, samt ihren Kommentaren, denn GitHub benachrichtigt ihren Autor selbst über jeden Kommentar, von einer aus Q&A mit gewählter Antwort, und von den eigenen Antworten der App, die als Kommentare eines Bots zurückkommen.
+
+Das Steuer-Repository führt die Jobs einer Sache nacheinander aus. Ein Kommentar, der kommt, während der Entwurf zu einem älteren noch geschrieben wird, wartet auf ihn: Der Pager zeigt den neuen Kommentar sofort, verwirft den älteren Entwurf, wenn er kommt, damit keine Antwort auf den älteren Kommentar in den Thread des neueren gehen kann, und fragt dann den Entwurf zum neuesten Kommentar an. ✅ Senden postet an der Diskussion selbst, wenn der Kommentar, auf den die Antwort antwortet, gelöscht ist, wie GitHubs `NOT_FOUND` dafür sagt, damit die freigegebene Antwort nicht verloren geht.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reply-to-a-discussion.de.dark.svg">
+  <img src="images/diagrams/the-reply-to-a-discussion.de.svg" alt="Die Antwort auf eine Diskussion: Jemand anderes als Dennis oder ein Bot eröffnet eine Diskussion oder kommentiert eine. Eine Diskussion von Dennis und eine mit gewählter Antwort enden hier. Sonst zeigt der Pager sie in ihrem Thema und bittet das Steuer-Repository sofort um einen Entwurf, den Claude in Dennis' Stimme schreibt. Der Entwurf kommt mit Senden, Bearbeiten und Ignorieren. Senden postet genau diesen Entwurf als App des Pagers, im Thread des Kommentars, auf den er antwortet, oder an der Diskussion selbst. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die geantwortet wird, mit einem neuen Entwurf im selben Thema.">
+</picture>
+
 ## Das Steuer-Repository
 
 Der Workflow des privaten Repositorys `Dennis-Otto/dennis-otto-pager-control` führt Claude Code mit dem eigenen Abo des Maintainers aus; seine README beschreibt seine Jobs, seine Sicherheit und seine Einrichtung. Der Pager schickt ihm einen [Repository Dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), mit einem Token der App nur für dieses Repository:
 
 | Ereignistyp | Gesendet von | Client Payload |
 | --- | --- | --- |
-| `pager-draft` | ✍️ Antwort entwerfen | `item`, `repo`, `number`, `pull`, `language` |
+| `pager-draft` | ✍️ Antwort entwerfen, und eine Diskussion oder ein Kommentar zu einer, sobald er kommt | `item`, `repo`, `number`, `pull`, `language`; bei einer Diskussion auch `discussion`: `true` und `comment`, die GraphQL-ID des Kommentars, auf den die Antwort antwortet, falls es einen gibt |
 | `pager-fix` | 🛠 Fix starten | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url`, `language`. Die `url` eines gescheiterten Release-Laufs nennt seinen Versuch, etwa `…/actions/runs/3/attempts/2`, damit der Fix die Jobs dieses Versuchs liest und nicht die einer Wiederholung, die noch läuft |
 | `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
 
@@ -105,7 +122,7 @@ Ein Vorschlag nennt seine Sache so, wie das Steuer-Repository sie kennt, und der
 | Aktion | Art der Sache | `number` |
 | --- | --- | --- |
 | `merge` | `release` | keine |
-| `assistant`, `draft` | `contribution` | das Issue oder der Pull Request |
+| `assistant`, `draft` | `contribution` | das Issue, der Pull Request oder die Diskussion |
 | `fix` | `alarm`, `alert` | keine |
 | `rerun` | `alarm` | keine |
 | `later`, `ignore` | jede der vier | bei einem Beitrag |
@@ -139,6 +156,7 @@ Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `cr
 | Sache | Name ihres Themas | Farbe |
 | --- | --- | --- |
 | Beitrag | 🙋 demo#12 It breaks | Blau |
+| Diskussion | 💬 demo#31 How do I start? | Blau |
 | Alarm | 🚨 demo braucht dich | Rot |
 | Code Scanning | 🛡 Code Scanning in demo | Gelb |
 | Release | 📦 demo 1.2.3 | Grün |
@@ -190,6 +208,6 @@ Nach einer Änderung von `LANGUAGE` spricht eine Nachricht die neue Sprache, sob
 
 ## Zustand
 
-Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht, den Thread und den Namen ihres Themas und, bei einem Beitrag, den Entwurf; eine geschlossene Sache verfällt nach 30 Tagen. Ein Verweis vom Thread eines Themas auf seine Sache, `topic:<thread>`, lässt einen Text im Thema sie finden: ein Schreibvorgang, wenn sich das Thema öffnet, und einer, wenn es umbenannt wird, und er verfällt 30 Tage, nachdem seine Sache erledigt ist. Die Zeit eines „Später“ und die eines Jobs des Steuer-Repositorys, solange seine Sache auf die Antwort wartet, stehen in den Metadaten ihres Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist und was zu lange wartet, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
+Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht, den Thread und den Namen ihres Themas und, bei einem Beitrag, den Entwurf, bei einer Diskussion mit den IDs der Diskussion und des Kommentars, auf den ihre Antwort antwortet; eine geschlossene Sache verfällt nach 30 Tagen. Ein Verweis vom Thread eines Themas auf seine Sache, `topic:<thread>`, lässt einen Text im Thema sie finden: ein Schreibvorgang, wenn sich das Thema öffnet, und einer, wenn es umbenannt wird, und er verfällt 30 Tage, nachdem seine Sache erledigt ist. Die Zeit eines „Später“ und die eines Jobs des Steuer-Repositorys, solange seine Sache auf die Antwort wartet, stehen in den Metadaten ihres Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist und was zu lange wartet, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
 Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.

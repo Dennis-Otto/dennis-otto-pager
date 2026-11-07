@@ -1,10 +1,11 @@
 /**
- * The REST API of GitHub, as the GitHub App of the pager and, for the two things
- * that act in the maintainer's name, with their own token. Each token of the app
- * is made for one repository and only the permissions of its call, and lives in
- * memory for less than its hour.
+ * The REST API of GitHub, and its GraphQL API for the reply in a discussion, as the
+ * GitHub App of the pager and, for the two things that act in the maintainer's
+ * name, with their own token. Each token of the app is made for one repository and
+ * only the permissions of its call, and lives in memory for less than its hour.
  */
 import { base64url, utf8 } from "./crypto.ts";
+import type { Discussion } from "./store.ts";
 import type { Fetch } from "./telegram.ts";
 
 const API = "https://api.github.com";
@@ -128,6 +129,18 @@ export interface WorkflowRun {
 
 export type Permissions = Record<string, "read" | "write">;
 
+/** The thread of a comment of a discussion: that of its parent, for a reply. */
+const THREAD = `query($comment: ID!) {
+  node(id: $comment) { ... on DiscussionComment { replyTo { id } } }
+}`;
+
+/** A comment on a discussion, or a reply in the thread of one of its comments. */
+const REPLY = `mutation($discussion: ID!, $replyTo: ID, $body: String!) {
+  addDiscussionComment(input: {discussionId: $discussion, replyToId: $replyTo, body: $body}) {
+    comment { id }
+  }
+}`;
+
 export class GitHub {
   private readonly appId: string;
   private readonly appKey: string;
@@ -183,6 +196,32 @@ export class GitHub {
       throw new GitHubError(response.status, detail);
     }
     return response.json<T>();
+  }
+
+  /**
+   * A query or a mutation of the GraphQL API. GitHub answers 200 also when it
+   * refuses one, with its reasons in errors: the first of them is the detail.
+   */
+  private async graphql<T>(
+    token: string,
+    query: string,
+    variables: Record<string, unknown>,
+    /** A type of error, such as NOT_FOUND, whose data still answers the query. */
+    allowed?: string,
+  ): Promise<T> {
+    const answer = await this.json<{
+      data?: T;
+      errors?: { type?: string; message?: string }[];
+    }>(await this.call(token, "POST", "/graphql", { query, variables }));
+    const error = answer.errors?.[0];
+    const answers =
+      allowed !== undefined &&
+      error?.type === allowed &&
+      answer.data !== undefined;
+    if (error !== undefined && !answers) {
+      throw new GitHubError(200, error.message ?? "the GraphQL API refused");
+    }
+    return answer.data as T;
   }
 
   /** A token of the app for one repository, with only the permissions of a call. */
@@ -354,6 +393,39 @@ export class GitHub {
       ),
     );
     return answer.html_url;
+  }
+
+  /**
+   * Reply in a discussion, as the app: in the thread of the comment that it answers,
+   * which for a reply is the thread of its parent, since GitHub nests one level
+   * only, or as a comment of its own on the discussion itself.
+   */
+  async reply(
+    installation: number,
+    repo: string,
+    discussion: Discussion,
+    body: string,
+  ): Promise<void> {
+    const token = await this.token(installation, repo, {
+      discussions: "write",
+    });
+    let replyTo: string | null = null;
+    if (discussion.comment !== undefined) {
+      // A comment that is gone resolves to no node, with an error NOT_FOUND:
+      // the approved reply then goes on the discussion itself.
+      const found = await this.graphql<{
+        node: { replyTo: { id: string } | null } | null;
+      }>(token, THREAD, { comment: discussion.comment }, "NOT_FOUND");
+      replyTo =
+        found.node === null
+          ? null
+          : (found.node.replyTo?.id ?? discussion.comment);
+    }
+    await this.graphql(token, REPLY, {
+      discussion: discussion.node,
+      replyTo,
+      body,
+    });
   }
 
   /**

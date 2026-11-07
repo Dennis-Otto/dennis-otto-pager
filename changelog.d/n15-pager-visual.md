@@ -1,0 +1,3 @@
+### Features
+
+- A pull request of yours or of a bot that changes how something looks now shows its pictures in the chat: when its visual check passes and a picture looks different, the pager sends the largest changes before and after as one album, three at most, into the topic of the pull request, or of its release, with the list of what changed and a link to the run of the check. It comes at most once per head of the pull request and never for someone else's pull request; ✖ Ignore stops it, and the merge or the close of the pull request ticks its topic off. The app reads the pictures with the permission *Actions* that it has already, so nothing new needs to be set up.

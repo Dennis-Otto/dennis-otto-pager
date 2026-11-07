@@ -21,6 +21,8 @@ Der Pager ist ein Cloudflare Worker mit drei Türen und einem Zeitplan: `/github
 | `code_scanning_alert` created oder reopened auf dem Standard-Branch | Der Schweregrad ist high oder critical | Ein Eintrag in der Code-Scanning-Nachricht des Repositorys; behoben oder verworfen nimmt ihn heraus |
 | `check_suite` completed auf einem Branch von release-please | GitHub nennt den Pull Request clean: offen, kein Entwurf, in den Standard-Branch, jeder Pflicht-Check grün und aktuell | Die Release-Nachricht mit 🔀 **Mergen** |
 | `pull_request` synchronize, closed und merged; `release` published | Es ist das Release, das die Nachricht zeigt | Dieselbe Nachricht: *aktualisiert*, *gemergt*, *✅ veröffentlicht* |
+| `workflow_run` completed | `visual.yml`, der Visual Check, ist auf einem Pull Request des Repositorys an seinem Head grün, der einer des Maintainers oder eines Bots ist, und ein Bild sieht anders aus | Die Bilder vorher und nachher, im Thema des Releases oder einer eigenen Sache ([unten](#die-bilder-einer-sichtbaren-änderung)) |
+| `pull_request` closed | Es ist einer des Maintainers oder eines Bots, dessen Bilder der Pager zeigt | Seine Bilder sind erledigt: ✅ vor ihrem Thema |
 
 Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und ein neuer Fehler danach öffnet eine neue Nachricht, die benachrichtigt. Ein Eintrag im Alarm behält den Lauf von GitHub Actions, der scheiterte, wo er einen nennt: ein Pflicht-Check über die Adresse seines Jobs, etwa `…/actions/runs/31/job/2`, ein Release-Lauf über seine ID und ein Issue des Bot-Health-Bots über den Lauf in der Markierung seines Textes, `<!-- bot-health {"run": 31, …} -->`, die der Bot bei jedem Fehlschlag neu schreibt. Ein solcher Eintrag gibt dem Alarm 🔁 **Neu starten**.
 
@@ -40,6 +42,7 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 | Code Scanning | open | 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
 | Alarm, Code Scanning | fixing | ⏰ Später, ✖ Ignorieren |
 | Release | ready | 🔀 Mergen, ⏰ Später, ✖ Ignorieren |
+| Bilder | open | ✖ Ignorieren |
 | Erinnerung | open | ✅ Erneuert, ⏰ Später |
 
 - **🔀 Mergen** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
@@ -65,6 +68,21 @@ Das Steuer-Repository führt die Jobs einer Sache nacheinander aus. Ein Kommenta
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reply-to-a-discussion.de.dark.svg">
   <img src="images/diagrams/the-reply-to-a-discussion.de.svg" alt="Die Antwort auf eine Diskussion: Jemand anderes als Dennis oder ein Bot eröffnet eine Diskussion oder kommentiert eine. Eine Diskussion von Dennis und eine mit gewählter Antwort enden hier. Sonst zeigt der Pager sie in ihrem Thema und bittet das Steuer-Repository sofort um einen Entwurf, den Claude in Dennis' Stimme schreibt. Der Entwurf kommt mit Senden, Bearbeiten und Ignorieren. Senden postet genau diesen Entwurf als App des Pagers, im Thread des Kommentars, auf den er antwortet, oder an der Diskussion selbst. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die geantwortet wird, mit einem neuen Entwurf im selben Thema.">
+</picture>
+
+## Die Bilder einer sichtbaren Änderung
+
+Ein Repository, dessen Bilder seine App zeigen, etwa paperless-unified-search, lässt auf jedem Pull Request, der ändert, was sie zeigen, einen Visual Check laufen: Sein `visual.yml` rendert die Bilder neu, vergleicht jedes Pixel für Pixel mit dem committeten und behält jedes, das anders aussieht, in einem Artefakt seines Laufs, vorher und nachher, mit `report.json`, ihrer Liste mit dem Anteil der geänderten Pixel. Ist der Check auf einem Pull Request des Maintainers oder eines Bots grün, zeigt der Pager diese Bilder im Chat, wie [Entscheidung 0007](decisions/0007-the-pictures-of-a-visual-change-come-from-the-artifacts-of-its-check.md) erklärt:
+
+- **Wessen:** Der Pager fragt GitHub zuerst nach dem Pull Request. Einer von jemand anderem, einer aus einem Fork, dessen Lauf keinen Pull Request nennt, und einer, der zu einem neueren Head weiterzog, bekommen nichts: Was der Pull Request eines anderen rendert, ist seins, und ein neuerer Head bringt einen eigenen Check.
+- **Wohin:** Der Release-Pull-Request, den der Pager zeigt, bekommt sie im Thema des Releases, unter einer eigenen Nachricht, damit seine Nachricht 🔀 **Mergen** behält. Jeder andere bekommt eine eigene Sache, etwa *🖼 demo#8 Make it blue*, deren Nachricht die Bilder aufzählt, die anders aussehen, mit dem Anteil, der sich an jedem geändert hat, und auf den Lauf des Checks verlinkt, dessen Artefakte sie alle haben, jedes geänderte Pixel rot. Ihr einziger Knopf ist ✖ **Ignorieren**, der ihre Bilder stoppt; der Merge oder das Schließen des Pull Requests beendet sie, mit ✅ vor ihrem Thema.
+- **Was:** ein Album, mit `sendMediaGroup` der Bot API, der größten Änderungen vorher und nachher: höchstens drei Bilder, PNG- oder WebP-Dateien von höchstens 5 MB, in einer Größe, die Telegram als Foto nimmt. Ein GIF, ein Video und eine größere Datei bleiben hinter dem Link. Das Album direkt nach einer neuen Nachricht kommt leise, damit beide einmal benachrichtigen.
+- **Wie oft:** höchstens ein Album pro Head des Pull Requests. Ein Check, der am selben Head noch einmal läuft, schickt nichts, und ein neuerer Head, dessen Bilder anders aussehen, ändert die Nachricht an Ort und Stelle, mit einem Album, das benachrichtigt. Ein neuerer Head, dessen Bilder alle wieder aussehen wie committet, sagt das in der Nachricht, an Ort und Stelle; ein Pull Request, dessen Bilder sich nie geändert haben, schickt gar nichts.
+- **Wie:** mit einem Token der App für `actions: read` dieses einen Repositorys, das die App für 🔁 **Neu starten** hat, also ohne neues Secret. Der Pager listet die Artefakte des Laufs, `visual` oder eines pro Sprache, etwa `visual-en`, und fragt GitHub nach dem ZIP jedes einzelnen, zusammen höchstens 32 MB; GitHub antwortet mit der Adresse seines Speichers, für eine Minute signiert. Der Pager folgt ihr ohne das Token, das nur an GitHub geht, liest das ZIP im Speicher und entpackt nur den Bericht und die Bilder des Albums, nie auf mehr als die Größe, die das ZIP ihnen gibt. Er liest die Berichte jedes Repositorys: Ihre Liste heißt `pictures` oder `images`, ein Bild ist new oder added, deleted oder removed, und seine Dateien nennt sein Eintrag, oder es sind sein Pfad in `before/` und `after/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-pictures-of-a-visual-change.de.dark.svg">
+  <img src="images/diagrams/the-pictures-of-a-visual-change.de.svg" alt="Die Bilder einer sichtbaren Änderung: Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht, und sein Visual Check rendert die Bilder neu und behält jedes, das anders aussieht, in einem Artefakt, vorher und nachher. Ist der Check grün, fragt der Pager GitHub nach dem Pull Request, mit einem Token seiner App. Einer von jemand anderem, aus einem Fork oder einer, der zu einem neueren Head weiterzog, endet dort, ebenso ein Head, dessen Bilder schon kamen. Sonst liest der Pager das Artefakt mit demselben Token, über die kurzlebige Adresse seines Speichers. Sieht jedes Bild aus wie committet, kommt nichts. Sehen welche anders aus, geht ihre Nachricht in das Thema seines Releases oder einer eigenen Sache, und das Album der größten Änderungen folgt, vorher und nachher, höchstens drei Bilder. Der Merge oder das Ende des Pull Requests hakt das Thema ab.">
 </picture>
 
 ## Das Steuer-Repository

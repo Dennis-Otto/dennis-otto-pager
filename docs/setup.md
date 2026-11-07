@@ -83,14 +83,14 @@ The app is private, so only your account can install it. Its permissions:
 
 | Permission | Access | For |
 | --- | --- | --- |
-| Actions | Read and write | A release workflow that fails; 🔁 Rerun, which reads a run that failed and runs its failed jobs again |
+| Actions | Read and write | A release workflow that fails; 🔁 Rerun, which reads a run that failed and runs its failed jobs again; the pictures of a visual check |
 | Checks | Read | A required check that fails on `main`; a release whose checks finished |
 | Code scanning alerts | Read | An alert of severity high or critical |
 | Contents | Read and write | 🔀 Merge of a release; the events to the control repository |
 | Discussions | Read and write | A new discussion or a comment on one; ✅ Send of a reply in a discussion, as the app |
 | Issues | Read | A new issue; a `bot-failure` issue |
 | Metadata | Read | Required by GitHub; the required checks of `main` |
-| Pull requests | Read | A new pull request; the state of a release pull request |
+| Pull requests | Read | A new pull request; the state of a release pull request; who opened a pull request whose pictures changed, and its head |
 
 An app that you registered before 🔁 **Rerun** came has *Actions: Read*: raise it to *Read and write* in the settings of the app, under *Permissions & events*, and accept the new permission for each installation, as GitHub asks you in a mail. Until then, the button says that GitHub refused it.
 

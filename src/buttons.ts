@@ -72,6 +72,9 @@ export function allowed(item: Item): Action[] {
       }
     case "release":
       return item.state === "ready" ? ["merge", "later", "ignore"] : [];
+    case "pictures":
+      // Ignore stops the pictures of the pull request; they need nothing else.
+      return item.state === "open" ? ["ignore"] : [];
     case "reminder":
       return item.state === "open" ? ["done", "later"] : [];
   }

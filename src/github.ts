@@ -117,8 +117,48 @@ export interface PullRequest {
   draft?: boolean;
   mergeable_state?: string;
   html_url?: string;
-  head?: { ref?: string; sha?: string };
+  user?: { login?: string; type?: string };
+  head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   base?: { ref?: string; repo?: { default_branch?: string } };
+}
+
+/** An artifact of a run of GitHub Actions: its id, its name and its size in bytes. */
+export interface Artifact {
+  id: number;
+  name: string;
+  size: number;
+}
+
+/**
+ * The body of an answer, read up to max bytes: one that would be larger stops
+ * at once, so that no answer takes more of the memory of the Worker.
+ */
+async function readCapped(
+  response: Response,
+  max: number,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    length += value.length;
+    if (length > max) {
+      await reader.cancel();
+      throw new GitHubError(413, `the artifact is larger than ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
 }
 
 /** The parts of a run of GitHub Actions that 🔁 Rerun reads: those of its newest attempt. */
@@ -167,9 +207,11 @@ export class GitHub {
     method: string,
     path: string,
     body?: unknown,
+    redirect: RequestInit["redirect"] = "follow",
   ): Promise<Response> {
     const init: RequestInit = {
       method,
+      redirect,
       headers: {
         accept: "application/vnd.github+json",
         authorization: `Bearer ${token}`,
@@ -302,6 +344,75 @@ export class GitHub {
     return this.json<WorkflowRun>(
       await this.call(token, "GET", `/repos/${repo}/actions/runs/${id}`),
     );
+  }
+
+  /** The artifacts of a run that didn't expire, the first hundred. */
+  async artifacts(
+    installation: number,
+    repo: string,
+    run: number,
+  ): Promise<Artifact[]> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    const answer = await this.json<{
+      artifacts?: {
+        id?: unknown;
+        name?: unknown;
+        size_in_bytes?: unknown;
+        expired?: boolean;
+      }[];
+    }>(
+      await this.call(
+        token,
+        "GET",
+        `/repos/${repo}/actions/runs/${run}/artifacts?per_page=100`,
+      ),
+    );
+    return (answer.artifacts ?? []).flatMap(
+      ({ id, name, size_in_bytes, expired }) =>
+        Number.isSafeInteger(id) &&
+        typeof name === "string" &&
+        Number.isSafeInteger(size_in_bytes) &&
+        expired !== true
+          ? [{ id: id as number, name, size: size_in_bytes as number }]
+          : [],
+    );
+  }
+
+  /**
+   * The ZIP of an artifact, of at most max bytes. GitHub answers with the address
+   * of its storage, signed for a minute, which the pager follows without its token:
+   * the token goes to GitHub alone.
+   */
+  async artifactZip(
+    installation: number,
+    repo: string,
+    id: number,
+    max: number,
+  ): Promise<Uint8Array> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    const answer = await this.call(
+      token,
+      "GET",
+      `/repos/${repo}/actions/artifacts/${id}/zip`,
+      undefined,
+      "manual",
+    );
+    const location = answer.headers.get("location") ?? "";
+    if (answer.status !== 302 || !location.startsWith("https://")) {
+      if (answer.status >= 400) {
+        // GitHub's own reason, such as an artifact that expired.
+        await this.json(answer);
+      }
+      throw new GitHubError(answer.status, "no address of the artifact");
+    }
+    const file = await this.fetch(location, {
+      method: "GET",
+      headers: { "user-agent": AGENT },
+    });
+    if (!file.ok) {
+      throw new GitHubError(file.status, "the storage of the artifact refused");
+    }
+    return readCapped(file, max);
   }
 
   /** Run the failed jobs of a run again, and the jobs that need them, as a new attempt. */

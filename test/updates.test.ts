@@ -563,6 +563,47 @@ describe("buttons", () => {
       expect(empty.answer.text).toContain("out of date");
     });
 
+    it("replies in a discussion as the app, without the maintainer's token", async () => {
+      const w = await world({ userToken: null });
+      const answers = [
+        { data: { node: { replyTo: null } } },
+        { data: { addDiscussionComment: { comment: { id: "DC_9" } } } },
+      ];
+      w.net.on("POST", "/graphql", () => json(answers.shift()));
+      const discussion = contribution({
+        state: "draft",
+        draft: "Read the README.",
+        draftVersion: 2,
+        url: "https://github.com/Dennis-Otto/demo/discussions/31#discussioncomment-7",
+        discussion: { node: "D_1", comment: "DC_7" },
+      });
+      const stale = await pressing(w, discussion, `send:${ID}:1`);
+      expect(stale.answer.text).toContain("out of date");
+      expect(w.net.github("/graphql")).toHaveLength(0);
+      const sent = await pressing(w, discussion, `send:${ID}:2`);
+      expect(sent.answer.text).toBe("Sent.");
+      expect(sent.item).toMatchObject({
+        state: "sent",
+        note: "Posted in the discussion as the app of the pager.",
+      });
+      expect(w.net.github("/graphql")[1]?.body.variables).toEqual({
+        discussion: "D_1",
+        replyTo: "DC_7",
+        body: "Read the README.",
+      });
+      expect(w.net.github("/comments")).toHaveLength(0);
+
+      w.net.on("POST", "/graphql", () =>
+        json({ errors: [{ message: "Discussion is locked" }] }),
+      );
+      const locked = await pressing(w, discussion, `send:${ID}:2`);
+      expect(locked.answer).toMatchObject({
+        text: "GitHub refused: Discussion is locked",
+        show_alert: true,
+      });
+      expect(locked.item?.state).toBe("draft");
+    });
+
     it("refuses to send without the maintainer's token", async () => {
       const w = await world({ userToken: null });
       const { answer, item } = await pressing(w, drafted, `send:${ID}:2`);

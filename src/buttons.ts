@@ -4,7 +4,7 @@
  * only when the thing, in its state at the time of the press, still offers it, so
  * an old button of a changed message does nothing.
  */
-import type { Item } from "./store.ts";
+import type { Contribution, Item } from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 
@@ -28,22 +28,33 @@ export function label(t: Texts, action: Action): string {
   return t(`button.${action}`);
 }
 
+/** The actions of a contribution in its current state, in the order of its buttons. */
+function contribution(item: Contribution): Action[] {
+  switch (item.state) {
+    case "new":
+      return item.pull
+        ? ["draft", "later", "ignore"]
+        : ["draft", "assistant", "later", "ignore"];
+    case "drafting":
+      return ["later", "ignore"];
+    case "draft":
+      return ["send", "edit", "later", "ignore"];
+    default:
+      return [];
+  }
+}
+
 /** The actions that a thing offers in its current state, in the order of its buttons. */
 export function allowed(item: Item): Action[] {
   switch (item.kind) {
     case "contribution":
-      switch (item.state) {
-        case "new":
-          return item.pull
-            ? ["draft", "later", "ignore"]
-            : ["draft", "assistant", "later", "ignore"];
-        case "drafting":
-          return ["later", "ignore"];
-        case "draft":
-          return ["send", "edit", "later", "ignore"];
-        default:
-          return [];
-      }
+      // A discussion gets its draft by itself, which it sends, edits or ignores;
+      // the issue assistant answers issues only.
+      return item.discussion === undefined
+        ? contribution(item)
+        : contribution(item).filter(
+            (action) => action !== "later" && action !== "assistant",
+          );
     case "alarm":
     case "alert":
       switch (item.state) {

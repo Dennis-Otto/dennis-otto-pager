@@ -4,8 +4,16 @@ import { describe, expect, it } from "vitest";
 
 import { apply, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
-import { type Item, itemId, keys } from "../src/store.ts";
-import { json, REPO, type World, world } from "./helpers.ts";
+import { type Contribution, type Item, itemId, keys } from "../src/store.ts";
+import {
+  json,
+  REPO,
+  START,
+  type World,
+  withControl,
+  withTopics,
+  world,
+} from "./helpers.ts";
 
 const at = { repo: REPO, installation: 9 };
 
@@ -51,6 +59,178 @@ describe("contributions", () => {
       messageId: 100,
       draftVersion: 0,
     });
+  });
+});
+
+describe("discussions", () => {
+  const URL = "https://github.com/Dennis-Otto/demo/discussions/31";
+  const opened: Signal = {
+    ...at,
+    type: "discussion",
+    number: 31,
+    title: "How do I start?",
+    url: URL,
+    author: "octocat",
+    node: "D_1",
+  };
+  const commented: Signal = {
+    ...opened,
+    url: `${URL}#discussioncomment-7`,
+    author: "hubot",
+    comment: "DC_7",
+  };
+
+  /** A world whose chat has topics, and whose control repository takes the drafts. */
+  async function chat(): Promise<World> {
+    const w = await world();
+    withTopics(w.net);
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    return w;
+  }
+
+  const thing = async (w: World) =>
+    (await stored(w, keys.contribution(REPO, 31))) as Contribution;
+
+  it("ask for their draft at once, in a topic of their own", async () => {
+    const w = await chat();
+    expect(await apply(w.context, opened)).toBe("discussion shown");
+    const id = await itemId(keys.contribution(REPO, 31));
+    expect(w.net.github("/dispatches")[0]?.body).toEqual({
+      event_type: "pager-draft",
+      client_payload: {
+        item: id,
+        repo: REPO,
+        number: 31,
+        pull: false,
+        discussion: true,
+        language: "en",
+      },
+    });
+    expect(await thing(w)).toMatchObject({
+      kind: "contribution",
+      state: "drafting",
+      jobStarted: START,
+      discussion: { node: "D_1" },
+      messageId: 100,
+      topic: { thread: 900, name: "💬 demo#31 How do I start?" },
+    });
+    const message = w.net.telegram("sendMessage")[0]?.body;
+    expect(message.text).toContain("💬 <b>New discussion</b> in");
+    expect(message.text).toContain(`<a href="${URL}">#31 How do I start?</a>`);
+    // While Claude drafts, the thing can only be ignored.
+    expect(message.reply_markup.inline_keyboard).toEqual([
+      [{ text: "✖ Ignore", callback_data: `ignore:${id}` }],
+    ]);
+  });
+
+  it("answer the newest comment, with a new message, and open again once the reply went", async () => {
+    const w = await chat();
+    await apply(w.context, opened);
+    const drafted = await thing(w);
+    await w.context.store.put({
+      ...drafted,
+      state: "draft",
+      draft: "Read the README.",
+      draftVersion: 2,
+    });
+    expect(await apply(w.context, commented)).toBe("discussion shown anew");
+    const answering = await thing(w);
+    expect(answering).toMatchObject({
+      state: "drafting",
+      url: commented.url,
+      author: "hubot",
+      draft: null,
+      // No button of the old draft sends the next one.
+      draftVersion: 2,
+      discussion: { node: "D_1", comment: "DC_7" },
+      messageId: 101,
+      topic: { thread: 900 },
+    });
+    expect(w.net.github("/dispatches")[1]?.body.client_payload).toMatchObject({
+      discussion: true,
+      comment: "DC_7",
+    });
+    // The open message of the old one goes, as "Later" does with its own.
+    expect(
+      w.net.telegram("deleteMessage").map((c) => c.body.message_id),
+    ).toEqual([100]);
+    expect(w.net.telegram("sendMessage")[1]?.body).toMatchObject({
+      text: expect.stringContaining("💬 <b>New comment</b> on a discussion in"),
+      message_thread_id: 900,
+    });
+
+    await w.context.store.put({
+      ...answering,
+      state: "sent",
+      topic: { thread: 900, name: "✅ 💬 demo#31 How do I start?" },
+    });
+    expect(await apply(w.context, { ...commented, comment: "DC_8" })).toBe(
+      "discussion shown anew",
+    );
+    // The message of the reply that went stays as history, in the same topic.
+    expect(w.net.telegram("deleteMessage")).toHaveLength(1);
+    expect(w.net.telegram("sendMessage")[2]?.body.message_thread_id).toBe(900);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+    expect(
+      w.net.telegram("editForumTopic").map((call) => call.body.name),
+    ).toEqual(["💬 demo#31 How do I start?"]);
+    expect(await thing(w)).toMatchObject({
+      state: "drafting",
+      messageId: 102,
+      discussion: { comment: "DC_8" },
+    });
+  });
+
+  it("stay ignored once they were ignored", async () => {
+    const w = await chat();
+    await apply(w.context, opened);
+    await w.context.store.put({ ...(await thing(w)), state: "ignored" });
+    const calls = w.net.calls.length;
+    expect(await apply(w.context, commented)).toBe("discussion ignored");
+    expect(w.net.calls).toHaveLength(calls);
+  });
+
+  it("come without a draft, and say why, when the control repository can't take it", async () => {
+    const w = await world();
+    expect(await apply(w.context, opened)).toBe(
+      "discussion shown, without a draft",
+    );
+    const id = await itemId(keys.contribution(REPO, 31));
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      note: expect.stringContaining("isn't installed on Dennis-Otto/control"),
+    });
+    expect(await w.context.store.get(id)).not.toHaveProperty("jobStarted");
+    const buttons = w.net.telegram("sendMessage")[0]?.body.reply_markup;
+    expect(buttons.inline_keyboard).toEqual([
+      [
+        { text: "✍️ Draft a reply", callback_data: `draft:${id}` },
+        { text: "✖ Ignore", callback_data: `ignore:${id}` },
+      ],
+    ]);
+    withControl(w.net).on("POST", "/repos/Dennis-Otto/control/dispatches", () =>
+      json({ message: "Server Error" }, 502),
+    );
+    expect(await apply(w.context, commented)).toBe(
+      "discussion shown anew, without a draft",
+    );
+    expect((await thing(w)).note).toBe("GitHub refused: Server Error");
+    // Anything else than an answer of GitHub goes to the log of the webhook.
+    w.net.on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response("{", { status: 200 }),
+    );
+    w.net.on(
+      "GET",
+      "/repos/Dennis-Otto/control/installation",
+      () => new Response("{", { status: 200 }),
+    );
+    await expect(apply(w.context, commented)).rejects.toThrow(SyntaxError);
   });
 });
 

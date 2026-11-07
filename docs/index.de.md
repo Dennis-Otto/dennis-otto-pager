@@ -2,12 +2,12 @@
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
-Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, dass alles gut ist: ein Beitrag von außen, ein fehlschlagendes `main`, ein scheiterndes Release, ein Code-Scanning-Alarm mit Schweregrad high oder critical, ein grüner Release-Pull-Request und das Token von Claude im Steuer-Repository, bevor es abläuft. Jede Sache bekommt **eine Nachricht** mit ihren Knöpfen, in einem eigenen Thema, sobald der Threaded Mode für den Bot an ist, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert; was in einem Repository fehlschlägt, wird gebündelt, und nur eine neue Sache und die Antwort auf einen Entwurf oder Fix, den du gestartet hast, benachrichtigen. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, und eine erledigte Sache bekommt ein ✅ vor ihr Thema.
+Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, dass alles gut ist: ein Beitrag von außen, eine Diskussion oder ein Kommentar zu einer von jemand anderem, ein fehlschlagendes `main`, ein scheiterndes Release, ein Code-Scanning-Alarm mit Schweregrad high oder critical, ein grüner Release-Pull-Request und das Token von Claude im Steuer-Repository, bevor es abläuft. Jede Sache bekommt **eine Nachricht** mit ihren Knöpfen, in einem eigenen Thema, sobald der Threaded Mode für den Bot an ist, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert; was in einem Repository fehlschlägt, wird gebündelt, und nur eine neue Sache und die Antwort auf einen Entwurf oder Fix, den du gestartet hast, benachrichtigen. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, und eine erledigte Sache bekommt ein ✅ vor ihr Thema.
 
 | Knopf | Was er tut |
 | --- | --- |
 | 🔀 Mergen | Merged einen grünen Release-Pull-Request, was das Release veröffentlicht |
-| ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird |
+| ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird; in einer Diskussion kommt ihr Entwurf von selbst und geht als App |
 | 🤖 Assistent nochmal | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
 | 🔁 Neu starten | Startet die gescheiterten Jobs eines Laufs, der auf `main` scheiterte, erneut, ohne einen Lauf von Claude |
 | 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |

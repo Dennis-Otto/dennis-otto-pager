@@ -21,12 +21,13 @@ The pager writes only when something needs its maintainer, never to say that all
 | What happens on GitHub | What the message offers |
 | --- | --- |
 | Someone other than the maintainer or a bot opens an issue or a pull request | ✍️ **Draft a reply** in the maintainer's voice, which ✅ **Send** posts exactly as shown; 🤖 **Assistant again** for an issue |
+| Someone other than the maintainer or a bot opens a discussion or comments on one | Its draft of a reply right away, which ✅ **Send** posts as the pager's app, in the thread of the comment that it answers; ✏️ **Edit** |
 | A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🔁 **Rerun**, which runs the failed jobs of the run again, for a short outage of GitHub; 🛠 **Start fix** |
 | A code-scanning alert of severity high or critical appears on `main` | 🛠 **Start fix** |
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
 | The token of Claude in the control repository expires in three weeks | ✅ **Renewed** |
 
-Every message also has ⏰ **Later**, which brings it back after four hours, and ✖ **Ignore**. Each thing gets **one message**, which the pager edits in place as the thing changes, such as *Merging… → Merged → ✅ Published*; what fails in one repository is bundled into one message, which turns green again by itself when it is fixed. Only a new thing, and the answer of a draft or a fix that you started, notifies.
+Every message also has ✖ **Ignore**, and all but that of a discussion ⏰ **Later**, which brings it back after four hours. Each thing gets **one message**, which the pager edits in place as the thing changes, such as *Merging… → Merged → ✅ Published*; what fails in one repository is bundled into one message, which turns green again by itself when it is fixed. Only a new thing, and the answer of a draft or a fix that you started, notifies.
 
 Any other text to the bot goes to the private control repository, which answers with Claude Code and the maintainer's own subscription; reply to a message to ask about its thing. An answer that proposes an action, such as merging the release you asked about, comes with one ✅ **Confirm** button, and nothing acts without its press. Your text gets a 👀 when it goes, a 👍 when its answer comes and a 😢 when none came, and every answer, draft and fix ends with one line on its run of Claude: the model, the effort and the tokens, such as *🧮 Opus 5.5 · high · 48,213 tokens*.
 
@@ -45,7 +46,7 @@ The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de`
 
 - **Only the maintainer:** the Worker serves only the chat whose id `TELEGRAM_CHAT_ID` names, and only its user; every request proves where it comes from first: the secret header of Telegram, the HMAC signature of GitHub, the signature of the control repository with its time.
 - **Buttons, not commands:** a button runs one action of a fixed allowlist, and only while its thing still offers it; a merge checks again that the release is green at the head that the message showed. What an issue or a pull request says is data: it is shown, escaped, and never runs.
-- **Least privilege:** the GitHub App asks for what the pager uses and nothing else, and each of its tokens is made for one repository and the permissions of one call. Two things act in the maintainer's name, with their own token: a reply that they approved with ✅ **Send**, and the issue assistant past its rule of one comment.
+- **Least privilege:** the GitHub App asks for what the pager uses and nothing else, and each of its tokens is made for one repository and the permissions of one call. Two things act in the maintainer's name, with their own token: a reply on an issue or a pull request that they approved with ✅ **Send**, and the issue assistant past its rule of one comment; a reply in a discussion goes as the app.
 - **No secret in the repository or the logs:** the secrets live in Cloudflare, the state in Workers KV holds no secret, and the logs name the answers of the APIs, never a token or the text of an issue.
 - **Telegram is not end-to-end encrypted** for chats with a bot: Telegram can read the messages, which show titles of issues and drafts of replies. Free text and drafts run only in the **private** control repository, with Claude Code and the maintainer's own subscription, because the logs of Actions in a public repository are public.
 

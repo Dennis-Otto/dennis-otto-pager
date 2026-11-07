@@ -58,11 +58,16 @@ function what(item: Item, t: Texts): string {
   const repo = item.repo.slice(item.repo.indexOf("/") + 1);
   switch (item.kind) {
     case "contribution":
-      return t("topic.contribution", {
-        repo,
-        number: item.number,
-        title: item.title.replace(/\s+/g, " ").trim(),
-      });
+      return t(
+        item.discussion === undefined
+          ? "topic.contribution"
+          : "topic.discussion",
+        {
+          repo,
+          number: item.number,
+          title: item.title.replace(/\s+/g, " ").trim(),
+        },
+      );
     case "alarm":
       return t("topic.alarm", { repo });
     case "alert":
@@ -176,11 +181,14 @@ export interface About {
   kind: Kind;
   repo: string;
   state: Item["state"];
-  /** The number of the issue or pull request of a contribution or a release. */
+  /** The number of the issue, pull request or discussion of a contribution, or of a release. */
   number?: number;
   /** The version of a release. */
   version?: string;
-  /** Where GitHub shows it: the issue or pull request, or the pages of a bundle and each entry. */
+  /**
+   * Where GitHub shows it: the issue, the pull request, the discussion or the
+   * comment that its reply answers, or the pages of a bundle and each entry.
+   */
   links: string[];
   /**
    * Its message as the maintainer sees it, in the HTML of Telegram, which escapes

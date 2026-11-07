@@ -72,7 +72,7 @@ const en = {
   "message.check": "All of them before and after, each changed pixel in red",
 
   "picture.changed": "changed, {share} of its pixels",
-  "picture.resized": "changed in size",
+  "picture.resized": "another size or frames",
   "picture.new": "new",
   "picture.deleted": "deleted",
   "caption.before": "◀️ Before: {path}",
@@ -280,7 +280,7 @@ const de: Catalog = {
   "message.check": "Alle vorher und nachher, jedes geänderte Pixel rot",
 
   "picture.changed": "geändert, {share} seiner Pixel",
-  "picture.resized": "in der Größe geändert",
+  "picture.resized": "andere Größe oder Frames",
   "picture.new": "neu",
   "picture.deleted": "gelöscht",
   "caption.before": "◀️ Vorher: {path}",

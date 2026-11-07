@@ -114,12 +114,19 @@ export function readReport(text: string): Reported[] | null {
   });
 }
 
+/** A file that may be a photo, by its name: one of another kind is never read. */
+const PHOTO_FILE = /\.(?:png|webp)$/i;
+
 /**
  * How much a picture changed, for the order of the album: the share of its pixels,
- * all of it for a new one and one whose size changed, and nothing for one that is
- * gone, which shows only what was.
+ * all of it for a new one and one of another size or frames, and nothing for one
+ * that is gone, which shows only what was. A file that can't be a photo, such as a
+ * video, comes after all of them, so that the list starts with what the album shows.
  */
 function weight(picture: Changed): number {
+  if (!PHOTO_FILE.test(picture.path)) {
+    return -1;
+  }
   return picture.status === "deleted" ? 0 : (picture.share ?? 1);
 }
 
@@ -198,9 +205,6 @@ export function photoType(bytes: Uint8Array): Photo["type"] | null {
   }
   return png ? "image/png" : "image/webp";
 }
-
-/** A file that may be a photo, by its name: one of another kind is never read. */
-const PHOTO_FILE = /\.(?:png|webp)$/i;
 
 /** The sides of a picture that its album shows, with the caption of each. */
 const SIDES = {

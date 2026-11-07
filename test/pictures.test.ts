@@ -1,7 +1,7 @@
 // The pictures of a visual change: what the pager reads of the artifact of the
 // visual check, the album that it sends, and the thing of the pull request, from
 // its first head to its end.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { press } from "../src/actions.ts";
 import { allowed } from "../src/buttons.ts";
@@ -217,20 +217,24 @@ describe("the report of a visual check", () => {
     expect(readReport('{"images": "none"}')).toBeNull();
   });
 
-  it("puts the largest change first, and a picture that is gone last", () => {
+  it("puts the largest change first, a picture that is gone after it, and a video last", () => {
     const pictures: Changed[] = [
       { path: "gone.png", status: "deleted", share: null },
       { path: "small.png", status: "changed", share: 0.01 },
       { path: "resized.png", status: "changed", share: null },
       { path: "added.png", status: "new", share: null },
+      { path: "docs/images/demo.mp4", status: "changed", share: null },
       { path: "half.png", status: "changed", share: 0.5 },
+      { path: "shot.WEBP", status: "changed", share: 0.2 },
     ];
     expect(largestFirst(pictures).map(({ path }) => path)).toEqual([
       "resized.png",
       "added.png",
       "half.png",
+      "shot.WEBP",
       "small.png",
       "gone.png",
+      "docs/images/demo.mp4",
     ]);
   });
 });
@@ -275,9 +279,9 @@ describe("the artifact of a visual check", () => {
     const found = await read([await artifact(changes)]);
     expect(found.changed.map(({ path }) => path)).toEqual([
       "screenshots/added.png",
-      "docs/images/demo.gif",
       "screenshots/large.png",
       "screenshots/small.png",
+      "docs/images/demo.gif",
     ]);
     expect(found.shown).toBe(MAX_ALBUM);
     expect(found.photos.map(({ caption }) => caption)).toEqual([
@@ -452,7 +456,7 @@ describe("the text of the pictures", () => {
       [
         `🖼 <b>6 pictures look different</b> in <a href="https://github.com/${REPO}">${REPO}</a> at <code>a1b2c3d</code>: <a href="https://github.com/${REPO}/pull/8">#8 Make it &lt;b&gt;</a>`,
         "• <code>a.png</code>: changed, 2.31 % of its pixels",
-        "• <code>b.png</code>: changed in size",
+        "• <code>b.png</code>: another size or frames",
         "• <code>c.png</code>: new",
         "• <code>d.png</code>: deleted",
         "• <code>e.png</code>: changed, < 0.01 % of its pixels",
@@ -800,6 +804,62 @@ describe("the pictures of a pull request", () => {
     expect(text).toContain("<b>2 pictures look different</b>");
     expect(text.indexOf("de/a.png")).toBeLessThan(text.indexOf("en/a.png"));
     expect(media(w)).toHaveLength(4);
+  });
+
+  it("leave out an artifact that GitHub refuses, and read each within what is left", async () => {
+    const w = await withArtifact(
+      await artifact([{ path: "en/a.png", status: "changed", share: 0.1 }]),
+    );
+    w.net
+      .on("GET", ARTIFACTS, () =>
+        json({
+          artifacts: [
+            { id: 56, name: "visual-de", size_in_bytes: 1000 },
+            { id: 55, name: "visual-en", size_in_bytes: 1000 },
+          ],
+        }),
+      )
+      .on("GET", `/repos/${REPO}/actions/artifacts/56/zip`, () =>
+        json({ message: "Artifact has expired" }, 410),
+      );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await apply(w.context, signal())).toBe("pictures shown");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("artifact 56 of"),
+    );
+    warn.mockRestore();
+    const text = w.net.telegram("sendMessage")[0]?.body.text;
+    expect(text).toContain("en/a.png");
+    expect(media(w)).toHaveLength(2);
+  });
+
+  it("read the next artifact only within what the first left of the limit", async () => {
+    const first = await artifact([
+      { path: "en/a.png", status: "changed", share: 0.1 },
+    ]);
+    const w = await withArtifact(first);
+    const spy = vi.spyOn(w.context.github, "artifactZip");
+    w.net.on("GET", ARTIFACTS, () =>
+      json({
+        artifacts: [
+          { id: 55, name: "visual-en", size_in_bytes: 1000 },
+          { id: 56, name: "visual-de", size_in_bytes: 1000 },
+        ],
+      }),
+    );
+    await apply(w.context, signal());
+    expect(spy.mock.calls.map((call) => call[3])).toEqual([
+      32 * 1024 * 1024,
+      32 * 1024 * 1024 - first.length,
+    ]);
+  });
+
+  it("fail on an error of an artifact that isn't GitHub's", async () => {
+    const w = await withArtifact(await artifact(changes));
+    w.net.on("GET", STORAGE, () => {
+      throw new TypeError("network down");
+    });
+    await expect(apply(w.context, signal())).rejects.toThrow("network down");
   });
 
   it("need an artifact that the pager reads", async () => {

@@ -448,16 +448,29 @@ async function pictures(
   if (kept.length === 0) {
     return "no pictures: the run kept no artifact that the pager reads";
   }
+  // Each download may take only what is left of MAX_ARTIFACT, whatever size GitHub
+  // listed; one that GitHub or its storage refuses, such as an artifact that expired
+  // since the list, leaves out only itself.
   const artifacts: Artifact[] = [];
+  let spent = 0;
   for (const { id } of kept) {
-    const found = await readArtifact(
-      await context.github.artifactZip(
+    let bytes: Uint8Array;
+    try {
+      bytes = await context.github.artifactZip(
         signal.installation,
         signal.repo,
         id,
-        MAX_ARTIFACT,
-      ),
-    );
+        MAX_ARTIFACT - spent,
+      );
+    } catch (error) {
+      if (!(error instanceof GitHubError)) {
+        throw error;
+      }
+      console.warn(`artifact ${id} of ${signal.repo}: ${error.message}`);
+      continue;
+    }
+    spent += bytes.length;
+    const found = await readArtifact(bytes);
     if (found !== null) {
       artifacts.push(found);
     }

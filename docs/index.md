@@ -11,7 +11,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | 🤖 Assistant again | Lets the issue assistant answer an issue again, past its rule of one comment |
 | 🔁 Rerun | Runs the failed jobs of a run that failed on `main` again, without a run of Claude |
 | 🛠 Start fix | Sends what fails to the control repository, which prepares a fix |
-| ✅ Confirm | Runs the one action that an answer to your text proposes, such as a merge, while its thing still offers it |
+| ✅ Confirm | Runs the one action that an answer of the control repository proposes, such as a merge you asked about, or 🔁 Rerun after a fix found an outage of GitHub, while its thing still offers it |
 | ⏰ Later, ✖ Ignore | Brings the thing back after four hours, or closes it |
 
 The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for this pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository.

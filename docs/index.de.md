@@ -11,7 +11,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | 🤖 Assistent nochmal | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
 | 🔁 Neu starten | Startet die gescheiterten Jobs eines Laufs, der auf `main` scheiterte, erneut, ohne einen Lauf von Claude |
 | 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
-| ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort auf deinen Text vorschlägt, etwa ein Merge, solange ihre Sache sie noch anbietet |
+| ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort des Steuer-Repositorys vorschlägt, etwa ein Merge, nach dem du gefragt hast, oder 🔁 Neu starten, wenn ein Fix einen Ausfall von GitHub fand, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
 
 Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für diesen Pager, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.

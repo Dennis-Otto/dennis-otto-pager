@@ -54,6 +54,11 @@ export interface Discussion {
   node: string;
   /** The id of the comment whose thread the reply goes into; none for the discussion itself. */
   comment?: string;
+  /**
+   * Set when a comment came while the draft of an older one was still being
+   * written: that draft is dropped when it comes, and the next one is asked for.
+   */
+  redraft?: boolean;
 }
 
 /**

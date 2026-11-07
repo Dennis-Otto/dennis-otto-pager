@@ -15,7 +15,15 @@ import {
   keys,
   type Release,
 } from "../src/store.ts";
-import { base, json, REPO, START, type World, world } from "./helpers.ts";
+import {
+  base,
+  json,
+  REPO,
+  START,
+  type World,
+  withControl,
+  world,
+} from "./helpers.ts";
 
 const ID = "i0123456789abcde";
 
@@ -161,6 +169,63 @@ describe("the control repository", () => {
     expect(
       (await send(w, { type: "draft", item: ID, text: "Again" })).status,
     ).toBe(409);
+  });
+});
+
+describe("the draft of an older comment of a discussion", () => {
+  const waiting: Contribution = {
+    ...contribution,
+    url: "https://github.com/Dennis-Otto/demo/discussions/12#discussioncomment-8",
+    discussion: { node: "D_1", comment: "DC_8", redraft: true },
+  };
+
+  it("is dropped, and the draft for the newest comment is asked for", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    await w.context.store.put(waiting);
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_7" }),
+    ).toEqual({ status: 200, text: "dropped" });
+    expect(w.net.github("/dispatches")[0]?.body.client_payload).toMatchObject({
+      item: ID,
+      discussion: true,
+      comment: "DC_8",
+    });
+    const item = (await w.context.store.get(ID)) as Contribution;
+    expect(item).toMatchObject({
+      state: "drafting",
+      draft: null,
+      jobStarted: START,
+      discussion: { node: "D_1", comment: "DC_8" },
+    });
+    expect(item.discussion).not.toHaveProperty("redraft");
+    // Send has nothing to post yet: no reply to the older comment goes.
+    expect(w.net.telegram("editMessageText")[0]?.body.text).not.toContain(
+      "Answers DC_7",
+    );
+    // The draft of the newest comment is shown as usual.
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_8" }),
+    ).toEqual({ status: 200, text: "drafted" });
+  });
+
+  it("is dropped when its job failed, and the buttons come back when no new job can start", async () => {
+    const w = await world();
+    await w.context.store.put(waiting);
+    expect(
+      await send(w, { type: "failed", item: ID, text: "The job failed" }),
+    ).toEqual({ status: 200, text: "dropped" });
+    const item = (await w.context.store.get(ID)) as Contribution;
+    expect(item).toMatchObject({
+      state: "new",
+      note: expect.stringContaining("isn't installed on Dennis-Otto/control"),
+    });
+    expect(item.discussion).not.toHaveProperty("redraft");
+    expect(item).not.toHaveProperty("jobStarted");
   });
 });
 

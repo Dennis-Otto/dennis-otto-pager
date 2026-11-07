@@ -10,7 +10,7 @@
  */
 import { type Action, allowed, callbackData, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
-import { type Context, show } from "./pager.ts";
+import { type Context, draftOrWhyNot, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import { beforeJob, type Item, itemId, keys } from "./store.ts";
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
@@ -315,6 +315,19 @@ export async function handleControl(
     const ends = beforeJob(item) !== undefined;
     await show(context, item, ends);
     return new Response("noted");
+  }
+  if (item.kind === "contribution" && item.discussion?.redraft === true) {
+    // A newer comment came while this job ran: its draft, or its failure,
+    // belongs to an older comment, so it is dropped, and the draft for the
+    // newest is asked for.
+    const failed = await draftOrWhyNot(context, item);
+    if (failed !== null) {
+      delete item.discussion.redraft;
+      item.state = "new";
+    }
+    item.note = failed;
+    await show(context, item);
+    return new Response("dropped");
   }
   if (message.type === "failed") {
     const before = beforeJob(item);

@@ -294,14 +294,37 @@ describe("the GitHub App", () => {
       "Thanks!",
     );
     expect(top.github("/graphql")[1]?.body.variables.replyTo).toBe("DC_2");
-    const gone = graphql({ data: { node: null } }, added);
+    // A comment that is gone: GitHub answers NOT_FOUND next to no node, and the
+    // approved reply goes on the discussion itself rather than being lost.
+    const notFound = {
+      type: "NOT_FOUND",
+      message: "Could not resolve to a node with the global id of 'DC_2'",
+    };
+    const gone = graphql({ data: { node: null }, errors: [notFound] }, added);
     await (await github(gone)).reply(
       9,
       "Dennis-Otto/demo",
       { node: "D_1", comment: "DC_2" },
       "Thanks!",
     );
-    expect(gone.github("/graphql")[1]?.body.variables.replyTo).toBe("DC_2");
+    expect(gone.github("/graphql")[1]?.body.variables.replyTo).toBeNull();
+    // NOT_FOUND without data, or of the reply itself, still refuses.
+    const empty = graphql({ errors: [notFound] });
+    await expect(
+      (await github(empty)).reply(
+        9,
+        "Dennis-Otto/demo",
+        { node: "D_1", comment: "DC_2" },
+        "Thanks!",
+      ),
+    ).rejects.toThrow("Could not resolve");
+    const lost = graphql({
+      data: { addDiscussionComment: null },
+      errors: [notFound],
+    });
+    await expect(
+      (await github(lost)).reply(9, "Dennis-Otto/demo", { node: "D_1" }, "x"),
+    ).rejects.toThrow("Could not resolve");
 
     // The discussion itself takes the reply as a comment of its own.
     const own = graphql(added);

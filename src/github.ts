@@ -206,13 +206,19 @@ export class GitHub {
     token: string,
     query: string,
     variables: Record<string, unknown>,
+    /** A type of error, such as NOT_FOUND, whose data still answers the query. */
+    allowed?: string,
   ): Promise<T> {
     const answer = await this.json<{
       data?: T;
-      errors?: { message?: string }[];
+      errors?: { type?: string; message?: string }[];
     }>(await this.call(token, "POST", "/graphql", { query, variables }));
     const error = answer.errors?.[0];
-    if (error !== undefined) {
+    const answers =
+      allowed !== undefined &&
+      error?.type === allowed &&
+      answer.data !== undefined;
+    if (error !== undefined && !answers) {
       throw new GitHubError(200, error.message ?? "the GraphQL API refused");
     }
     return answer.data as T;
@@ -405,10 +411,15 @@ export class GitHub {
     });
     let replyTo: string | null = null;
     if (discussion.comment !== undefined) {
+      // A comment that is gone resolves to no node, with an error NOT_FOUND:
+      // the approved reply then goes on the discussion itself.
       const found = await this.graphql<{
-        node?: { replyTo?: { id?: string } | null } | null;
-      }>(token, THREAD, { comment: discussion.comment });
-      replyTo = found.node?.replyTo?.id ?? discussion.comment;
+        node: { replyTo: { id: string } | null } | null;
+      }>(token, THREAD, { comment: discussion.comment }, "NOT_FOUND");
+      replyTo =
+        found.node === null
+          ? null
+          : (found.node.replyTo?.id ?? discussion.comment);
     }
     await this.graphql(token, REPLY, {
       discussion: discussion.node,

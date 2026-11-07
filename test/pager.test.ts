@@ -185,6 +185,28 @@ describe("discussions", () => {
     });
   });
 
+  it("wait with the draft of a new comment while the draft of an older one is written", async () => {
+    const w = await chat();
+    await apply(w.context, opened);
+    w.clock.now = START + 60_000;
+    expect(await apply(w.context, commented)).toBe(
+      "discussion shown anew, its draft waits for the older one",
+    );
+    // The control repository runs one job per thing at a time: the next one is
+    // asked for once the draft of the older one comes, and is dropped.
+    expect(w.net.github("/dispatches")).toHaveLength(1);
+    expect(await thing(w)).toMatchObject({
+      state: "drafting",
+      jobStarted: START + 60_000,
+      url: commented.url,
+      discussion: { node: "D_1", comment: "DC_7", redraft: true },
+      messageId: 101,
+    });
+    expect(
+      w.net.telegram("deleteMessage").map((c) => c.body.message_id),
+    ).toEqual([100]);
+  });
+
   it("stay ignored once they were ignored", async () => {
     const w = await chat();
     await apply(w.context, opened);

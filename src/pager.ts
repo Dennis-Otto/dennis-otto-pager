@@ -14,6 +14,7 @@ import {
   type Alarm,
   type Alert,
   type Contribution,
+  type Discussion,
   type Entry,
   type Item,
   isClosed,
@@ -124,8 +125,25 @@ export async function askForDraft(
   if (failed === null) {
     item.state = "drafting";
     item.jobStarted = context.now();
+    // The job just asked for answers the newest comment.
+    delete discussion?.redraft;
   }
   return failed;
+}
+
+/** Ask for the draft of a discussion; returns why it couldn't, or null once it could. */
+export async function draftOrWhyNot(
+  context: Context,
+  item: Contribution,
+): Promise<string | null> {
+  try {
+    return await askForDraft(context, item);
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    return context.t("answer.refused", { detail: error.detail });
+  }
 }
 
 function base(id: string, repo: string, installation: number) {
@@ -244,6 +262,10 @@ async function discussion(
     return "discussion ignored";
   }
   const open = known !== null && !isClosed(known);
+  const thread: Discussion = {
+    node: signal.node,
+    ...(signal.comment === undefined ? {} : { comment: signal.comment }),
+  };
   const item: Contribution = {
     ...base(id, signal.repo, signal.installation),
     kind: "contribution",
@@ -256,22 +278,22 @@ async function discussion(
     draft: null,
     // Counts on, so that no button of an older draft sends the next one.
     draftVersion: known?.draftVersion ?? 0,
-    discussion: {
-      node: signal.node,
-      ...(signal.comment === undefined ? {} : { comment: signal.comment }),
-    },
+    discussion: thread,
     messageId: open ? known.messageId : null,
     topic: known?.topic ?? null,
   };
-  let failed: string | null;
-  try {
-    failed = await askForDraft(context, item);
-  } catch (error) {
-    if (!(error instanceof GitHubError)) {
-      throw error;
-    }
-    failed = context.t("answer.refused", { detail: error.detail });
+  if (open && known.state === "drafting" && known.discussion !== undefined) {
+    // The job for the draft of an older comment is still running, and the
+    // control repository runs one job per thing at a time: its draft is dropped
+    // when it comes, and the draft for this comment is asked for then.
+    // The hour that the schedule waits counts from now, for both jobs.
+    item.state = "drafting";
+    item.jobStarted = context.now();
+    thread.redraft = true;
+    await show(context, item, true);
+    return "discussion shown anew, its draft waits for the older one";
   }
+  const failed = await draftOrWhyNot(context, item);
   // Without its job, the thing offers ✍️ Draft a reply, and its note says why.
   item.note = failed;
   await show(context, item, open);

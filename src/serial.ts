@@ -4,7 +4,8 @@
  * shows a write in other places of Cloudflare's network only after a while: two
  * failing checks at the same moment, or a button pressed twice, would each read
  * the old state and overwrite the other. Here, in one place, the changes run one
- * after another, and each reads what the one before wrote.
+ * after another, and each reads what the one before wrote. Its own storage keeps
+ * the pager's notes on itself, such as the time of the schedule's last run.
  */
 import { DurableObject } from "cloudflare:workers";
 
@@ -37,6 +38,7 @@ export class Serial extends DurableObject<PagerEnv> {
       undefined,
       undefined,
       this.exclusive,
+      this.ctx.storage,
     );
   }
 

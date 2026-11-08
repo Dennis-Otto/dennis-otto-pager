@@ -139,7 +139,8 @@ The body is one of:
 - `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
 - `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again;
 - `{"type": "failed", "item": "<id>", "text": "<why>", "action": "rerun"}`: a fix that made no change and proposes one action of its alarm or alert, such as 🔁 Rerun when the logs show an outage of GitHub or of a download. The thing goes back as above, with the reason as its note, but its message keeps its place, and the answer comes in the thing's topic as a proposal, with a single ✅ Confirm button, which notifies. A thing that doesn't offer the action then, such as an alarm whose entries name no run, comes back as for any failed job. An older pager ignores `action`, so either side may deploy first;
-- `{"type": "failed", "text": "<why>"}`: free text whose answer didn't come to be, shown as a message of its own.
+- `{"type": "failed", "text": "<why>"}`: free text whose answer didn't come to be, shown as a message of its own;
+- `{"type": "health"}`: the check of the workflow *Health*, once a day, which the pager answers with its [health](#the-health-of-the-pager), as JSON, and which changes nothing.
 
 An answer to free text, a note or a failure without `item` or a proposal, carries `"message": <id>`, the `message` of its `pager-text`. The pager then turns the 👀 on that text into 👍, or into 😢 for a failure; a job started by hand in the Actions tab has no text, and leaves it out. The answer goes into the thread of that text, as [the thread of an answer](#the-thread-of-an-answer) says.
 
@@ -153,6 +154,8 @@ Each body may carry what the run of Claude took from the weekly limit of the sub
   "models": [{"model": "claude-opus-5-5", "tokens": 48213}]
 }
 ```
+
+Each body may also name the day on which `PAGER_FIX_TOKEN` of the control repository expires, which its jobs read from GitHub, for its [reminder](#the-tokens-that-expire): `"tokens": {"fix": "2026-12-03"}`, or `{"fix": null}` for a token without a day. A value that the pager can't read is passed over, so that no draft fails over it, and an older pager ignores `tokens`, so either side may deploy first.
 
 `effort` is the `--effort` that the workflow set: `low`, `medium`, `high`, `xhigh` or `max`. `models` names each model that worked, as many as five, with every token that it read and wrote, the cache included, from the `modelUsage` of the result in the transcript of the Claude Code action. The message shows it below the answer, on one line, in the language of the pager:
 
@@ -337,8 +340,58 @@ GitHub never delivers an event of a webhook again by itself. When handling one f
 
 This needs no permission of the app and no secret: the JWT of the app reads and asks for the deliveries of its own webhook.
 
+## When the pager breaks
+
+The pager writes only when something needs its maintainer, so a quiet day looks the same whether all is well or the pager is dead: a token of the bot that Telegram no longer takes, a webhook that stopped delivering, a schedule that no longer runs, a key of the app that GitHub refuses, or a token of the maintainer that expired. Two things tell the maintainer before that: the reminders of the tokens that expire, and a check of the pager's health once a day, from the control repository, whose failure GitHub reports by itself.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/when-the-pager-breaks.dark.svg">
+  <img src="images/diagrams/when-the-pager-breaks.svg" alt="When the pager breaks: Once a day, the workflow Health of the private control repository sends the pager the signed body health. The pager answers with when its schedule last ran, whether Telegram takes the token of the bot and delivers to its webhook, whether GitHub takes the key of the app, and when the tokens expire, without a secret. When all is well, the run passes and nothing is said. When something is wrong, or the pager doesn't answer, the run fails with an error that names it, and GitHub notifies Dennis of the failed run by itself, also when Telegram or the Worker is what broke. Besides, the schedule reads the day of GITHUB_USER_TOKEN from GitHub once a day, and three weeks before a token expires a reminder comes in a topic of its own, with how to renew it.">
+</picture>
+
+### The tokens that expire
+
+| Token | Used by | Where its day comes from | How to renew it |
+| --- | --- | --- | --- |
+| `CLAUDE_CODE_OAUTH_TOKEN` of the control repository | every job of Claude | `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` | `claude setup-token`, `gh secret set CLAUDE_CODE_OAUTH_TOKEN`, and the new day in `wrangler.jsonc` |
+| `GITHUB_USER_TOKEN` of the Worker | ✅ Send on an issue or a pull request, 🤖 Assistant again | the header `github-authentication-token-expiration` of GitHub, which the schedule reads once a day | regenerate it on GitHub, then `npx wrangler secret put GITHUB_USER_TOKEN` |
+| `PAGER_FIX_TOKEN` of the control repository | the pull request of 🛠 Start fix | `tokens.fix` in the answers of the control repository, which reads the same header | regenerate it on GitHub, then `gh secret set PAGER_FIX_TOKEN` |
+
+- **Three weeks before a token's day,** a 🔔 reminder comes in a topic of its own, such as *🔔 GitHub token of the pager*, with the day and how to renew the token; ✅ Renewed closes it, and ⏰ Later puts it aside. It comes once per token and day, so a renewed token with a new day reminds again three weeks before that day. A token without a day, or a header that the pager can't read, reminds of nothing.
+- **Once a day,** by the day in UTC, the schedule asks GitHub about `GITHUB_USER_TOKEN` with `GET /rate_limit`, which counts against no limit of the API, and reads the header of its answer: a fine-grained token expires after 30 days unless its maintainer chose another day. A new token is asked about at once, which the pager tells by a short hash of it in the storage of the Durable Object; the token itself is kept nowhere but in the secrets of Cloudflare. When GitHub fails to answer, the log says so and the next run asks again.
+- **A token that GitHub refuses** with `401`, because it expired or was revoked, gets a reminder of its own, once until GitHub takes it again. ✅ Send and 🤖 Assistant again then answer *GitHub refuses GITHUB_USER_TOKEN: it expired or was revoked*, instead of a bare refusal.
+
+### The health of the pager
+
+The workflow *Health* of the control repository runs once a day and by hand, without permissions of its own, and sends `{"type": "health"}` to `/control`, signed as every answer of the control repository. The pager answers with JSON that names no secret:
+
+```json
+{
+  "schedule": "2026-11-08T06:45:00.000Z",
+  "telegram": {
+    "ok": true,
+    "webhook": true,
+    "pending": 0,
+    "lastError": {"at": "2026-11-07T21:12:03.000Z", "message": "Wrong response from the webhook: 502 Bad Gateway"}
+  },
+  "github": {"ok": true},
+  "tokens": {
+    "claude": {"expires": "2027-10-07"},
+    "user": {"expires": "2026-12-03"},
+    "fix": {"expires": "2026-12-04"}
+  }
+}
+```
+
+- `schedule` is when the schedule last ran to its end, which it notes in the storage of the Durable Object, or `null` when it never did.
+- `telegram` says whether Telegram takes the token of the bot, with `getMe`, and from `getWebhookInfo` whether a webhook is set, how many updates still wait for it, and its last error, if Telegram keeps one. A refusal is `{"ok": false, "error": "Telegram getMe: Unauthorized"}`.
+- `github` says whether GitHub takes the key of the app, with `GET /app` and the JWT of the app; a refusal names GitHub's answer.
+- `tokens` names what the pager knows of each token: its day, `null` for none, and for `user` also `refused`, the day since which GitHub refuses it. A token that the pager knows nothing of yet is left out.
+
+The run fails, with an `::error::` that names what is wrong, when the pager doesn't answer, the schedule is older than an hour, Telegram refuses the bot, no webhook is set or it reported an error in the last day, GitHub refuses the app, or a token expires within a week or is refused. GitHub notifies the maintainer of a failed run of a schedule by itself, by mail and on github.com, which works also when Telegram or the Worker is the part that broke. The check takes about a minute of the private repository's Actions minutes a day, and no secret beyond the one that signs its answers.
+
 ## State
 
 Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the start of its text, the draft, whether it is the maintainer's own, with the ids of the discussion and of the comment that its reply answers for a discussion, and for an issue or a pull request the id of the newest comment of someone else and when one last notified, and for a release the lines of its notes that the message shows; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
-Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.
+Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object is one of SQLite, which the free plan of Workers offers, and its own storage keeps only the pager's notes on itself: the time of the schedule's last run, written once per run, and what the pager knows of the tokens of GitHub, their days and the short hash that says which `GITHUB_USER_TOKEN` it checked. In Workers KV, a write every 15 minutes would take a tenth of its 1000 writes a day.

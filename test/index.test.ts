@@ -405,6 +405,29 @@ describe("the schedule", () => {
     );
   });
 
+  it("notes its last run in the Durable Object, which the health of the pager answers", async () => {
+    const running = createExecutionContext();
+    await worker.scheduled(
+      createScheduledController(),
+      await secrets(),
+      running,
+    );
+    await waitOnExecutionContext(running);
+    const body = JSON.stringify({ type: "health" });
+    const stamp = String(Math.floor(Date.now() / 1000));
+    const response = await call(
+      post("/control", body, {
+        "x-pager-timestamp": stamp,
+        "x-pager-signature": `sha256=${await hmacHex("control-secret", `${stamp}.${body}`)}`,
+      }),
+    );
+    expect(response.status).toBe(200);
+    const answer = await response.json<{ schedule: string | null }>();
+    expect(Date.parse(String(answer.schedule))).toBeGreaterThan(
+      Date.now() - 60 * 1000,
+    );
+  });
+
   it("logs a run that failed", async () => {
     net.on("POST", /sendMessage$/, () =>
       json({ ok: false, description: "Forbidden" }, 403),

@@ -2,18 +2,20 @@
  * The schedule of the Worker, every 15 minutes: a thing that "Later" put aside
  * comes back as a new message when its time is up, a thing whose job of the
  * control repository didn't answer in time gets its buttons back, a text of the
- * maintainer whose answer didn't come in time gets its 😢, the reminder of the
- * token of Claude comes three weeks before it expires, and an event of GitHub that
- * the pager failed to handle comes again (src/deliveries.ts).
+ * maintainer whose answer didn't come in time gets its 😢, the reminder of each
+ * token of the maintainer comes three weeks before it expires (src/tokens.ts), and
+ * an event of GitHub that the pager failed to handle comes again
+ * (src/deliveries.ts). A run that comes to its end says so in the storage of the
+ * Durable Object, for the check of the pager's health (src/health.ts).
  */
 import { failedEvents } from "./deliveries.ts";
+import { RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
-import { beforeJob, type Item, itemId, keys } from "./store.ts";
+import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
+import { remindTokens } from "./tokens.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
-/** How many days before the token of Claude expires the pager reminds. */
-export const REMIND_DAYS = 21;
 
 /**
  * How long a text of the maintainer, and a thing whose button started a job, wait
@@ -88,54 +90,12 @@ async function noAnswer(
   return done;
 }
 
-async function remind(context: Context): Promise<string | null> {
-  const expires = context.settings.tokenExpires;
-  if (expires === null) {
-    return null;
-  }
-  const left = Math.ceil(
-    (Date.parse(`${expires}T00:00:00Z`) - context.now()) / DAY,
-  );
-  if (left > REMIND_DAYS) {
-    return null;
-  }
-  const id = await itemId(keys.reminder(`claude-token:${expires}`));
-  if ((await context.store.get(id)) !== null) {
-    return null;
-  }
-  const repo = context.settings.controlRepository;
-  const { t } = context;
-  const date = t.date(expires);
-  const text =
-    left > 0
-      ? t("reminder.soon", {
-          repo,
-          date,
-          days:
-            left === 1
-              ? t("reminder.days.one")
-              : t("reminder.days.many", { days: left }),
-        })
-      : t("reminder.expired", { repo, date });
-  await show(context, {
-    id,
-    kind: "reminder",
-    state: "open",
-    repo,
-    installation: 0,
-    messageId: null,
-    note: null,
-    snoozedUntil: null,
-    text,
-  });
-  return id;
-}
-
 /**
  * One run of the schedule; returns the ids of the things that it showed. The
  * events that failed come last: they take the calls to the network that the steps
  * before them left, and the requests of the events that GitHub delivers again wait
- * only for the little that the run does after it asked for them.
+ * only for the little that the run does after it asked for them. Only a run that
+ * came to its end notes its time.
  */
 export async function runSchedule(context: Context): Promise<string[]> {
   const pending = await context.store.pending(
@@ -147,9 +107,8 @@ export async function runSchedule(context: Context): Promise<string[]> {
     ...(await noAnswer(context, pending.waiting)),
   ];
   await giveUp(context);
-  const reminder = await remind(context);
-  if (reminder !== null) {
-    shown.push(reminder);
-  }
-  return [...shown, ...(await failedEvents(context))];
+  shown.push(...(await remindTokens(context)));
+  shown.push(...(await failedEvents(context)));
+  await context.local.put(RAN, context.now());
+  return shown;
 }

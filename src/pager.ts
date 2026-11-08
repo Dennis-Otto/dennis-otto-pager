@@ -8,6 +8,7 @@
  */
 import { keyboard } from "./buttons.ts";
 import { type ReleaseNotes, releaseNotes } from "./content.ts";
+import type { Local } from "./context.ts";
 import { type GitHub, GitHubError } from "./github.ts";
 import {
   ARTIFACT,
@@ -71,6 +72,8 @@ export interface Context {
   sleep: (milliseconds: number) => Promise<void>;
   /** Run a change of the state after every change before it, as src/serial.ts does. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
+  /** The storage of the Durable Object, for the pager's notes on itself (src/health.ts). */
+  local: Local;
   /** How many calls to Telegram and GitHub this request or run made so far. */
   subrequests: () => number;
 }

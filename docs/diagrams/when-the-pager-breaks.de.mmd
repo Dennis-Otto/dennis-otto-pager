@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Wenn der Pager kaputtgeht
+    accDescr: Einmal am Tag schickt der Workflow Health des privaten Steuer-Repositorys dem Pager den signierten Body health. Der Pager antwortet, wann sein Zeitplan zuletzt lief, ob Telegram das Token des Bots annimmt und an seinen Webhook zustellt, ob GitHub den Schlüssel der App annimmt und wann die Tokens ablaufen, ohne ein Geheimnis. Ist alles gut, besteht der Lauf, und niemand hört etwas. Ist etwas falsch oder antwortet der Pager nicht, scheitert der Lauf mit einem Fehler, der es nennt, und GitHub benachrichtigt Dennis von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist. Außerdem liest der Zeitplan einmal am Tag den Tag von GITHUB_USER_TOKEN bei GitHub, und drei Wochen bevor ein Token abläuft, kommt eine Erinnerung in einem eigenen Thema, mit dem Weg, es zu erneuern.
+
+    health["`**🩺** Einmal am Tag schickt der Workflow Health des Steuer-Repositorys den signierten Body health`"]
+    answer["Der Pager antwortet: der letzte Lauf des Zeitplans, Telegram und sein Webhook, die App auf GitHub, die Tage der Tokens; kein Geheimnis"]
+    passed["`**✅** Alles ist gut: Der Lauf besteht, und niemand hört etwas`"]
+    failed["`**❌** Der Lauf scheitert mit einem Fehler, der nennt, was falsch ist, oder dass der Pager nicht antwortete`"]
+    notify["GitHub benachrichtigt Dennis von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist"]
+    schedule["Einmal am Tag liest der Zeitplan den Tag von GITHUB_USER_TOKEN bei GitHub"]
+    reminder["`**🔔** Drei Wochen bevor ein Token abläuft: eine Erinnerung in einem eigenen Thema, mit dem Weg, es zu erneuern`"]
+    renew["Dennis erneuert das Token"]
+
+    health --> answer
+    answer -- "alles gut" --> passed
+    answer -- "etwas ist falsch" --> failed
+    health -- "keine Antwort" --> failed
+    failed --> notify
+    schedule --> reminder --> renew
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class notify,renew you
+    class health,answer,schedule,reminder bot
+    class passed done
+    class failed warn

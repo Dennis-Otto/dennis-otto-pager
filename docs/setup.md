@@ -67,7 +67,7 @@ printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/
 npx wrangler secret put GITHUB_USER_TOKEN
 ```
 
-Without it, the pager works as well, and those two buttons say what is missing.
+Without it, the pager works as well, and those two buttons say what is missing. A fine-grained token expires, after 30 days unless you choose another day: the pager reads its day from GitHub once a day and reminds you three weeks before, as [Later on](#later-on) says.
 
 ## 4. The GitHub App
 
@@ -132,7 +132,11 @@ Then write a question to the bot, such as *What fails on main?*: the 👀 says t
 
 ## Later on
 
-- **The token of Claude** in the control repository expires; `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` names the day, and the pager reminds three weeks before. Renew it with `claude setup-token` and `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control`, then change the day in a pull request.
+- **Your tokens expire,** and the pager reminds you three weeks before each, in a topic of its own, with how to renew it; ✅ **Renewed** closes the reminder:
+  - **The token of Claude** in the control repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` names the day. Renew it with `claude setup-token` and `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control`, then change the day in a pull request.
+  - **`GITHUB_USER_TOKEN`** of the Worker: GitHub names its day in the answers of its API, which the pager reads once a day. Regenerate it on the page of your [fine-grained tokens](https://github.com/settings/personal-access-tokens), with a new day, and set it with `npx wrangler secret put GITHUB_USER_TOKEN`; the pager asks GitHub about a new token at once. When GitHub refuses the token, because it expired or was revoked, the reminder says so, and ✅ **Send** and 🤖 **Assistant again** too.
+  - **`PAGER_FIX_TOKEN`** of the control repository: its jobs read the day from GitHub and send it along with their answers. Regenerate it the same way and set it with `gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control`.
+- **The health of the pager:** the workflow *Health* of the control repository asks the pager once a day how it is, as [How it works](how-it-works.md#when-the-pager-breaks) describes, which takes about a minute of its Actions minutes. Its run fails when the schedule stopped, Telegram refuses the bot or its webhook reported an error in the last day, GitHub refuses the app, or a token expires within a week; GitHub then notifies you of the failed run by itself, also when Telegram or the Worker is what broke. Start it by hand in the Actions tab to check the pager after a change.
 - **A secret that leaked:** set a new one with `npx wrangler secret put NAME`; for the app, make a new private key in its settings and set `GITHUB_APP_PRIVATE_KEY`; for the bot, `/revoke` at @BotFather, then `TELEGRAM_BOT_TOKEN` and step 5 again.
 - **How long "Later" waits** is `LATER_HOURS` in `wrangler.jsonc`.
 - **The language** of the pager is `LANGUAGE` in `wrangler.jsonc`: `de` for German, `en` or empty for English. It names every text that the pager sends, and the Worker passes it with each job to the control repository, whose answers follow it. A message that the pager showed already takes the new words when its thing changes. After a change, deploy the Worker again, as [Releases and Cloudflare](releases.md) describes.

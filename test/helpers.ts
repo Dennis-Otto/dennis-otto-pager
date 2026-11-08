@@ -16,6 +16,8 @@ export const START = Date.parse("2026-11-04T08:00:00Z");
 /** The first page of the deliveries of the app's webhook, which each run of the schedule reads. */
 export const DELIVERIES =
   "https://api.github.com/app/hook/deliveries?per_page=100";
+/** The limits of the API, from which the schedule reads when GITHUB_USER_TOKEN expires, once a day. */
+export const RATE_LIMIT = "https://api.github.com/rate_limit";
 
 export interface Call {
   method: string;
@@ -53,8 +55,8 @@ function recorded(body: RequestInit["body"]): any {
 }
 
 /**
- * The simulated network: Telegram answers ok, GitHub hands out tokens and lists no
- * delivery of the webhook.
+ * The simulated network: Telegram answers ok, GitHub hands out tokens, lists no
+ * delivery of the webhook and names no day on which GITHUB_USER_TOKEN expires.
  */
 export class Net {
   calls: Call[] = [];
@@ -96,6 +98,9 @@ export class Net {
     }
     if (url === DELIVERIES) {
       return json([]);
+    }
+    if (url === RATE_LIMIT) {
+      return json({ resources: {} });
     }
     if (url.endsWith("/access_tokens")) {
       return json({

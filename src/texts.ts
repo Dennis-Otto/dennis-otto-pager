@@ -1,8 +1,8 @@
 /**
  * Every text that the pager sends to the maintainer, in each language that it
  * speaks: the messages and their states, the names of their topics, the buttons,
- * /help, the answers of the buttons, the errors that it shows and the reminder of
- * the token. LANGUAGE in
+ * /help, the answers of the buttons, the errors that it shows and the reminders of
+ * the tokens. LANGUAGE in
  * wrangler.jsonc chooses one, and English is the default. A text names its parts
  * in braces, such as {repo}, and what fills them, such as the title of an issue,
  * goes in as it is: only the words around it change with the language. The logs
@@ -142,6 +142,8 @@ const en = {
   "answer.refused": "GitHub refused: {detail}",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN isn't set, so nothing can act in your name: set it, as docs/setup.md says.",
+  "answer.userTokenRefused":
+    'GitHub refuses GITHUB_USER_TOKEN: it expired or was revoked. Make a new one and set it with "npx wrangler secret put GITHUB_USER_TOKEN", as docs/setup.md says.',
   "answer.unknown": "This button is unknown.",
   "answer.gone": "This thing is gone.",
 
@@ -204,6 +206,8 @@ const en = {
   "topic.alert": "🛡 Code scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Token of Claude",
+  "topic.reminderUser": "🔔 GitHub token of the pager",
+  "topic.reminderFix": "🔔 Token of 🛠 Start fix",
   "topic.pictures": "🖼 {repo}#{number} {title}",
   "topic.decision": "🤔 Decision: {question}",
   "topic.report": "🧾 Run",
@@ -216,6 +220,16 @@ const en = {
     'The token of Claude in {repo} expires in {days}, on {date}. Renew it: run "claude setup-token", then "gh secret set CLAUDE_CODE_OAUTH_TOKEN -R {repo}", and change CLAUDE_TOKEN_EXPIRES in wrangler.jsonc.',
   "reminder.expired":
     'The token of Claude in {repo} expires on {date}: it has expired. Renew it: run "claude setup-token", then "gh secret set CLAUDE_CODE_OAUTH_TOKEN -R {repo}", and change CLAUDE_TOKEN_EXPIRES in wrangler.jsonc.',
+  "reminder.userSoon":
+    'The GitHub token of the pager, GITHUB_USER_TOKEN, expires in {days}, on {date}; then ✅ Send and 🤖 Assistant again stop working. Renew it: regenerate it on https://github.com/settings/personal-access-tokens, then run "npx wrangler secret put GITHUB_USER_TOKEN" and paste the new token.',
+  "reminder.userExpired":
+    'The GitHub token of the pager, GITHUB_USER_TOKEN, expires on {date}: it has expired, so ✅ Send and 🤖 Assistant again fail. Renew it: regenerate it on https://github.com/settings/personal-access-tokens, then run "npx wrangler secret put GITHUB_USER_TOKEN" and paste the new token.',
+  "reminder.userRefused":
+    'GitHub refuses the token of the pager, GITHUB_USER_TOKEN: it expired or was revoked, so ✅ Send and 🤖 Assistant again fail. Make a new one on https://github.com/settings/personal-access-tokens with the permissions of docs/setup.md, then run "npx wrangler secret put GITHUB_USER_TOKEN".',
+  "reminder.fixSoon":
+    'The token PAGER_FIX_TOKEN in {repo} expires in {days}, on {date}; then 🛠 Start fix opens no pull request. Renew it: regenerate it on https://github.com/settings/personal-access-tokens, then run "gh secret set PAGER_FIX_TOKEN -R {repo}" and paste the new token.',
+  "reminder.fixExpired":
+    'The token PAGER_FIX_TOKEN in {repo} expires on {date}: it has expired, so 🛠 Start fix opens no pull request. Renew it: regenerate it on https://github.com/settings/personal-access-tokens, then run "gh secret set PAGER_FIX_TOKEN -R {repo}" and paste the new token.',
 } as const;
 
 export type Key = keyof typeof en;
@@ -384,6 +398,8 @@ const de: Catalog = {
   "answer.refused": "GitHub lehnt ab: {detail}",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN ist nicht gesetzt, also kann nichts in deinem Namen handeln: Setz ihn, wie docs/setup.md es beschreibt.",
+  "answer.userTokenRefused":
+    "GitHub lehnt GITHUB_USER_TOKEN ab: Das Token ist abgelaufen oder wurde widerrufen. Erstell ein neues und setz es mit „npx wrangler secret put GITHUB_USER_TOKEN“, wie docs/setup.md es beschreibt.",
   "answer.unknown": "Diesen Knopf kenne ich nicht.",
   "answer.gone": "Die Sache gibt es nicht mehr.",
 
@@ -446,6 +462,8 @@ const de: Catalog = {
   "topic.alert": "🛡 Code Scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Claude-Token",
+  "topic.reminderUser": "🔔 GitHub-Token des Pagers",
+  "topic.reminderFix": "🔔 Token für 🛠 Fix starten",
   "topic.pictures": "🖼 {repo}#{number} {title}",
   "topic.decision": "🤔 Entscheidung: {question}",
   "topic.report": "🧾 Lauf",
@@ -458,6 +476,16 @@ const de: Catalog = {
     "Das Claude-Token in {repo} läuft in {days} ab, am {date}. Erneuere es: Führ „claude setup-token“ aus, dann „gh secret set CLAUDE_CODE_OAUTH_TOKEN -R {repo}“, und ändere CLAUDE_TOKEN_EXPIRES in wrangler.jsonc.",
   "reminder.expired":
     "Das Claude-Token in {repo} ist am {date} abgelaufen. Erneuere es: Führ „claude setup-token“ aus, dann „gh secret set CLAUDE_CODE_OAUTH_TOKEN -R {repo}“, und ändere CLAUDE_TOKEN_EXPIRES in wrangler.jsonc.",
+  "reminder.userSoon":
+    "Das GitHub-Token des Pagers, GITHUB_USER_TOKEN, läuft in {days} ab, am {date}; dann gehen ✅ Senden und 🤖 Assistent nochmal nicht mehr. Erneuere es: Erzeug es auf https://github.com/settings/personal-access-tokens neu, führ dann „npx wrangler secret put GITHUB_USER_TOKEN“ aus und füg das neue Token ein.",
+  "reminder.userExpired":
+    "Das GitHub-Token des Pagers, GITHUB_USER_TOKEN, ist am {date} abgelaufen, also schlagen ✅ Senden und 🤖 Assistent nochmal fehl. Erneuere es: Erzeug es auf https://github.com/settings/personal-access-tokens neu, führ dann „npx wrangler secret put GITHUB_USER_TOKEN“ aus und füg das neue Token ein.",
+  "reminder.userRefused":
+    "GitHub lehnt das Token des Pagers ab, GITHUB_USER_TOKEN: Es ist abgelaufen oder wurde widerrufen, also schlagen ✅ Senden und 🤖 Assistent nochmal fehl. Erstell ein neues auf https://github.com/settings/personal-access-tokens mit den Berechtigungen aus docs/setup.md, dann führ „npx wrangler secret put GITHUB_USER_TOKEN“ aus.",
+  "reminder.fixSoon":
+    "Das Token PAGER_FIX_TOKEN in {repo} läuft in {days} ab, am {date}; dann öffnet 🛠 Fix starten keinen Pull Request mehr. Erneuere es: Erzeug es auf https://github.com/settings/personal-access-tokens neu, führ dann „gh secret set PAGER_FIX_TOKEN -R {repo}“ aus und füg das neue Token ein.",
+  "reminder.fixExpired":
+    "Das Token PAGER_FIX_TOKEN in {repo} ist am {date} abgelaufen, also öffnet 🛠 Fix starten keinen Pull Request mehr. Erneuere es: Erzeug es auf https://github.com/settings/personal-access-tokens neu, führ dann „gh secret set PAGER_FIX_TOKEN -R {repo}“ aus und füg das neue Token ein.",
 };
 
 export const CATALOGS: Readonly<Record<Language, Catalog>> = { en, de };

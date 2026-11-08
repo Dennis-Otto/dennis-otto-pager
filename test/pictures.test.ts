@@ -1483,12 +1483,64 @@ describe("the pictures of a release", () => {
     expect(w.net.calls).toHaveLength(0);
   });
 
-  it("go into a release without a topic, in reply to its message", async () => {
+  it("go into a new topic for a release that an earlier pager left in the main view", async () => {
     const w = await withRelease();
+    const release = (await stored(w, keys.release(REPO))) as Release;
+    // An earlier version of the pager kept a release whose topic was gone in the
+    // main view, as topic null, and every later version of it carries that over.
+    await w.context.store.put({ ...release, topic: null });
+    expect(await apply(w.context, signal())).toBe(
+      "pictures shown with the release",
+    );
+    const [own, pictures] = w.net
+      .telegram("sendMessage")
+      .map((call) => call.body);
+    expect(own?.message_thread_id).toBe(900);
+    expect(
+      own?.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toContain("🔀 Merge");
+    expect(pictures).toMatchObject({ message_thread_id: 900 });
+    expect(pictures?.text).toContain("<b>4 pictures look different</b>");
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      messageId: 100,
+      topic: { thread: 900, name: "📦 demo 1.2.0" },
+    });
+  });
+
+  it("go into the main view, in reply to the release's message, when the chat has no topics", async () => {
+    const w = await withRelease();
+    w.net.on("POST", /\/getMe$/, () =>
+      json({ ok: true, result: { id: 1, has_topics_enabled: false } }),
+    );
     const release = (await stored(w, keys.release(REPO))) as Release;
     await w.context.store.put({ ...release, topic: null });
     await apply(w.context, signal());
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
     const [message] = w.net.telegram("sendMessage");
+    expect(message?.body).not.toHaveProperty("message_thread_id");
+    expect(message?.body.reply_parameters).toEqual({
+      message_id: 7,
+      allow_sending_without_reply: true,
+    });
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      messageId: 7,
+      topic: null,
+    });
+  });
+
+  it("go into the main view, in reply to the release's message, from before topics", async () => {
+    const w = await withRelease();
+    const { topic: _, ...old } = (await stored(
+      w,
+      keys.release(REPO),
+    )) as Release;
+    await w.context.store.put(old);
+    await apply(w.context, signal());
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
+    const [message] = w.net.telegram("sendMessage");
+    expect(message?.body).not.toHaveProperty("message_thread_id");
     expect(message?.body.reply_parameters).toEqual({
       message_id: 7,
       allow_sending_without_reply: true,

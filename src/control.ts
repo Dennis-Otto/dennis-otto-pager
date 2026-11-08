@@ -390,7 +390,14 @@ async function propose(
   if (line !== null) {
     lines.push(`<i>${html(line)}</i>`);
   }
-  await context.telegram.send(lines.join("\n\n"), keyboard, thread);
+  const topic = item?.topic ?? null;
+  if (item !== null && topic !== null && thread === topic.thread) {
+    // In the thing's topic, which opens anew with the thing's own message first
+    // when the maintainer deleted it.
+    await postBelow(context, item, lines.join("\n\n"), keyboard);
+  } else {
+    await context.telegram.send(lines.join("\n\n"), keyboard, thread);
+  }
   return keyboard.length > 0;
 }
 

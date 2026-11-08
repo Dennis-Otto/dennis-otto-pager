@@ -612,6 +612,64 @@ describe("the answers of Claude", () => {
     ]);
   });
 
+  it("proposes in the thing's topic, and in a new one with the thing's message first when the maintainer deleted it", async () => {
+    const w = await world();
+    withDeletedTopic(withTopics(w.net, 901), 900, [7]);
+    const release: Release = {
+      ...base(await itemId(keys.release(REPO))),
+      kind: "release",
+      state: "ready",
+      number: 30,
+      version: "1.2.3",
+      sha: "abc",
+      url: `https://github.com/${REPO}/pull/30`,
+      messageId: 7,
+      topic: { thread: 900, name: "📦 demo 1.2.3" },
+    };
+    await w.context.store.put(release);
+    // He asked in the release's topic, and deleted it before the answer came.
+    await w.context.store.ask(600, START, 900);
+    const merge = {
+      type: "proposal",
+      text: "Merge?",
+      action: "merge",
+      target: { kind: "release", repo: REPO },
+    };
+    expect(await send(w, { ...merge, message: 600 })).toEqual({
+      status: 200,
+      text: "proposed",
+    });
+    const [refused, own, proposal] = w.net
+      .telegram("sendMessage")
+      .map((call) => call.body);
+    expect(refused?.message_thread_id).toBe(900);
+    expect(own?.message_thread_id).toBe(901);
+    expect(own?.text).not.toContain("Merge?");
+    expect(proposal).toMatchObject({
+      message_thread_id: 901,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ Confirm",
+              callback_data: `merge:${release.id}:${headTag("abc")}`,
+            },
+          ],
+        ],
+      },
+    });
+    expect(await w.context.store.get(release.id)).toMatchObject({
+      messageId: 100,
+      topic: { thread: 901 },
+    });
+    // A question asked in another thread gets its proposal there.
+    await w.context.store.ask(601, START, 905);
+    await send(w, { ...merge, message: 601 });
+    expect(w.net.telegram("sendMessage").at(-1)?.body.message_thread_id).toBe(
+      905,
+    );
+  });
+
   it("brings a thing back when its job failed, so that its button works again", async () => {
     const w = await world();
     await w.context.store.put(contribution);

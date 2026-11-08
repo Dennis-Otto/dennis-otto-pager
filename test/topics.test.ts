@@ -550,7 +550,10 @@ describe("without topics", () => {
     await show(w.context, old, true);
     expect(w.net.telegram("createForumTopic")).toHaveLength(0);
     expect(sent(w)[0]).not.toHaveProperty("message_thread_id");
-    expect((await w.context.store.get(ID))?.topic).toBeNull();
+    // It stays a record from before topics, and its next message too.
+    expect(await w.context.store.get(ID)).not.toHaveProperty("topic");
+    await show(w.context, old, true);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
   });
 });
 
@@ -596,6 +599,27 @@ describe("a topic that the maintainer deleted", () => {
     warn.mockRestore();
   });
 
+  it("opens a new topic for a thing that an earlier pager left in the main view", async () => {
+    const w = await chat();
+    await apply(w.context, contribution);
+    // An earlier version of the pager kept a thing whose topic was gone in the main
+    // view, as topic null.
+    await w.context.store.put({ ...(await issueOf(w)), topic: null });
+    await show(w.context, await issueOf(w), true);
+    expect(names(w, "createForumTopic")).toEqual([
+      "🙋 demo#12 It breaks",
+      "🙋 demo#12 It breaks",
+    ]);
+    expect(sent(w).at(-1)?.message_thread_id).toBe(901);
+    expect(await issueOf(w)).toMatchObject({
+      messageId: 101,
+      topic: { thread: 901, name: "🙋 demo#12 It breaks" },
+    });
+    expect((await w.context.store.byTopic(901))?.id).toBe(
+      (await issueOf(w)).id,
+    );
+  });
+
   it("goes on in the main view when Telegram refuses the new topic", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const w = await deleted();
@@ -607,9 +631,10 @@ describe("a topic that the maintainer deleted", () => {
     await show(w.context, await issueOf(w), true);
     expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
     expect(await issueOf(w)).toMatchObject({ messageId: 101, topic: null });
-    // Its next message stays there, without asking for a topic again.
+    // Its next new message asks for a topic again, and stays in the main view
+    // while Telegram refuses one.
     await show(w.context, await issueOf(w), true);
-    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(3);
     expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
     expect(warn).toHaveBeenCalledWith(
       "Telegram createForumTopic: Bad Request: CHAT_NOT_FORUM; sent to the main view",

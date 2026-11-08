@@ -2,21 +2,21 @@
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
-Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, dass alles gut ist: ein Beitrag von außen, ein fehlschlagendes `main`, ein scheiterndes Release, ein Code-Scanning-Alarm mit Schweregrad high oder critical, ein grüner Release-Pull-Request und das Token von Claude im Steuer-Repository, bevor es abläuft. Jede Sache bekommt **eine Nachricht** mit ihren Knöpfen, in einem eigenen Thema, sobald der Threaded Mode für den Bot an ist, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert; was in einem Repository fehlschlägt, wird gebündelt, und nur eine neue Sache und die Antwort auf einen Entwurf oder Fix, den du gestartet hast, benachrichtigen. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, und eine erledigte Sache bekommt ein ✅ vor ihr Thema.
+Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, dass alles gut ist: ein Beitrag von außen, eine Diskussion oder ein Kommentar zu einer von jemand anderem, ein fehlschlagendes `main`, ein scheiterndes Release, ein Code-Scanning-Alarm mit Schweregrad high oder critical, ein grüner Release-Pull-Request, die Bilder eines Pull Requests des Maintainers oder eines Bots, der ändert, wie etwas aussieht, vorher und nachher, und das Token von Claude im Steuer-Repository, bevor es abläuft. Jede Sache bekommt **eine Nachricht** mit ihren Knöpfen, in einem eigenen Thema, sobald der Threaded Mode für den Bot an ist, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert; was in einem Repository fehlschlägt, wird gebündelt, und nur eine neue Sache, ein neuer Kommentar zu einer Diskussion die Antwort auf einen Entwurf oder Fix und das Album eines neueren Heads eines Pull Requests benachrichtigen. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, und eine erledigte Sache bekommt ein ✅ vor ihr Thema.
 
 | Knopf | Was er tut |
 | --- | --- |
 | 🔀 Mergen | Merged einen grünen Release-Pull-Request, was das Release veröffentlicht |
-| ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird |
+| ✍️ Antwort entwerfen, ✅ Senden, ✏️ Bearbeiten | Eine Antwort in der Stimme des Maintainers aus dem privaten Steuer-Repository, gepostet genau so, wie sie angezeigt wird; in einer Diskussion kommt ihr Entwurf von selbst und geht als App |
 | 🤖 Assistent nochmal | Lässt den Issue-Assistenten ein Issue noch einmal beantworten, über seine Ein-Kommentar-Regel hinaus |
 | 🔁 Neu starten | Startet die gescheiterten Jobs eines Laufs, der auf `main` scheiterte, erneut, ohne einen Lauf von Claude |
 | 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
-| ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort auf deinen Text vorschlägt, etwa ein Merge, solange ihre Sache sie noch anbietet |
+| ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort des Steuer-Repositorys vorschlägt, etwa ein Merge, nach dem du gefragt hast, oder 🔁 Neu starten, wenn ein Fix einen Ausfall von GitHub fand, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
 
 Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für diesen Pager, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
 
-- [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository und der Zustand.
+- [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository, die Fragen und Berichte deiner Agenten und der Zustand.
 - [Einrichten](setup.md): der Bot, der Worker, die GitHub-App, die Geheimnisse und der Webhook, Schritt für Schritt.
 - [Releases and Cloudflare](releases.md): wie ein Release live geht.
 - [Security design](security.md): die Sicherheit des Repositorys und seiner Releases.

@@ -5,12 +5,13 @@
  */
 import { allowed, headTag, type Press } from "./buttons.ts";
 import { GitHubError, NoUserToken } from "./github.ts";
-import { type Context, show } from "./pager.ts";
+import { askForDraft, type Context, show, toControl } from "./pager.ts";
 import { PASSED, releaseBlocker } from "./rules.ts";
 import type {
   Alarm,
   Alert,
   Contribution,
+  Decision,
   Item,
   Release,
   Reminder,
@@ -23,25 +24,6 @@ export interface Reply {
 
 const done = (text: string): Reply => ({ text, alert: false });
 const refused = (text: string): Reply => ({ text, alert: true });
-
-/** Send a thing to the workflow of the control repository, as an event of its own. */
-async function toControl(
-  context: Context,
-  eventType: string,
-  payload: Record<string, unknown>,
-): Promise<Reply | null> {
-  const repo = context.settings.controlRepository;
-  const installation = await context.github.installation(repo);
-  if (installation === null) {
-    return refused(context.t("answer.notInstalled", { repo }));
-  }
-  // The answers of the control repository to the maintainer come in their language.
-  await context.github.dispatch(installation, repo, eventType, {
-    ...payload,
-    language: context.t.language,
-  });
-  return null;
-}
 
 async function merge(
   context: Context,
@@ -92,7 +74,7 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
     entries: item.entries.map(({ label, url }) => ({ label, url })),
   });
   if (failed !== null) {
-    return failed;
+    return refused(failed);
   }
   item.state = "fixing";
   item.jobStarted = context.now();
@@ -149,17 +131,10 @@ async function rerun(context: Context, item: Alarm): Promise<Reply> {
 }
 
 async function draft(context: Context, item: Contribution): Promise<Reply> {
-  const failed = await toControl(context, "pager-draft", {
-    item: item.id,
-    repo: item.repo,
-    number: item.number,
-    pull: item.pull,
-  });
+  const failed = await askForDraft(context, item);
   if (failed !== null) {
-    return failed;
+    return refused(failed);
   }
-  item.state = "drafting";
-  item.jobStarted = context.now();
   await show(context, item);
   return done(context.t("answer.drafting"));
 }
@@ -186,9 +161,21 @@ async function send(
   if (version !== item.draftVersion || item.draft === null) {
     return refused(context.t("answer.draftOutdated"));
   }
-  await context.github.comment(item.repo, item.number, item.draft);
+  // A discussion takes the reply in its thread, as the app; an issue or a pull
+  // request a comment in the maintainer's name.
+  if (item.discussion === undefined) {
+    await context.github.comment(item.repo, item.number, item.draft);
+    item.note = context.t("note.sent");
+  } else {
+    await context.github.reply(
+      item.installation,
+      item.repo,
+      item.discussion,
+      item.draft,
+    );
+    item.note = context.t("note.replied");
+  }
   item.state = "sent";
-  item.note = context.t("note.sent");
   await show(context, item);
   return done(context.t("answer.sent"));
 }
@@ -203,6 +190,34 @@ async function edit(context: Context, item: Contribution): Promise<Reply> {
   );
   await context.store.setPendingEdit({ item: item.id, prompt });
   return done(context.t("answer.edit"));
+}
+
+/**
+ * Save the option of a decision in the control repository, where the agent that
+ * asked reads it, and show it as the answer. When GitHub refuses, the question
+ * stays open, so that a press can save it again.
+ */
+async function choose(
+  context: Context,
+  item: Decision,
+  place: number | null,
+): Promise<Reply> {
+  const option = item.options[place ?? -1];
+  if (place === null || option === undefined) {
+    return refused(context.t("answer.unknown"));
+  }
+  await context.github.saveAnswer(item.installation, item.repo, item.ask, {
+    id: item.ask,
+    question: item.question,
+    options: item.options,
+    choice: place,
+    answer: option,
+    answered: new Date(context.now()).toISOString(),
+  });
+  item.state = "answered";
+  item.choice = place;
+  await show(context, item);
+  return done(context.t("answer.chosen", { option }));
 }
 
 /** Run the action of a pressed button on its thing, if the thing still offers it. */
@@ -246,6 +261,8 @@ export async function press(
         return await send(context, item as Contribution, pressed.version);
       case "edit":
         return await edit(context, item as Contribution);
+      case "choose":
+        return await choose(context, item as Decision, pressed.version);
     }
   } catch (error) {
     if (error instanceof NoUserToken) {

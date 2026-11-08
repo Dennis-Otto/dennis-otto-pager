@@ -15,7 +15,15 @@ import {
   keys,
   type Release,
 } from "../src/store.ts";
-import { base, json, REPO, START, type World, world } from "./helpers.ts";
+import {
+  base,
+  json,
+  REPO,
+  START,
+  type World,
+  withControl,
+  world,
+} from "./helpers.ts";
 
 const ID = "i0123456789abcde";
 
@@ -164,6 +172,63 @@ describe("the control repository", () => {
   });
 });
 
+describe("the draft of an older comment of a discussion", () => {
+  const waiting: Contribution = {
+    ...contribution,
+    url: "https://github.com/Dennis-Otto/demo/discussions/12#discussioncomment-8",
+    discussion: { node: "D_1", comment: "DC_8", redraft: true },
+  };
+
+  it("is dropped, and the draft for the newest comment is asked for", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    await w.context.store.put(waiting);
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_7" }),
+    ).toEqual({ status: 200, text: "dropped" });
+    expect(w.net.github("/dispatches")[0]?.body.client_payload).toMatchObject({
+      item: ID,
+      discussion: true,
+      comment: "DC_8",
+    });
+    const item = (await w.context.store.get(ID)) as Contribution;
+    expect(item).toMatchObject({
+      state: "drafting",
+      draft: null,
+      jobStarted: START,
+      discussion: { node: "D_1", comment: "DC_8" },
+    });
+    expect(item.discussion).not.toHaveProperty("redraft");
+    // Send has nothing to post yet: no reply to the older comment goes.
+    expect(w.net.telegram("editMessageText")[0]?.body.text).not.toContain(
+      "Answers DC_7",
+    );
+    // The draft of the newest comment is shown as usual.
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_8" }),
+    ).toEqual({ status: 200, text: "drafted" });
+  });
+
+  it("is dropped when its job failed, and the buttons come back when no new job can start", async () => {
+    const w = await world();
+    await w.context.store.put(waiting);
+    expect(
+      await send(w, { type: "failed", item: ID, text: "The job failed" }),
+    ).toEqual({ status: 200, text: "dropped" });
+    const item = (await w.context.store.get(ID)) as Contribution;
+    expect(item).toMatchObject({
+      state: "new",
+      note: expect.stringContaining("isn't installed on Dennis-Otto/control"),
+    });
+    expect(item.discussion).not.toHaveProperty("redraft");
+    expect(item).not.toHaveProperty("jobStarted");
+  });
+});
+
 describe("the answers of Claude", () => {
   const usage = { turns: 3, seconds: 41 };
   const opus = { model: "claude-opus-5-5", tokens: 48213 };
@@ -213,6 +278,12 @@ describe("the answers of Claude", () => {
       { type: "note", text: "x", message: "500" },
       { type: "note", text: "x", message: 1.5 },
       { type: "failed", item: 7, text: "x" },
+      // Only the failure of a thing's job proposes, an action of the allowlist.
+      { type: "failed", text: "x", action: "rerun" },
+      { type: "failed", item: ID, text: "x", action: "send" },
+      { type: "failed", item: ID, text: "x", action: "constructor" },
+      { type: "failed", item: ID, text: "x", action: 5 },
+      { type: "failed", item: ID, text: "x", action: null },
       { type: "draft", text: "x" },
       proposal("send", { kind: "contribution", repo: REPO, number: 1 }),
       proposal("edit", { kind: "contribution", repo: REPO, number: 1 }),
@@ -745,6 +816,99 @@ describe("the answer of a job for a thing", () => {
       expect("message_thread_id" in message).toBe(false);
     },
   );
+
+  describe("a fix that proposes an action of its thing", () => {
+    const outage = "🛠 No fix: GitHub answered 504 to the download of Node.";
+    const failed = {
+      type: "failed",
+      item: ID,
+      text: outage,
+      action: "rerun",
+      usage: { turns: 3, seconds: 41 },
+    };
+    const run: Alarm = {
+      ...alarm,
+      entries: [
+        {
+          key: "workflow:.github/workflows/release.yml",
+          label: "The release fails: Release",
+          url: `https://github.com/${REPO}/actions/runs/3/attempts/1`,
+          run: 3,
+        },
+      ],
+    };
+
+    it("answers in the thing's topic with one Confirm button, and gives the thing its buttons back in place", async () => {
+      const w = await world();
+      await w.context.store.put({ ...run, topic, jobStarted: START });
+      expect(await send(w, failed)).toEqual({ status: 200, text: "proposed" });
+      const sent = w.net.telegram("sendMessage").map((call) => call.body);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.message_thread_id).toBe(900);
+      expect(sent[0]?.text).toBe(
+        [
+          `🤖 ${outage}`,
+          `👉 🔁 Rerun: <a href="https://github.com/${REPO}/actions">${REPO}</a>`,
+          "<i>🧮 Claude: 3 turns, 41 s, from your weekly limit</i>",
+        ].join("\n\n"),
+      );
+      expect(sent[0]?.reply_markup.inline_keyboard).toEqual([
+        [{ text: "✅ Confirm", callback_data: `rerun:${ID}` }],
+      ]);
+      // The thing's own message stays where it is, with its note and its buttons.
+      expect(w.net.telegram("deleteMessage")).toEqual([]);
+      const [edited] = w.net
+        .telegram("editMessageText")
+        .map((call) => call.body);
+      expect(edited?.message_id).toBe(7);
+      expect(edited?.text).toContain(outage);
+      expect(edited?.reply_markup.inline_keyboard[0][0]).toEqual({
+        text: "🔁 Rerun",
+        callback_data: `rerun:${ID}`,
+      });
+      const kept = await w.context.store.get(ID);
+      expect(kept).toMatchObject({ state: "open", note: outage, messageId: 7 });
+      expect(kept?.jobStarted).toBeUndefined();
+    });
+
+    it("goes into the main view for a thing without a topic", async () => {
+      const w = await world();
+      const alert: Item = {
+        ...alarm,
+        kind: "alert",
+        state: "fixing",
+        topic: null,
+      };
+      await w.context.store.put(alert);
+      expect(await send(w, { ...failed, action: "ignore" })).toEqual({
+        status: 200,
+        text: "proposed",
+      });
+      const [message] = w.net.telegram("sendMessage").map((call) => call.body);
+      expect("message_thread_id" in message).toBe(false);
+      expect(message.reply_markup.inline_keyboard).toEqual([
+        [{ text: "✅ Confirm", callback_data: `ignore:${ID}` }],
+      ]);
+    });
+
+    it("brings the thing back as any failed job when it doesn't offer the action", async () => {
+      // An alarm whose entries name no run has no 🔁 Rerun, and a draft proposes nothing.
+      for (const item of [alarm, contribution]) {
+        const w = await world();
+        await w.context.store.put({ ...item, topic });
+        const action = item.kind === "alarm" ? "rerun" : "later";
+        expect(await send(w, { ...failed, action })).toEqual({
+          status: 200,
+          text: "reopened",
+        });
+        const sent = w.net.telegram("sendMessage").map((call) => call.body);
+        expect(sent).toHaveLength(1);
+        expect(sent[0]?.text).toContain(outage);
+        expect(sent[0]?.text).not.toContain("👉");
+        expect(w.net.telegram("deleteMessage")[0]?.body.message_id).toBe(7);
+      }
+    });
+  });
 
   it("edits a note in place when no job of its thing runs", async () => {
     const w = await world();

@@ -185,6 +185,17 @@ describe("the buttons", () => {
       [contribution({ state: "drafting" }), ["later", "ignore"]],
       [contribution({ state: "draft" }), ["send", "edit", "later", "ignore"]],
       [contribution({ state: "sent" }), []],
+      // A discussion gets its draft by itself: send, edit or ignore it.
+      [contribution({ discussion: { node: "D_1" } }), ["draft", "ignore"]],
+      [
+        contribution({ state: "drafting", discussion: { node: "D_1" } }),
+        ["ignore"],
+      ],
+      [
+        contribution({ state: "draft", discussion: { node: "D_1" } }),
+        ["send", "edit", "ignore"],
+      ],
+      [contribution({ state: "sent", discussion: { node: "D_1" } }), []],
       [
         { ...base(ID), kind: "alarm", state: "open", entries: [] },
         ["fix", "later", "ignore"],
@@ -314,6 +325,32 @@ describe("the text of a message", () => {
     );
     expect(render(contribution({ pull: true }), START, en)).toContain(
       "New pull request",
+    );
+  });
+
+  it("shows a discussion and a comment on one, whose reply goes as the app", () => {
+    const discussion = contribution({
+      number: 31,
+      title: "How?",
+      url: "https://github.com/Dennis-Otto/demo/discussions/31",
+      discussion: { node: "D_1" },
+    });
+    expect(render(discussion, START, en)).toContain(
+      '💬 <b>New discussion</b> in <a href="https://github.com/Dennis-Otto/demo">Dennis-Otto/demo</a> by <b>octocat</b>\n<a href="https://github.com/Dennis-Otto/demo/discussions/31">#31 How?</a>',
+    );
+    const drafted = render(
+      {
+        ...discussion,
+        state: "draft",
+        draft: "Read the README.",
+        discussion: { node: "D_1", comment: "DC_7" },
+      },
+      START,
+      en,
+    );
+    expect(drafted).toContain("💬 <b>New comment</b> on a discussion in");
+    expect(drafted).toContain(
+      '"Send" posts in the discussion as the app of the pager, as it stands here:\n<blockquote>Read the README.</blockquote>',
     );
   });
 

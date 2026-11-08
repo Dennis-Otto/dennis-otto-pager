@@ -1,10 +1,11 @@
 /**
- * The REST API of GitHub, as the GitHub App of the pager and, for the two things
- * that act in the maintainer's name, with their own token. Each token of the app
- * is made for one repository and only the permissions of its call, and lives in
- * memory for less than its hour.
+ * The REST API of GitHub, and its GraphQL API for the reply in a discussion, as the
+ * GitHub App of the pager and, for the two things that act in the maintainer's
+ * name, with their own token. Each token of the app is made for one repository and
+ * only the permissions of its call, and lives in memory for less than its hour.
  */
-import { base64url, utf8 } from "./crypto.ts";
+import { base64, base64url, utf8 } from "./crypto.ts";
+import type { Discussion } from "./store.ts";
 import type { Fetch } from "./telegram.ts";
 
 const API = "https://api.github.com";
@@ -116,8 +117,48 @@ export interface PullRequest {
   draft?: boolean;
   mergeable_state?: string;
   html_url?: string;
-  head?: { ref?: string; sha?: string };
+  user?: { login?: string; type?: string };
+  head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   base?: { ref?: string; repo?: { default_branch?: string } };
+}
+
+/** An artifact of a run of GitHub Actions: its id, its name and its size in bytes. */
+export interface Artifact {
+  id: number;
+  name: string;
+  size: number;
+}
+
+/**
+ * The body of an answer, read up to max bytes: one that would be larger stops
+ * at once, so that no answer takes more of the memory of the Worker.
+ */
+async function readCapped(
+  response: Response,
+  max: number,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    length += value.length;
+    if (length > max) {
+      await reader.cancel();
+      throw new GitHubError(413, `the artifact is larger than ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
 }
 
 /** The parts of a run of GitHub Actions that 🔁 Rerun reads: those of its newest attempt. */
@@ -127,6 +168,31 @@ export interface WorkflowRun {
 }
 
 export type Permissions = Record<string, "read" | "write">;
+
+/**
+ * The branch of the control repository that keeps the answers to the questions of
+ * the maintainer's agents, as answers/<id>.json: it has no parent and no code of
+ * the repository, so no workflow runs on it.
+ */
+export const ANSWERS = "pager-answers";
+
+/** The one file of the branch of the answers when the pager makes it. */
+const ANSWERS_README = `# The answers of the pager
+
+Each file \`answers/<id>.json\` is the answer of the maintainer to the question \`<id>\` of one of their agents, saved by the GitHub App of the pager when its button was pressed. The pager's documentation describes how an agent asks and reads: https://dennis-otto.github.io/dennis-otto-pager/how-it-works.html
+`;
+
+/** The thread of a comment of a discussion: that of its parent, for a reply. */
+const THREAD = `query($comment: ID!) {
+  node(id: $comment) { ... on DiscussionComment { replyTo { id } } }
+}`;
+
+/** A comment on a discussion, or a reply in the thread of one of its comments. */
+const REPLY = `mutation($discussion: ID!, $replyTo: ID, $body: String!) {
+  addDiscussionComment(input: {discussionId: $discussion, replyToId: $replyTo, body: $body}) {
+    comment { id }
+  }
+}`;
 
 export class GitHub {
   private readonly appId: string;
@@ -154,9 +220,11 @@ export class GitHub {
     method: string,
     path: string,
     body?: unknown,
+    redirect: RequestInit["redirect"] = "follow",
   ): Promise<Response> {
     const init: RequestInit = {
       method,
+      redirect,
       headers: {
         accept: "application/vnd.github+json",
         authorization: `Bearer ${token}`,
@@ -183,6 +251,32 @@ export class GitHub {
       throw new GitHubError(response.status, detail);
     }
     return response.json<T>();
+  }
+
+  /**
+   * A query or a mutation of the GraphQL API. GitHub answers 200 also when it
+   * refuses one, with its reasons in errors: the first of them is the detail.
+   */
+  private async graphql<T>(
+    token: string,
+    query: string,
+    variables: Record<string, unknown>,
+    /** A type of error, such as NOT_FOUND, whose data still answers the query. */
+    allowed?: string,
+  ): Promise<T> {
+    const answer = await this.json<{
+      data?: T;
+      errors?: { type?: string; message?: string }[];
+    }>(await this.call(token, "POST", "/graphql", { query, variables }));
+    const error = answer.errors?.[0];
+    const answers =
+      allowed !== undefined &&
+      error?.type === allowed &&
+      answer.data !== undefined;
+    if (error !== undefined && !answers) {
+      throw new GitHubError(200, error.message ?? "the GraphQL API refused");
+    }
+    return answer.data as T;
   }
 
   /** A token of the app for one repository, with only the permissions of a call. */
@@ -265,6 +359,75 @@ export class GitHub {
     );
   }
 
+  /** The artifacts of a run that didn't expire, the first hundred. */
+  async artifacts(
+    installation: number,
+    repo: string,
+    run: number,
+  ): Promise<Artifact[]> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    const answer = await this.json<{
+      artifacts?: {
+        id?: unknown;
+        name?: unknown;
+        size_in_bytes?: unknown;
+        expired?: boolean;
+      }[];
+    }>(
+      await this.call(
+        token,
+        "GET",
+        `/repos/${repo}/actions/runs/${run}/artifacts?per_page=100`,
+      ),
+    );
+    return (answer.artifacts ?? []).flatMap(
+      ({ id, name, size_in_bytes, expired }) =>
+        Number.isSafeInteger(id) &&
+        typeof name === "string" &&
+        Number.isSafeInteger(size_in_bytes) &&
+        expired !== true
+          ? [{ id: id as number, name, size: size_in_bytes as number }]
+          : [],
+    );
+  }
+
+  /**
+   * The ZIP of an artifact, of at most max bytes. GitHub answers with the address
+   * of its storage, signed for a minute, which the pager follows without its token:
+   * the token goes to GitHub alone.
+   */
+  async artifactZip(
+    installation: number,
+    repo: string,
+    id: number,
+    max: number,
+  ): Promise<Uint8Array> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    const answer = await this.call(
+      token,
+      "GET",
+      `/repos/${repo}/actions/artifacts/${id}/zip`,
+      undefined,
+      "manual",
+    );
+    const location = answer.headers.get("location") ?? "";
+    if (answer.status !== 302 || !location.startsWith("https://")) {
+      if (answer.status >= 400) {
+        // GitHub's own reason, such as an artifact that expired.
+        await this.json(answer);
+      }
+      throw new GitHubError(answer.status, "no address of the artifact");
+    }
+    const file = await this.fetch(location, {
+      method: "GET",
+      headers: { "user-agent": AGENT },
+    });
+    if (!file.ok) {
+      throw new GitHubError(file.status, "the storage of the artifact refused");
+    }
+    return readCapped(file, max);
+  }
+
   /** Run the failed jobs of a run again, and the jobs that need them, as a new attempt. */
   async rerunFailedJobs(
     installation: number,
@@ -336,6 +499,74 @@ export class GitHub {
     }
   }
 
+  /**
+   * Keep the answer to a question of an agent as answers/<id>.json on the branch of
+   * the answers of a repository, the control repository, where the agent reads it
+   * with its own gh. The first answer makes the branch; an answer again, such as to
+   * a question asked again after its record expired, replaces the file.
+   */
+  async saveAnswer(
+    installation: number,
+    repo: string,
+    id: string,
+    answer: unknown,
+  ): Promise<void> {
+    const token = await this.token(installation, repo, { contents: "write" });
+    const branch = await this.call(
+      token,
+      "GET",
+      `/repos/${repo}/git/ref/heads/${ANSWERS}`,
+    );
+    if (branch.status === 404) {
+      await this.answersBranch(token, repo);
+    } else {
+      await this.json(branch);
+    }
+    const path = `/repos/${repo}/contents/answers/${id}.json`;
+    const before = await this.call(token, "GET", `${path}?ref=${ANSWERS}`);
+    const sha =
+      before.status === 404
+        ? undefined
+        : (await this.json<{ sha: string }>(before)).sha;
+    await this.json(
+      await this.call(token, "PUT", path, {
+        message: `The answer to ${id}`,
+        content: base64(`${JSON.stringify(answer, null, 2)}\n`),
+        branch: ANSWERS,
+        ...(sha === undefined ? {} : { sha }),
+      }),
+    );
+  }
+
+  /** Make the branch of the answers: one commit without a parent, with its README. */
+  private async answersBranch(token: string, repo: string): Promise<void> {
+    const tree = await this.json<{ sha: string }>(
+      await this.call(token, "POST", `/repos/${repo}/git/trees`, {
+        tree: [
+          {
+            path: "README.md",
+            mode: "100644",
+            type: "blob",
+            content: ANSWERS_README,
+          },
+        ],
+      }),
+    );
+    const commit = await this.json<{ sha: string }>(
+      await this.call(token, "POST", `/repos/${repo}/git/commits`, {
+        message: "The branch of the answers of the pager",
+        tree: tree.sha,
+        parents: [],
+      }),
+    );
+    await this.json(
+      await this.call(token, "POST", `/repos/${repo}/git/refs`, {
+        ref: `refs/heads/${ANSWERS}`,
+        sha: commit.sha,
+      }),
+    );
+  }
+
   private user(): string {
     if (this.userToken === null) {
       throw new NoUserToken();
@@ -354,6 +585,39 @@ export class GitHub {
       ),
     );
     return answer.html_url;
+  }
+
+  /**
+   * Reply in a discussion, as the app: in the thread of the comment that it answers,
+   * which for a reply is the thread of its parent, since GitHub nests one level
+   * only, or as a comment of its own on the discussion itself.
+   */
+  async reply(
+    installation: number,
+    repo: string,
+    discussion: Discussion,
+    body: string,
+  ): Promise<void> {
+    const token = await this.token(installation, repo, {
+      discussions: "write",
+    });
+    let replyTo: string | null = null;
+    if (discussion.comment !== undefined) {
+      // A comment that is gone resolves to no node, with an error NOT_FOUND:
+      // the approved reply then goes on the discussion itself.
+      const found = await this.graphql<{
+        node: { replyTo: { id: string } | null } | null;
+      }>(token, THREAD, { comment: discussion.comment }, "NOT_FOUND");
+      replyTo =
+        found.node === null
+          ? null
+          : (found.node.replyTo?.id ?? discussion.comment);
+    }
+    await this.graphql(token, REPLY, {
+      discussion: discussion.node,
+      replyTo,
+      body,
+    });
   }
 
   /**

@@ -31,7 +31,7 @@ on:
   # Every page each week, in case something that no commit changes finds a violation; a
   # run of the schedule publishes nothing.
   schedule:
-    - cron: "39 6 * * 1"
+    - cron: "20 6 * * 6"
   workflow_dispatch:
 
 permissions: {}

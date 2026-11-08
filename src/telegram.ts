@@ -1,6 +1,7 @@
 /**
  * The Bot API of Telegram, for the one chat of the maintainer: send a message with
- * buttons, edit it as its thing changes, answer a button, react to a message. The
+ * buttons, edit it as its thing changes, answer a button, react to a message, and
+ * send pictures as an album. The
  * token of the bot is part of the address of every call, so no error and no log
  * names the address. In Threaded Mode, a message of the maintainer comes from a
  * thread, and the answer to it goes into the same; each thing of the pager gets a
@@ -55,6 +56,13 @@ export function threadOf(message: { message_thread_id?: unknown }): Thread {
   return Number.isSafeInteger(thread) && (thread as number) > GENERAL
     ? (thread as number)
     : null;
+}
+
+/** A picture that goes as a photo: a PNG or a WebP, and its caption in the HTML of Telegram. */
+export interface Photo {
+  bytes: Uint8Array;
+  type: "image/png" | "image/webp";
+  caption: string;
 }
 
 /** Where a message went: its id, and its thread, or null for the main view. */
@@ -117,13 +125,21 @@ export class Telegram {
   }
 
   async call(method: string, parameters: object): Promise<unknown> {
+    return this.request(method, {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(parameters),
+    });
+  }
+
+  /** A call with files, as multipart/form-data, which sets its own type. */
+  private async upload(method: string, form: FormData): Promise<unknown> {
+    return this.request(method, { body: form });
+  }
+
+  private async request(method: string, init: RequestInit): Promise<unknown> {
     const response = await this.fetch(
       `https://api.telegram.org/bot${this.token}/${method}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(parameters),
-      },
+      { method: "POST", ...init },
     );
     const answer: Answer = await response
       .json<Answer>()
@@ -274,6 +290,79 @@ export class Telegram {
       }
       throw error;
     }
+  }
+
+  /**
+   * Send pictures as one album, or a single one as a photo, into a thread or, as
+   * send() does, into the main view as a reply to replyTo, such as the message that
+   * tells what they show. Silent sends them without a notification, such as right
+   * after a new message that notified already.
+   */
+  async album(
+    photos: readonly Photo[],
+    thread: Thread,
+    replyTo: number | null,
+    silent: boolean,
+  ): Promise<void> {
+    const main =
+      replyTo === null
+        ? {}
+        : {
+            reply_parameters: {
+              message_id: replyTo,
+              allow_sending_without_reply: true,
+            },
+          };
+    if (thread === null) {
+      await this.sendPhotos(photos, main, silent);
+      return;
+    }
+    try {
+      await this.sendPhotos(photos, { message_thread_id: thread }, silent);
+    } catch (error) {
+      if (!threadNotFound(error)) {
+        throw error;
+      }
+      console.warn(
+        `Telegram album: thread ${thread} not found, sent to the main view`,
+      );
+      await this.sendPhotos(photos, main, silent);
+    }
+  }
+
+  /** sendMediaGroup for two to ten photos, sendPhoto for one, with where they go. */
+  private async sendPhotos(
+    photos: readonly Photo[],
+    where: object,
+    silent: boolean,
+  ): Promise<void> {
+    const form = new FormData();
+    const single = photos.length === 1;
+    const media = photos.map((photo, index) => {
+      // A single photo is the file itself, which sendPhoto takes as photo.
+      const name = single ? "photo" : `p${index}`;
+      const bytes = photo.bytes as Uint8Array<ArrayBuffer>;
+      // The file is named after its type, image/png as p0.png.
+      const file = `${name}.${photo.type.slice("image/".length)}`;
+      form.set(name, new File([bytes], file, { type: photo.type }));
+      return {
+        type: "photo",
+        media: `attach://${name}`,
+        caption: photo.caption,
+        parse_mode: "HTML",
+      };
+    });
+    const [one] = media;
+    const fields = {
+      chat_id: this.chatId,
+      disable_notification: silent,
+      ...where,
+      ...(single ? { caption: one?.caption, parse_mode: "HTML" } : { media }),
+    };
+    for (const [name, value] of Object.entries(fields)) {
+      form.set(name, typeof value === "string" ? value : JSON.stringify(value));
+    }
+    await this.upload(single ? "sendPhoto" : "sendMediaGroup", form);
   }
 
   /** Delete a message; one that is gone already is no error. */

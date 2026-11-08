@@ -1,0 +1,32 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Die Bilder einer sichtbaren Änderung
+    accDescr: Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht, und sein Visual Check rendert die Bilder neu und behält jedes, das anders aussieht, in einem Artefakt, vorher und nachher. Ist der Check grün, fragt der Pager GitHub nach dem Pull Request, mit einem Token seiner App. Einer von jemand anderem, aus einem Fork oder einer, der zu einem neueren Head weiterzog, endet dort, ebenso ein Head, dessen Bilder schon kamen. Sonst liest der Pager das Artefakt mit demselben Token, über die kurzlebige Adresse seines Speichers. Sieht jedes Bild aus wie committet, kommt nichts. Sehen welche anders aus, geht ihre Nachricht in das Thema seines Releases oder einer eigenen Sache, und das Album der größten Änderungen folgt, vorher und nachher, höchstens drei Bilder. Der Merge oder das Ende des Pull Requests hakt das Thema ab.
+
+    push["`Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht`"]
+    check["`Der Visual Check rendert die Bilder und behält jedes, das anders aussieht, vorher und nachher`"]
+    ask["Der Pager fragt GitHub nach dem Pull Request, mit einem Token seiner App"]
+    stop["`Von jemand anderem, aus einem Fork, ein neuerer Head oder ein Head, dessen Bilder schon kamen: Nichts kommt`"]
+    read["`Der Pager liest das Artefakt, über die kurzlebige Adresse seines Speichers`"]
+    same["`Jedes Bild sieht aus wie committet: Nichts kommt`"]
+    topic["`**🖼** Ihre Nachricht im Thema seines Releases oder in einem eigenen`"]
+    album["`**📸** Das Album: die größten Änderungen, vorher und nachher, höchstens drei`"]
+    done["`**✅** Der Merge oder das Ende des Pull Requests hakt das Thema ab`"]
+
+    push --> check
+    check -- "grün" --> ask
+    ask -- "nicht seine Bilder zu zeigen" --> stop
+    ask -- "von Dennis oder einem Bot, an seinem Head" --> read
+    read -- "nichts geändert" --> same
+    read -- "Bilder sehen anders aus" --> topic --> album --> done
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class push you
+    class check,ask,stop,read,same bot
+    class topic,album,done done

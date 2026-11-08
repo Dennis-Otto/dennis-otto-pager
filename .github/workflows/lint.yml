@@ -14,7 +14,7 @@ on:
   pull_request:
   # At the time of the CI, so that one commit of the fix bot holds what both fix.
   schedule:
-    - cron: "46 4 * * 5"
+    - cron: "27 4 * * 3"
   workflow_dispatch:
 
 permissions:

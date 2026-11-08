@@ -48,18 +48,37 @@ interface Base {
   jobStarted?: number;
 }
 
-/** An issue or pull request that someone other than the maintainer opened. */
+/** A discussion of GitHub, which a reply in its thread answers, as the app. */
+export interface Discussion {
+  /** The id of the discussion in the GraphQL API of GitHub. */
+  node: string;
+  /** The id of the comment whose thread the reply goes into; none for the discussion itself. */
+  comment?: string;
+  /**
+   * Set when a comment came while the draft of an older one was still being
+   * written: that draft is dropped when it comes, and the next one is asked for.
+   */
+  redraft?: boolean;
+}
+
+/**
+ * An issue, a pull request or a discussion that someone other than the maintainer
+ * opened, or the newest comment of someone else on a discussion.
+ */
 export interface Contribution extends Base {
   kind: "contribution";
   state: "new" | "drafting" | "draft" | "sent" | "ignored";
   number: number;
   pull: boolean;
   title: string;
+  /** The issue, the pull request, the discussion or the comment that the reply answers. */
   url: string;
   author: string;
   draft: string | null;
   /** Counts the drafts, so that "Send" posts the one that its message showed. */
   draftVersion: number;
+  /** The discussion of a contribution that is one; none for an issue or a pull request. */
+  discussion?: Discussion;
 }
 
 /** What fails on the default branch of a repository, bundled. */
@@ -84,6 +103,40 @@ export interface Release extends Base {
   version: string;
   sha: string;
   url: string;
+  /** The head of the pull request whose pictures of the visual check went into its topic. */
+  album?: string;
+}
+
+/** A picture of the visual check that looks different, as its report names it. */
+export interface Changed {
+  /** Its path in the repository, such as screenshots/search.png. */
+  path: string;
+  status: "changed" | "new" | "deleted";
+  /** The share of its pixels that changed, or null when its size changed, or it is new or deleted. */
+  share: number | null;
+}
+
+/**
+ * The pictures of a pull request of the maintainer or of a bot that look different
+ * in its visual check, before and after, at its newest head that has any.
+ */
+export interface Pictures extends Base {
+  kind: "pictures";
+  state: "open" | "done" | "ignored";
+  number: number;
+  title: string;
+  /** The pull request. */
+  url: string;
+  /** The head of the pull request that the message shows, whose album went. */
+  sha: string;
+  /** The pictures that look different, the largest change first, as many as the message lists. */
+  changed: Changed[];
+  /** How many pictures look different in all; none once the newest head looks as committed. */
+  count: number;
+  /** How many of them the album shows, before and after. */
+  shown: number;
+  /** The run of the visual check, whose artifacts have every picture before and after. */
+  check: string;
 }
 
 /** A reminder of the pager itself, such as the token of Claude that expires. */
@@ -93,7 +146,38 @@ export interface Reminder extends Base {
   text: string;
 }
 
-export type Item = Contribution | Alarm | Alert | Release | Reminder;
+/**
+ * A question of the maintainer's own agents, such as an orchestrator that runs
+ * through the night, which the control repository forwards: its options are its
+ * buttons, and the one pressed is saved in the control repository, where the agent
+ * reads it. Its repository is the control repository.
+ */
+export interface Decision extends Base {
+  kind: "decision";
+  state: "open" | "answered";
+  /** The id that the agent gave the question, which names its answer. */
+  ask: string;
+  question: string;
+  /** Two to four options, in the order of their buttons. */
+  options: string[];
+  /** The place in options of the one that the maintainer chose, once answered. */
+  choice: number | null;
+}
+
+/** The longest question of a decision, in characters, which its message shows whole. */
+export const MAX_QUESTION = 1000;
+
+/** The longest option of a decision, in characters, which its button shows whole. */
+export const MAX_OPTION = 64;
+
+export type Item =
+  | Contribution
+  | Alarm
+  | Alert
+  | Release
+  | Pictures
+  | Reminder
+  | Decision;
 export type Kind = Item["kind"];
 
 const CLOSED: ReadonlySet<string> = new Set([
@@ -103,6 +187,7 @@ const CLOSED: ReadonlySet<string> = new Set([
   "resolved",
   "published",
   "done",
+  "answered",
 ]);
 
 /** The states in which a job of the control repository runs, and the one before. */
@@ -127,13 +212,19 @@ export async function itemId(key: string): Promise<string> {
   return `i${(await sha256Hex(key)).slice(0, 15)}`;
 }
 
-/** The key of each kind of thing: one thing per issue, and one bundle per repository. */
+/**
+ * The key of each kind of thing: one thing per issue, pull request or discussion,
+ * whose numbers GitHub counts together, one bundle per repository, the
+ * pictures of one pull request, and one question of an agent per id.
+ */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
   alarm: (repo: string) => `a:${repo}`,
   alert: (repo: string) => `s:${repo}`,
   release: (repo: string) => `r:${repo}`,
+  pictures: (repo: string, number: number) => `p:${repo}#${number}`,
   reminder: (name: string) => `t:${name}`,
+  decision: (ask: string) => `d:${ask}`,
 };
 
 const MONTH = 30 * 24 * 60 * 60;

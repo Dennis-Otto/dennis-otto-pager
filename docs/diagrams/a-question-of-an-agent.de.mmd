@@ -1,0 +1,24 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Die Frage eines Agenten
+    accDescr: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen, und die GitHub App speichert seine Antwort als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis.
+
+    agent["`**Ein Agent von Dennis** schickt pager-ask mit gh: eine Id, eine Frage und ihre Optionen`"]
+    control["`**Der Workflow des Steuer-Repositorys** nimmt nur Dennis' eigene Ereignisse und schickt sie signiert weiter`"]
+    topic["`**🤔 Ein eigenes Thema** in Telegram, mit einem Knopf pro Option`"]
+    press["Dennis drückt eine Option"]
+    saved["`**answers/id.json** auf dem Branch pager-answers, gespeichert von der GitHub App`"]
+    read["Der Agent liest die Antwort mit gh"]
+
+    agent --> control --> topic --> press --> saved --> read
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class agent,press you
+    class control,topic bot
+    class saved,read done

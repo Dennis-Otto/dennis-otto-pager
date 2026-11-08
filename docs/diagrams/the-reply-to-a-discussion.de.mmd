@@ -1,0 +1,26 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Die Antwort auf eine Diskussion
+    accDescr: Jemand anderes als Dennis oder ein Bot eröffnet eine Diskussion oder kommentiert eine. Eine Diskussion von Dennis und eine mit gewählter Antwort enden hier. Sonst zeigt der Pager sie in ihrem Thema und bittet das Steuer-Repository sofort um einen Entwurf, den Claude in Dennis' Stimme schreibt. Der Entwurf kommt mit Senden, Bearbeiten und Ignorieren. Senden postet genau diesen Entwurf als App des Pagers, im Thread des Kommentars, auf den er antwortet, oder an der Diskussion selbst. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die geantwortet wird, mit einem neuen Entwurf im selben Thema.
+
+    asked["`**💬** Jemand anderes eröffnet eine Diskussion oder kommentiert eine`"]
+    quiet["`Eine Diskussion von Dennis, oder eine mit gewählter Antwort: Nichts passiert`"]
+    shown["Der Pager zeigt sie in ihrem Thema und bittet das Steuer-Repository um einen Entwurf"]
+    draft["`**✍️** Claude entwirft eine Antwort in Dennis' Stimme: ✅ Senden, ✏️ Bearbeiten, ✖ Ignorieren`"]
+    press["Dennis drückt ✅ Senden, oder bearbeitet den Entwurf vorher"]
+    reply["`**✅** Die App postet genau diesen Entwurf, im Thread des Kommentars, auf den er antwortet`"]
+
+    asked -- "von Dennis, oder beantwortet" --> quiet
+    asked -- "von jemand anderem" --> shown --> draft --> press --> reply
+    reply -- "ein neuer Kommentar von jemand anderem: ein neuer Entwurf, im selben Thema" --> shown
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class asked,press you
+    class quiet,shown,draft bot
+    class reply done

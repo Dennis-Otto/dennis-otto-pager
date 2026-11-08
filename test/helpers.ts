@@ -19,12 +19,34 @@ export interface Call {
   url: string;
   // biome-ignore lint/suspicious/noExplicitAny: the recorded JSON of a call, whatever it holds.
   body: any;
+  /** Its headers, by their names in lower case. */
+  headers: Record<string, string>;
 }
 
 type Handler = (call: Call) => Response | undefined;
 
 export function json(value: unknown, status = 200): Response {
   return Response.json(value, { status });
+}
+
+/**
+ * The body of a call as the tests read it: its JSON, or the fields of a form, each
+ * file as its name, type and size.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: the recorded body of a call, whatever it holds.
+function recorded(body: RequestInit["body"]): any {
+  if (body instanceof FormData) {
+    return Object.fromEntries(
+      [...body.entries()].map(([name, value]) => [
+        name,
+        typeof value === "string"
+          ? value
+          : { file: value.name, type: value.type, size: value.size },
+      ]),
+    );
+  }
+  const text = body === undefined || body === null ? "" : String(body);
+  return text === "" ? undefined : JSON.parse(text);
 }
 
 /** The simulated network: Telegram answers ok, GitHub hands out tokens. */
@@ -47,11 +69,11 @@ export class Net {
 
   fetch: Fetch = async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
-    const text = init?.body === undefined ? "" : String(init.body);
     const call: Call = {
       method: init?.method ?? "GET",
       url,
-      body: text === "" ? undefined : JSON.parse(text),
+      body: recorded(init?.body),
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
     };
     this.calls.push(call);
     for (const handler of this.handlers) {

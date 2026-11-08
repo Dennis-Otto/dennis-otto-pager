@@ -55,7 +55,7 @@ printf %s "$CONTROL_SECRET" | npx wrangler secret put CONTROL_SECRET
 printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/dennis-otto-pager-control
 ```
 
-**`GITHUB_USER_TOKEN`** handelt nur für zwei Knöpfe in deinem Namen: ✅ **Senden**, das eine Antwort postet, die du freigegeben hast, und 🤖 **Assistent nochmal**, das den Issue-Assistenten über seine Ein-Kommentar-Regel hinaus startet; der Issue-Assistent fragt GitHub nach der Rolle der Person, die ihn gestartet hat, und eine App hat keine. Leg ein [fein granuliertes Token](https://github.com/settings/personal-access-tokens/new) für dein Konto und deine Repositorys an, mit diesen Rechten und keinen anderen:
+**`GITHUB_USER_TOKEN`** handelt nur für zwei Knöpfe in deinem Namen: ✅ **Senden**, das eine Antwort auf ein Issue oder einen Pull Request postet, die du freigegeben hast, und 🤖 **Assistent nochmal**, das den Issue-Assistenten über seine Ein-Kommentar-Regel hinaus startet; der Issue-Assistent fragt GitHub nach der Rolle der Person, die ihn gestartet hat, und eine App hat keine. Leg ein [fein granuliertes Token](https://github.com/settings/personal-access-tokens/new) für dein Konto und deine Repositorys an, mit diesen Rechten und keinen anderen:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |
@@ -83,15 +83,18 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |
-| Actions | Read and write | Ein Release-Workflow, der scheitert; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet |
+| Actions | Read and write | Ein Release-Workflow, der scheitert; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet; die Bilder eines Visual Checks |
 | Checks | Read | Ein Pflicht-Check, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
 | Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
+| Discussions | Read and write | Eine neue Diskussion oder ein Kommentar zu einer; ✅ Senden einer Antwort in einer Diskussion, als App |
 | Issues | Read | Ein neues Issue; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
-| Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests |
+| Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests; wer einen Pull Request eröffnet hat, dessen Bilder sich geändert haben, und sein Head |
 
 Eine App, die du vor 🔁 **Neu starten** registriert hast, hat *Actions: Read*: Setz es in den Einstellungen der App unter *Permissions & events* auf *Read and write* und nimm die neue Berechtigung für jede Installation an, wie GitHub dich per Mail bittet. Bis dahin sagt der Knopf, dass GitHub ihn ablehnte.
+
+Eine App, die du registriert hast, bevor es Diskussionen gab, hat weder *Discussions* noch ihre Ereignisse: Gib ihr in den Einstellungen der App unter *Permissions & events* *Discussions: Read and write*, abonniere die Ereignisse *Discussion* und *Discussion comment* und nimm die neue Berechtigung für jede Installation an. Bis dahin erreicht keine Diskussion den Pager.
 
 ## 5. Der Webhook von Telegram
 

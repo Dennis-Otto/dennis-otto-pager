@@ -14,12 +14,15 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 | Event | Counts when | Becomes |
 | --- | --- | --- |
 | `issues` opened, `pull_request` opened | Its author is neither the maintainer (`MAINTAINER_LOGIN`) nor a bot | A contribution, one message each |
+| `discussion` created, `discussion_comment` created | Its author is neither the maintainer nor a bot, the discussion isn't one of the maintainer, and no answer of Q&A was chosen | A contribution with its draft at once, one per discussion; a new comment makes itself the message that the reply answers ([below](#a-discussion)) |
 | `check_run` completed on the default branch | The check is required by the rulesets of the branch and failed, timed out or didn't start | An entry of the alarm of the repository; a pass of the same check takes it out |
 | `workflow_run` completed | `release.yml`, `build-release.yml` or `verify-release.yml` failed, outside a pull request | An entry of the alarm; a pass takes it out |
 | `issues` opened by a bot | It has the label `bot-failure` of the bot-health bot | An entry of the alarm; an edit of the open issue, as the bot makes one at each new failure, changes the entry and opens nothing; its closing takes it out |
 | `code_scanning_alert` created or reopened on the default branch | Its severity is high or critical | An entry of the code-scanning message of the repository; fixed or dismissed takes it out |
 | `check_suite` completed on a branch of release-please | GitHub calls the pull request clean: open, no draft, into the default branch, every required check green and up to date | The release message with 🔀 **Merge** |
 | `pull_request` synchronize, closed and merged; `release` published | It is the release that the message shows | The same message: *updated*, *merged*, *✅ published* |
+| `workflow_run` completed | `visual.yml`, the visual check, passed on a pull request of the repository at its head, which is one of the maintainer or of a bot, and a picture looks different | The pictures before and after, in the topic of the release or of a thing of their own ([below](#the-pictures-of-a-visual-change)) |
+| `pull_request` closed | It is one of the maintainer or of a bot whose pictures the pager shows | Its pictures are done: ✅ in front of their topic |
 
 A bundle whose last entry is gone turns green by itself, and a new failure after that opens a new message, which notifies. An entry of the alarm keeps the run of GitHub Actions that failed, where it names one: a required check by the address of its job, such as `…/actions/runs/31/job/2`, a release run by its id, and an issue of the bot-health bot by the run in the marker of its body, `<!-- bot-health {"run": 31, …} -->`, which the bot writes anew at each failure. Such an entry gives the alarm 🔁 **Rerun**.
 
@@ -32,22 +35,56 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Contribution | new | ✍️ Draft a reply, 🤖 Assistant again (issues only), ⏰ Later, ✖ Ignore |
 | Contribution | drafting | ⏰ Later, ✖ Ignore |
 | Contribution | draft | ✅ Send, ✏️ Edit, ⏰ Later, ✖ Ignore |
+| Discussion | new | ✍️ Draft a reply, ✖ Ignore, only when its draft couldn't be asked for, or its job failed or didn't answer within the hour |
+| Discussion | drafting | ✖ Ignore |
+| Discussion | draft | ✅ Send, ✏️ Edit, ✖ Ignore |
 | Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |
 | Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
+| Pictures | open | ✖ Ignore |
 | Reminder | open | ✅ Renewed, ⏰ Later |
+| Question of an agent | open | One button per option (no ⏰ Later, no ✖ Ignore) |
 
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
-- **✅ Send** posts the draft whose version its button carries, exactly as the message showed it; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
+- **✅ Send** posts the draft whose version its button carries, exactly as the message showed it, in the maintainer's name, and in a discussion as the app; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
 - **🔁 Rerun** reads each run that the entries name, with a token of the app for `actions: read`, and runs its failed jobs again, as *Re-run failed jobs* on GitHub does, with a token for `actions: write`. A run that still runs, or whose newer attempt runs, and one that passed on a retry stay as they are, and the button says so. The entries of a run that runs again show *🔁 running again…* in the message, edited in place, until the run fails again or passes: a pass closes the issue of the bot-health bot or ends the failure of the release, which takes the entry out, and the last one turns the alarm ✅. It costs no run of Claude, so it comes first, for a short outage of GitHub, such as a download that answered 504.
-- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
+- **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a fix that finds an outage of GitHub or of a download in the logs, such as a 504, a timeout or `error connecting to api.github.com`, changes nothing and proposes 🔁 **Rerun** with one ✅ **Confirm** button; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
+- **One button per option** answers the [question of an agent](#questions-and-reports-of-your-agents) and saves the answer.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.dark.svg">
   <img src="images/diagrams/the-rerun-of-a-run.svg" alt="The rerun of a run that failed: An entry of the alarm names a run of GitHub Actions that failed on main, such as that of a required check, a release or an issue of the bot-health bot. Dennis presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the entry says so in the message. When they fail again, the entry shows the failure, and Rerun can run them once more. When they pass, the bot-health bot closes its issue or the release run passes, the entry goes, and the last one turns the alarm green.">
+</picture>
+
+## A discussion
+
+A new discussion, or a comment on one, by someone other than the maintainer or a bot is a contribution as well, with a topic of its own, such as *💬 demo#31 How do I start?*. The pager asks the control repository for its draft as it comes, since its buttons send, edit or ignore that draft, as [decision 0006](decisions/0006-a-discussion-gets-its-draft-at-once-and-the-reply-of-the-app.md) explains: the message shows the discussion, or the comment with its author, and *✍️ The control repository drafts a reply…*, and the draft follows with ✅ **Send**, ✏️ **Edit** and ✖ **Ignore**. ✅ Send posts exactly that draft with `addDiscussionComment` of GitHub's GraphQL API, with a token of the app for `discussions: write` of that one repository, so the reply shows as that of the app: on the discussion itself, or in the thread of the comment that it answers, which for a reply to a reply is the thread of its parent, since GitHub nests one level only. A draft that couldn't be asked for, as when the app isn't installed on the control repository, leaves the message with ✍️ **Draft a reply** and a note that says why.
+
+A discussion is one thing, keyed by its number, which GitHub counts together with those of issues and pull requests. A new comment of someone else makes itself the message that the reply answers, with a new draft: while the thing is open, a new message replaces the old one, and once its reply went, the thing opens again in its topic, where the old message stays as history. A discussion that the maintainer ignored stays ignored, until its record expires 30 days later. No thing comes from a discussion of the maintainer, comments included, since GitHub tells its author of each comment itself, from one of Q&A whose answer was chosen, or from the app's own replies, which come back as comments of a bot.
+
+The control repository runs the jobs of one thing one at a time. A comment that comes while the draft of an older one is still being written waits for it: the pager shows the new comment at once, drops the older draft when it comes, so that no reply to the older comment can go into the thread of the newer one, and asks for the draft of the newest comment then. ✅ Send posts on the discussion itself when the comment that it answers is gone, as GitHub's `NOT_FOUND` for it says, so that the approved reply isn't lost.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reply-to-a-discussion.dark.svg">
+  <img src="images/diagrams/the-reply-to-a-discussion.svg" alt="The reply to a discussion: Someone other than Dennis or a bot opens a discussion or comments on one. A discussion of Dennis, and one whose answer was chosen, end there. Otherwise the pager shows it in its topic and asks the control repository for a draft at once, which Claude writes in Dennis's voice. The draft comes with Send, Edit and Ignore. Send posts exactly that draft as the pager's app, in the thread of the comment that it answers, or on the discussion itself. A new comment of someone else makes itself the message to answer, with a new draft, in the same topic.">
+</picture>
+
+## The pictures of a visual change
+
+A repository whose pictures show its app, such as paperless-unified-search, runs a visual check on each pull request that changes what they show: its `visual.yml` renders the pictures again, compares each with the committed one by its pixels, and keeps each one that looks different in an artifact of its run, before and after, with `report.json`, their list with the share of the pixels that changed. When the check passed on a pull request of the maintainer or of a bot, the pager shows those pictures in the chat, as [decision 0007](decisions/0007-the-pictures-of-a-visual-change-come-from-the-artifacts-of-its-check.md) explains:
+
+- **Whose:** the pager asks GitHub for the pull request first. One of someone else, one from a fork, whose run names no pull request, and one that moved on to a newer head get nothing: what someone else's pull request renders is theirs, and a newer head brings a check of its own.
+- **Where:** the release pull request that the pager shows gets them in the topic of the release, below a message of their own, so that its own message keeps 🔀 **Merge**. Any other gets a thing of its own, such as *🖼 demo#8 Make it blue*, whose message lists the pictures that look different, with how much of each changed, and links the run of the check, whose artifacts have them all, each changed pixel in red. Its one button is ✖ **Ignore**, which stops its pictures; the merge or the close of the pull request ends it, with ✅ in front of its topic.
+- **What:** an album, with `sendMediaGroup` of the Bot API, of the largest changes before and after: three pictures at most, PNG or WebP files of at most 5 MB, of a size that Telegram takes as a photo. A GIF, a video and a larger file stay behind the link. The album right after a new message comes quietly, so that both notify once.
+- **How often:** one album per head of the pull request at most. A check that runs again at the same head sends nothing, and a newer head whose pictures look different edits the message in place, with an album that notifies. A newer head whose pictures all look as committed again says so in the message, in place; a pull request whose pictures never changed sends nothing at all.
+- **How:** with a token of the app for `actions: read` of that one repository, which the app has for 🔁 **Rerun**, so no secret is new. The pager lists the artifacts of the run, `visual` or one per language, such as `visual-en`, and asks GitHub for the ZIP of each, 32 MB at most together, which answers with the address of its storage, signed for a minute. The pager follows it without the token, which goes to GitHub alone, reads the ZIP in memory, and inflates only the report and the pictures of the album, never to more than the size that the ZIP gives them. It reads the reports of each repository: their list is `pictures` or `images`, a picture is new or added, deleted or removed, and its files are named in its entry or are its path in `before/` and `after/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-pictures-of-a-visual-change.dark.svg">
+  <img src="images/diagrams/the-pictures-of-a-visual-change.svg" alt="The pictures of a visual change: Dennis or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, before and after, at most three pictures. The merge or the end of the pull request ticks the topic off.">
 </picture>
 
 ## The control repository
@@ -56,7 +93,7 @@ The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` r
 
 | Event type | Sent by | Client payload |
 | --- | --- | --- |
-| `pager-draft` | ✍️ Draft a reply | `item`, `repo`, `number`, `pull`, `language` |
+| `pager-draft` | ✍️ Draft a reply, and a discussion or a comment on one as it comes | `item`, `repo`, `number`, `pull`, `language`; for a discussion also `discussion`: `true` and `comment`, the GraphQL id of the comment that the reply answers, if any |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language`. The `url` of a release run that failed names its attempt, such as `…/actions/runs/3/attempts/2`, so that the fix reads the jobs of that attempt and not those of a rerun that still runs |
 | `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
 
@@ -75,6 +112,7 @@ The body is one of:
 - `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text;
 - `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
 - `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again;
+- `{"type": "failed", "item": "<id>", "text": "<why>", "action": "rerun"}`: a fix that made no change and proposes one action of its alarm or alert, such as 🔁 Rerun when the logs show an outage of GitHub or of a download. The thing goes back as above, with the reason as its note, but its message keeps its place, and the answer comes in the thing's topic as a proposal, with a single ✅ Confirm button, which notifies. A thing that doesn't offer the action then, such as an alarm whose entries name no run, comes back as for any failed job. An older pager ignores `action`, so either side may deploy first;
 - `{"type": "failed", "text": "<why>"}`: free text whose answer didn't come to be, shown as a message of its own.
 
 An answer to free text, a note or a failure without `item` or a proposal, carries `"message": <id>`, the `message` of its `pager-text`. The pager then turns the 👀 on that text into 👍, or into 😢 for a failure; a job started by hand in the Actions tab has no text, and leaves it out. The answer goes into the thread of that text, as [the thread of an answer](#the-thread-of-an-answer) says.
@@ -105,12 +143,12 @@ A proposal names its thing as the control repository knows it, and the pager loo
 | Action | Kind of thing | `number` |
 | --- | --- | --- |
 | `merge` | `release` | none |
-| `assistant`, `draft` | `contribution` | the issue or pull request |
+| `assistant`, `draft` | `contribution` | the issue, pull request or discussion |
 | `fix` | `alarm`, `alert` | none |
 | `rerun` | `alarm` | none |
 | `later`, `ignore` | any of the four | for a contribution |
 
-✅ Confirm carries the data of the thing's own button, so a press runs the action only while the thing still offers it, as any press does, and then the button goes. A thing that the pager doesn't show, or that doesn't offer the action now, gets the answer without a button. ✅ Send and ✏️ Edit can't be proposed: they stay with the message of the draft, which shows the text that they post.
+✅ Confirm carries the data of the thing's own button, so a press runs the action only while the thing still offers it, as any press does, and then the button goes. A thing that the pager doesn't show, or that doesn't offer the action now, gets the answer without a button. The `action` of a failed fix names no `target`: it is the thing of the job. ✅ Send and ✏️ Edit can't be proposed: they stay with the message of the draft, which shows the text that they post.
 
 ```sh
 body='{"type":"note","text":"The fix is in #12."}'
@@ -120,6 +158,54 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 ```
 
 No body makes the pager act: whatever the control repository sends is shown, escaped, and never run, and every action needs the press of a button of the allowlist. The answer goes to the Worker rather than straight to Telegram, as [decision 0003](decisions/0003-the-control-repository-answers-the-worker.md) explains: the token of the bot stays in Cloudflare, and the Worker keeps the state that a draft, a failed job and a proposal need.
+
+## Questions and reports of your agents
+
+The maintainer's own agents, such as an orchestrator that runs on their PC through the night with `gh` signed in as them, ask through the pager instead of leaving a line in a report: a question comes as a thing of its own, in a topic of its own, with its options as buttons, and the agent reads the answer from the private control repository. No secret goes to the PC: `gh` sends the event and reads the answer with the maintainer's own sign-in.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.dark.svg">
+  <img src="images/diagrams/a-question-of-an-agent.svg" alt="A question of an agent: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, and the GitHub App saves his answer as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own.">
+</picture>
+
+An agent sends one of two [repository dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event) to the control repository:
+
+| Event type | Client payload | What the pager shows |
+| --- | --- | --- |
+| `pager-ask` | `id`, `question`, `options` | A topic *🤔 Decision: …*, with one button per option |
+| `pager-report` | `text`, and `title` if any | A topic *🧾 Run: …*, or *🧾 Run* without a title, with the report and no button |
+
+```sh
+gh api repos/Dennis-Otto/dennis-otto-pager-control/dispatches --input - <<'JSON'
+{"event_type": "pager-ask", "client_payload": {"id": "2026-11-08-merge-order", "question": "Which release goes first?", "options": ["The blueprint", "The pager"]}}
+JSON
+```
+
+The workflow of the control repository takes only an event that the owner of the repository sent, never one of the GitHub App or of anyone else, checks it as the pager does and sends it on to `/control`, signed as every answer:
+
+- `{"type": "ask", "id": "<id>", "question": "<question>", "options": ["<option>", …]}`: the `id` names the answer, with letters, digits, dots, dashes and underscores, 64 characters at most, starting with a letter or a digit; the `question` has 1000 characters at most; two to four `options`, each different and 64 characters at most, become the buttons, one a row. The same `id` again asks nothing new: an open question stays as it is, and the pager answers 409 for one that is answered already. An answered `id` keeps its file on `pager-answers` for good and can't be asked again, so each question takes a new `id`, with the date or the run in it, such as `2026-11-08-merge-order`: the agent would read the old answer as the choice for its new question. Without the GitHub App on the control repository, the pager answers 503, since it couldn't save the answer;
+- `{"type": "report", "text": "<report>", "title": "<title>"}`: the report of a run, its first 3000 characters, with a `title` of 100 characters at most, which the pager leaves out of its store.
+
+A press saves the answer in the control repository, as the GitHub App, with a token for that repository alone and its permission to write the contents, which it has for the dispatches already: the file `answers/<id>.json` on the branch `pager-answers`, which its first answer makes with a commit of its own, without a parent and without the code of the repository, so no workflow runs on it.
+
+```json
+{
+  "id": "2026-11-08-merge-order",
+  "question": "Which release goes first?",
+  "options": ["The blueprint", "The pager"],
+  "choice": 1,
+  "answer": "The pager",
+  "answered": "2026-11-08T07:12:03.000Z"
+}
+```
+
+The message then shows the answer, its buttons go, and its topic gets ✅. When GitHub refuses the answer, the button says why and the question stays open, so that a press saves it again. A question takes no ⏰ Later and no ✖ Ignore: an agent waits for it. The agent reads the answer with its own `gh`, which answers 404 until there is one, for an `id` that was never asked before:
+
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/2026-11-08-merge-order.json?ref=pager-answers"
+```
+
+The script `scripts/ask.mjs` of the control repository does all three: it asks, reports and waits for an answer, as its README describes.
 
 ## The reaction on a text
 
@@ -139,10 +225,13 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 | Thing | Name of its topic | Color |
 | --- | --- | --- |
 | Contribution | 🙋 demo#12 It breaks | blue |
+| Discussion | 💬 demo#31 How do I start? | blue |
 | Alarm | 🚨 demo needs you | red |
 | Code scanning | 🛡 Code scanning in demo | yellow |
 | Release | 📦 demo 1.2.3 | green |
 | Reminder | 🔔 Token of Claude | violet |
+| Question of an agent | 🤔 Decision: Which release goes first? | violet |
+| Report of a run | 🧾 Run: Night run | green |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.dark.svg">
@@ -190,6 +279,6 @@ After a change of `LANGUAGE`, a message speaks the new language once its thing c
 
 ## State
 
-Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
+Workers KV holds one record per thing: its kind, state, repository, the id of its message, the thread and the name of its topic and, for a contribution, the draft, with the ids of the discussion and of the comment that its reply answers for a discussion; a closed thing expires after 30 days. A link from the thread of a topic to its thing, `topic:<thread>`, lets a text in the topic find it: one write when the topic opens and one when it is renamed, and it expires 30 days after its thing is done. The time of a "Later", and that of a job of the control repository while its thing waits for the answer, are in the metadata of its record, so the schedule finds what is due and what waits too long with one list, the prompt of an edit lives for a day, and one record keeps the texts that wait for their answer, with the time that each went and the thread that it came from, so the schedule reads it once per run and writes it only when a text comes or goes. Each change of a thing is one write, as the free plan of Workers KV wants it. Nothing secret is stored, and the logs name the answers of the APIs only, never a token or the text of an issue.
 
 Workers KV has no compare-and-swap, and a write shows in other places of the network only after a while. So the Worker hands every request that passed its checks of route and method to one Durable Object, `Serial` in `src/serial.ts`, which runs the changes one after another, in one place: two required checks that fail at the same moment end in one message with both, and a ✅ Send pressed twice posts once. The object keeps nothing itself; it is one of SQLite, which the free plan of Workers offers.

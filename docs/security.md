@@ -4,6 +4,8 @@
 
 What Repo Pager protects, what it trusts and which risks remain. [SECURITY.md](https://github.com/Dennis-Otto/repo-pager/blob/main/SECURITY.md) says how to report a vulnerability and how to verify a release, and argues why the repository and its releases are safe.
 
+Releases up to 0.7.0 were built while the repository was called `dennis-otto-pager`, so their provenance names that repository and their SBOMs carry that name. Verify them with the old names in place of the new ones: `--repo Dennis-Otto/dennis-otto-pager`, `--signer-workflow Dennis-Otto/dennis-otto-pager/.github/workflows/build-release.yml` and the pattern `'dennis-otto-pager.*.json'` for the SBOMs.
+
 ## What you can expect
 
 - Every request from the internet is untrusted input: the Worker checks its method, path and parameters before it acts, and answers anything else with an error.

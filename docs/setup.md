@@ -21,14 +21,15 @@ Make a copy of this repository: a fork, or a repository of your own. `wrangler.j
 | `name` | The name of your Worker, such as `repo-pager`, which its address takes |
 | `kv_namespaces` | No `id`: the one there names the namespace of the maintainer's instance, and your first deployment creates your own and writes its id there |
 | `MAINTAINER_LOGIN` | Your account on GitHub |
-| `CONTROL_REPOSITORY` | Your private control repository of step 7, such as `octocat/repo-pager-control` |
+| `CONTROL_REPOSITORY` | Your private control repository, which you create below and set up in step 7, such as `octocat/repo-pager-control` |
 | `LANGUAGE` | `de` for German, `en` or empty for English |
 | `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
 
-The commands below name your control repository with a variable of the shell:
+The commands below name your control repository with a variable of the shell. Create it now, empty and private, because step 3 gives it a secret and step 4 installs the app on it; step 7 adds its workflow:
 
 ```sh
 CONTROL=octocat/repo-pager-control   # your account and the name of your control repository
+gh repo create "$CONTROL" --private
 ```
 
 ## 1. The bot of Telegram

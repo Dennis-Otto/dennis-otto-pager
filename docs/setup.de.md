@@ -21,14 +21,15 @@ Leg eine Kopie dieses Repositorys an: einen Fork oder ein eigenes Repository. `w
 | `name` | Der Name deines Workers, etwa `repo-pager`, den seine Adresse trägt |
 | `kv_namespaces` | Ohne `id`: Die dort nennt den Namensraum der Instanz des Maintainers, und dein erstes Deployment legt deinen eigenen an und schreibt seine Id dorthin |
 | `MAINTAINER_LOGIN` | Dein Konto auf GitHub |
-| `CONTROL_REPOSITORY` | Dein privates Steuer-Repository aus Schritt 7, etwa `octocat/repo-pager-control` |
+| `CONTROL_REPOSITORY` | Dein privates Steuer-Repository, das du unten anlegst und in Schritt 7 einrichtest, etwa `octocat/repo-pager-control` |
 | `LANGUAGE` | `de` für Deutsch, `en` oder leer für Englisch |
 | `CLAUDE_TOKEN_EXPIRES` | Der Tag, an dem dein Token von Claude abläuft, oder leer |
 
-Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell:
+Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, leer und privat, denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 fügt seinen Workflow hinzu:
 
 ```sh
 CONTROL=octocat/repo-pager-control   # dein Konto und der Name deines Steuer-Repositorys
+gh repo create "$CONTROL" --private
 ```
 
 ## 1. Der Bot von Telegram

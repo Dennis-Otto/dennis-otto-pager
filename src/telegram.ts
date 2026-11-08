@@ -107,21 +107,38 @@ function threadNotFound(error: unknown): boolean {
 
 interface Answer {
   ok?: boolean;
+  error_code?: number;
   description?: string;
   result?: unknown;
+  parameters?: { retry_after?: number };
 }
+
+/**
+ * The longest wait, in seconds, that a call takes when Telegram asks it to wait
+ * before it tries again, with a 429: an event of GitHub that waits longer would
+ * run past GitHub's ten seconds, and the schedule delivers it again later.
+ */
+export const MAX_RETRY_AFTER = 3;
+
+/** Wait so many seconds. */
+export type Sleep = (seconds: number) => Promise<void>;
+
+const sleep: Sleep = (seconds) =>
+  new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 
 export class Telegram {
   private readonly token: string;
   private readonly chatId: number;
   private readonly fetch: Fetch;
+  private readonly wait: Sleep;
   /** Whether the chat has topics, which getMe says once per request. */
   private topicMode: boolean | undefined;
 
-  constructor(token: string, chatId: number, fetcher: Fetch) {
+  constructor(token: string, chatId: number, fetcher: Fetch, wait = sleep) {
     this.token = token;
     this.chatId = chatId;
     this.fetch = fetcher;
+    this.wait = wait;
   }
 
   async call(method: string, parameters: object): Promise<unknown> {
@@ -136,7 +153,17 @@ export class Telegram {
     return this.request(method, { body: form });
   }
 
-  private async request(method: string, init: RequestInit): Promise<unknown> {
+  /**
+   * A call to Telegram. When Telegram asks it to wait a little, with a 429 and
+   * retry_after of at most MAX_RETRY_AFTER seconds, it waits and tries once more,
+   * since a burst of messages into one chat, such as of events that come again,
+   * meets the limit of the chat.
+   */
+  private async request(
+    method: string,
+    init: RequestInit,
+    again = true,
+  ): Promise<unknown> {
     const response = await this.fetch(
       `https://api.telegram.org/bot${this.token}/${method}`,
       { method: "POST", ...init },
@@ -144,6 +171,16 @@ export class Telegram {
     const answer: Answer = await response
       .json<Answer>()
       .catch(() => ({ description: `HTTP ${response.status}` }));
+    const after = answer.parameters?.retry_after;
+    if (
+      again &&
+      answer.error_code === 429 &&
+      after !== undefined &&
+      after <= MAX_RETRY_AFTER
+    ) {
+      await this.wait(after);
+      return this.request(method, init, false);
+    }
     if (answer.ok !== true) {
       throw new TelegramError(
         method,

@@ -17,3 +17,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0009](0009-a-discussion-that-github-dealt-with-is-done-and-an-own-draft-stays.md) | A discussion that GitHub dealt with is done, and a draft of the maintainer's own stays | accepted |
 | [0010](0010-a-text-in-the-topic-of-a-question-answers-it-and-an-agent-may-take-it-back.md) | A text in the topic of a question answers it, and an agent may take its question back | accepted |
 | [0011](0011-a-comment-on-an-issue-or-a-pull-request-edits-its-thing-and-notifies-once.md) | A comment on an issue or a pull request edits its thing, and notifies once | accepted |
+| [0012](0012-the-schedule-has-github-deliver-a-failed-event-again.md) | The schedule has GitHub deliver a failed event again, and every signal may come twice | accepted |

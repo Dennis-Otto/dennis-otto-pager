@@ -98,6 +98,7 @@ const en = {
   "entry.bot": "A bot fails: {title}",
   "entry.release": "The release fails: {name}",
   "entry.check": "{name} fails on {branch}",
+  "entry.delivery": "An event of GitHub fails: {event}",
   "entry.alert": "{severity}: {what}",
   "entry.alertAt": "{severity}: {what} in {path}",
 
@@ -338,6 +339,7 @@ const de: Catalog = {
   "entry.bot": "Ein Bot scheitert: {title}",
   "entry.release": "Das Release scheitert: {name}",
   "entry.check": "{name} scheitert auf {branch}",
+  "entry.delivery": "Ein Ereignis von GitHub scheitert: {event}",
   "entry.alert": "{severity}: {what}",
   "entry.alertAt": "{severity}: {what} in {path}",
 

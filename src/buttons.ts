@@ -4,7 +4,12 @@
  * only when the thing, in its state at the time of the press, still offers it, so
  * an old button of a changed message does nothing.
  */
-import type { Contribution, Decision, Item } from "./store.ts";
+import {
+  type Contribution,
+  DELIVERY_ENTRY,
+  type Decision,
+  type Item,
+} from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 
@@ -64,7 +69,16 @@ export function allowed(item: Item): Action[] {
       switch (item.state) {
         case "open":
           // 🔁 Rerun where an entry of an alarm names a run that failed: it
-          // costs no run of Claude.
+          // costs no run of Claude. An alarm of events of GitHub that failed
+          // alone gets no 🔧 Fix: Claude sees neither the deliveries on the
+          // app's Advanced page nor the logs of the Worker.
+          if (
+            item.kind === "alarm" &&
+            item.entries.length > 0 &&
+            item.entries.every((entry) => entry.key.startsWith(DELIVERY_ENTRY))
+          ) {
+            return ["later", "ignore"];
+          }
           return item.kind === "alarm" &&
             item.entries.some((entry) => entry.run !== undefined)
             ? ["rerun", "fix", "later", "ignore"]

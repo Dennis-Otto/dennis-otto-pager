@@ -99,6 +99,11 @@ export async function appJwt(
   return `${unsigned}.${base64url(signature)}`;
 }
 
+/**
+ * The JWT of the app, by its id, while it has two minutes left: one signature of
+ * RSA serves every call of a run of the schedule, which keeps its time of CPU low.
+ */
+const jwts = new Map<string, { jwt: string; until: number }>();
 /** The tokens of installations, by installation, repository and permissions. */
 const tokens = new Map<string, { token: string; until: number }>();
 /** The required checks of a branch, by repository and branch, for ten minutes. */
@@ -106,6 +111,7 @@ const required = new Map<string, { checks: string[]; until: number }>();
 
 /** Forget every token and every cached answer, as a new isolate would. */
 export function forget(): void {
+  jwts.clear();
   tokens.clear();
   required.clear();
 }
@@ -125,6 +131,41 @@ export interface PullRequest {
     ref?: string;
     repo?: { full_name?: string; default_branch?: string };
   };
+}
+
+/**
+ * One attempt to deliver an event of the app's webhook, as GitHub lists them: each
+ * attempt has an id of its own, and all attempts of an event share its guid.
+ */
+export interface Delivery {
+  id: number;
+  guid: string;
+  delivered_at: string;
+  /** Whether it was asked for again, on the app's Advanced page or by the pager. */
+  redelivery: boolean;
+  /** The status of the pager's answer, or 0 when none came in time. */
+  status_code: number;
+  event: string;
+  action: string | null;
+  /** The repository of the event, or null for one of none, such as of the app itself. */
+  repository_id: number | null;
+}
+
+/** A page of the deliveries, newest first, and the cursor of the next page, if any. */
+export interface Deliveries {
+  deliveries: Delivery[];
+  cursor: string | null;
+}
+
+/** The cursor of the next page of the deliveries, from the Link header of GitHub. */
+export function nextCursor(link: string | null): string | null {
+  for (const part of (link ?? "").split(",")) {
+    const match = /<([^>]*)>\s*;\s*rel="next"/.exec(part);
+    if (match !== null) {
+      return new URL(String(match[1]), API).searchParams.get("cursor");
+    }
+  }
+  return null;
 }
 
 /** An artifact of a run of GitHub Actions: its id, its name and its size in bytes. */
@@ -284,6 +325,18 @@ export class GitHub {
     return answer.data as T;
   }
 
+  /** The JWT of the app itself, for the calls that act as the app and not as an installation. */
+  private async jwt(): Promise<string> {
+    const cached = jwts.get(this.appId);
+    if (cached !== undefined && cached.until > this.now()) {
+      return cached.jwt;
+    }
+    const jwt = await appJwt(this.appId, this.appKey, this.now());
+    // appJwt() makes it for 9 minutes; it serves 7 of them.
+    jwts.set(this.appId, { jwt, until: this.now() + 7 * 60 * 1000 });
+    return jwt;
+  }
+
   /** A token of the app for one repository, with only the permissions of a call. */
   async token(
     installation: number,
@@ -296,7 +349,7 @@ export class GitHub {
     if (cached !== undefined && cached.until > this.now()) {
       return cached.token;
     }
-    const jwt = await appJwt(this.appId, this.appKey, this.now());
+    const jwt = await this.jwt();
     const answer = await this.json<{ token: string; expires_at: string }>(
       await this.call(
         jwt,
@@ -314,12 +367,58 @@ export class GitHub {
 
   /** The installation of the app on a repository, or null where it isn't installed. */
   async installation(repo: string): Promise<number | null> {
-    const jwt = await appJwt(this.appId, this.appKey, this.now());
+    const jwt = await this.jwt();
     const response = await this.call(jwt, "GET", `/repos/${repo}/installation`);
     if (response.status === 404) {
       return null;
     }
     return (await this.json<{ id: number }>(response)).id;
+  }
+
+  /**
+   * A page of 100 deliveries of the app's webhook, newest first: the first one, or
+   * the one that a cursor of the page before names. Only the cursor is taken from
+   * GitHub's Link header, so the JWT of the app goes to no other address.
+   */
+  async deliveries(cursor: string | null): Promise<Deliveries> {
+    const query =
+      cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`;
+    const response = await this.call(
+      await this.jwt(),
+      "GET",
+      `/app/hook/deliveries?per_page=100${query}`,
+    );
+    const link = response.headers.get("link");
+    return {
+      deliveries: await this.json<Delivery[]>(response),
+      cursor: nextCursor(link),
+    };
+  }
+
+  /** Have GitHub deliver an event again, as Redeliver on the app's Advanced page does. */
+  async redeliver(delivery: number): Promise<void> {
+    const response = await this.call(
+      await this.jwt(),
+      "POST",
+      `/app/hook/deliveries/${delivery}/attempts`,
+    );
+    if (!response.ok) {
+      await this.json(response);
+    }
+  }
+
+  /** The page of the app's settings, by its slug, under its owner's settings. */
+  async appSettings(): Promise<string> {
+    const app = await this.json<{
+      slug: string;
+      owner?: { login?: string; type?: string } | null;
+    }>(await this.call(await this.jwt(), "GET", "/app"));
+    const owner = app.owner;
+    const settings =
+      owner?.type === "Organization"
+        ? `https://github.com/organizations/${owner.login}/settings`
+        : "https://github.com/settings";
+    return `${settings}/apps/${app.slug}`;
   }
 
   async pullRequest(

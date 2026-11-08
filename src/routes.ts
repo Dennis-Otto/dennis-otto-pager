@@ -62,7 +62,8 @@ async function github(context: Context, request: Request): Promise<Response> {
   try {
     return new Response(await context.exclusive(() => apply(context, signal)));
   } catch (error) {
-    // GitHub delivers it again when asked to, in the settings of the app.
+    // GitHub never delivers it again by itself: the schedule asks it to, three
+    // attempts in all, and then pages (src/deliveries.ts).
     console.error(`A GitHub ${event} failed:`, describe(error));
     return new Response("failed", { status: 500 });
   }

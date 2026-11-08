@@ -408,7 +408,9 @@ describe("discussions", () => {
       "/repos/Dennis-Otto/control/installation",
       () => new Response("{", { status: 200 }),
     );
-    await expect(apply(w.context, commented)).rejects.toThrow(SyntaxError);
+    await expect(
+      apply(w.context, { ...commented, comment: "DC_8" }),
+    ).rejects.toThrow(SyntaxError);
   });
 });
 

@@ -1,7 +1,8 @@
 /**
  * The context of each request and of each run of the schedule: the settings, the
  * state, the two APIs and the texts of its language, which the tests make with a
- * simulated network and clock.
+ * simulated network and clock. It counts the calls to the network, which the
+ * free plan of Workers allows 50 of per request.
  */
 import { GitHub, GitHubError } from "./github.ts";
 import type { Context } from "./pager.ts";
@@ -20,21 +21,27 @@ export function makeContext(
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
   exclusive: Context["exclusive"] = (work) => work(),
 ): Context {
+  let subrequests = 0;
+  const counted: Fetch = (input, init) => {
+    subrequests += 1;
+    return fetcher(input, init);
+  };
   return {
     settings,
     store: new Store(env.PAGER),
-    telegram: new Telegram(settings.telegramToken, settings.chatId, fetcher),
+    telegram: new Telegram(settings.telegramToken, settings.chatId, counted),
     github: new GitHub(
       settings.appId,
       settings.appKey,
       settings.userToken,
-      fetcher,
+      counted,
       now,
     ),
     t: texts(settings.language),
     now,
     sleep,
     exclusive,
+    subrequests: () => subrequests,
   };
 }
 

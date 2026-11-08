@@ -11,6 +11,7 @@ import {
   pkcs1ToPkcs8,
 } from "../src/github.ts";
 import {
+  MAX_RETRY_AFTER,
   REACTIONS,
   Telegram,
   TelegramError,
@@ -141,6 +142,80 @@ describe("the GitHub App", () => {
     await expect((await github(failing)).installation("x/y")).rejects.toThrow(
       "GitHub answered 500: Bad",
     );
+  });
+
+  it("signs one JWT for the calls of seven minutes, and a new one after", async () => {
+    const net = new Net().on("GET", /installation$/, () => json({ id: 77 }));
+    const clock = { now: START };
+    const api = new GitHub(
+      "12345",
+      (await appKey()).pem,
+      null,
+      net.fetch,
+      () => clock.now,
+    );
+    await api.installation("Dennis-Otto/control");
+    clock.now = START + 7 * 60_000 - 1;
+    await api.installation("Dennis-Otto/control");
+    clock.now = START + 7 * 60_000;
+    await api.installation("Dennis-Otto/control");
+    const [first, second, third] = net.calls.map(
+      (call) => call.headers.authorization,
+    );
+    expect(second).toBe(first);
+    expect(third).not.toBe(first);
+    expect(third).toMatch(/^Bearer ey/);
+  });
+
+  it("lists the deliveries of its webhook page by page, and delivers one again", async () => {
+    const next =
+      '<https://api.github.com/app/hook/deliveries?per_page=100&cursor=v1_9%2B1>; rel="next"';
+    const net = new Net()
+      .on("GET", "/app/hook/deliveries?per_page=100", () =>
+        Response.json([{ id: 2, guid: "g" }], { headers: { link: next } }),
+      )
+      .on("GET", "/app/hook/deliveries?per_page=100&cursor=v1_9%2B1", () =>
+        json([{ id: 1, guid: "g" }]),
+      )
+      .on("POST", "/app/hook/deliveries/2/attempts", () => json({}, 202))
+      .on("POST", "/app/hook/deliveries/1/attempts", () =>
+        json({ message: "Validation Failed" }, 422),
+      );
+    const api = await github(net);
+    expect(await api.deliveries(null)).toEqual({
+      deliveries: [{ id: 2, guid: "g" }],
+      cursor: "v1_9+1",
+    });
+    expect(await api.deliveries("v1_9+1")).toEqual({
+      deliveries: [{ id: 1, guid: "g" }],
+      cursor: null,
+    });
+    await api.redeliver(2);
+    await expect(api.redeliver(1)).rejects.toThrow(
+      "GitHub answered 422: Validation Failed",
+    );
+    expect(net.calls.map((call) => call.headers.authorization)).toEqual(
+      Array(4).fill(net.calls[0]?.headers.authorization),
+    );
+  });
+
+  it("names the page of its settings, under its owner", async () => {
+    const owners = [
+      [{ login: "Dennis-Otto", type: "User" }, "https://github.com/settings"],
+      [
+        { login: "acme", type: "Organization" },
+        "https://github.com/organizations/acme/settings",
+      ],
+      [null, "https://github.com/settings"],
+    ] as const;
+    for (const [owner, settings] of owners) {
+      const net = new Net().on("GET", "/app", () =>
+        json({ slug: "pager", owner }),
+      );
+      expect(await (await github(net)).appSettings()).toBe(
+        `${settings}/apps/pager`,
+      );
+    }
   });
 
   it("merges by squash, only at the head that was shown", async () => {
@@ -432,6 +507,80 @@ describe("Telegram", () => {
     expect(second.text).toBe("Hi");
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+
+  it("waits once when Telegram asks for a short wait, and tries again", async () => {
+    const waits: number[] = [];
+    let tries = 0;
+    const busy = new Net().on("POST", /sendMessage$/, () =>
+      tries++ === 0
+        ? json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 2",
+              parameters: { retry_after: 2 },
+            },
+            429,
+          )
+        : json({ ok: true, result: { message_id: 8 } }),
+    );
+    const patient = new Telegram("123:test", 4242, busy.fetch, async (s) => {
+      waits.push(s);
+    });
+    expect(await patient.send("Hi", [])).toBe(8);
+    expect(waits).toEqual([2]);
+    expect(busy.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("waits no longer than MAX_RETRY_AFTER, and only once", async () => {
+    const limited = (after: number) =>
+      new Net().on("POST", /sendMessage$/, () =>
+        json(
+          {
+            ok: false,
+            error_code: 429,
+            description: "Too Many Requests",
+            parameters: { retry_after: after },
+          },
+          429,
+        ),
+      );
+    const waits: number[] = [];
+    const record = async (s: number) => {
+      waits.push(s);
+    };
+    const long = limited(MAX_RETRY_AFTER + 1);
+    await expect(
+      new Telegram("123:test", 4242, long.fetch, record).send("Hi", []),
+    ).rejects.toThrow("Too Many Requests");
+    expect(long.telegram("sendMessage")).toHaveLength(1);
+    const again = limited(1);
+    await expect(
+      new Telegram("123:test", 4242, again.fetch, record).send("Hi", []),
+    ).rejects.toThrow("Too Many Requests");
+    expect(again.telegram("sendMessage")).toHaveLength(2);
+    expect(waits).toEqual([1]);
+  });
+
+  it("waits for real by default", async () => {
+    vi.useFakeTimers();
+    try {
+      let tries = 0;
+      const busy = new Net().on("POST", /sendMessage$/, () =>
+        tries++ === 0
+          ? json(
+              { ok: false, error_code: 429, parameters: { retry_after: 1 } },
+              429,
+            )
+          : json({ ok: true, result: { message_id: 9 } }),
+      );
+      const sent = telegram(busy).send("Hi", []);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await sent).toBe(9);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("passes on every other error of a message for a thread", async () => {

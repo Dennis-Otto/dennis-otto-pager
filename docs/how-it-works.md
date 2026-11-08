@@ -44,7 +44,7 @@ A message shows what its thing says, so that it needs no visit to GitHub. A cont
 | Discussion | drafting | ✖ Ignore |
 | Discussion | draft | ✅ Send, ✏️ Edit, ✖ Ignore |
 | Contribution, discussion | sent, done, ignored | None; a new comment of someone else opens one that was sent or done again: an issue or a pull request with the buttons of *new*, a discussion with its draft at once (*drafting*) |
-| Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix, ⏰ Later, ✖ Ignore |
+| Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix (unless every entry is an event of GitHub that fails), ⏰ Later, ✖ Ignore |
 | Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |
 | Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
@@ -317,6 +317,25 @@ The messages of the things, such as a release or a failing check, go into their 
 Every text that the pager sends comes from `src/texts.ts`, one catalog per language, English and German, and `LANGUAGE` in `wrangler.jsonc` chooses one: the messages and their states, the buttons, `/help`, the answers of the buttons, the errors that it shows and the reminder of the token. A text names its parts in braces, such as `{repo}`, and what fills them, such as the title of an issue or the name of a check, goes in as GitHub says it. The rules hand on what they mean, such as why a release may not merge yet, as a key of the catalog with its values, and the pager words it; the logs stay in English. Both catalogs have the same keys, which the compiler checks, and the same placeholders, tags and emojis, which `test/texts.test.ts` checks: a new text takes an entry in both.
 
 After a change of `LANGUAGE`, a message speaks the new language once its thing changes; what its record keeps as text, such as its note, the entries of a bundle and the reminder, keeps the words that it was written with.
+
+## When an event fails
+
+GitHub never delivers an event of a webhook again by itself. When handling one fails, such as when Telegram answers `429` or a `5xx`, or GitHub a `5xx` while the pager reads a pull request, the pager answers `500`, and the schedule takes it from there, in `src/deliveries.ts`:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/when-an-event-fails.dark.svg">
+  <img src="images/diagrams/when-an-event-fails.svg" alt="When an event of GitHub fails: GitHub delivers an event to the pager, and handling it fails, such as in an outage of Telegram, so the pager answers 500, or no answer comes in time. GitHub never delivers it again by itself. Every 15 minutes, the schedule reads the deliveries of the app's webhook of the last three hours, and has GitHub deliver the event again, up to three attempts in all and ten events per run. An attempt that passes ends it, and since each signal changes nothing when it comes twice, a redelivery is safe. When the third attempt fails as well, the alarm of the control repository gets one entry, An event of GitHub fails, linked to the recent deliveries on the app's Advanced page. Dennis can deliver it again there, and an attempt that passes takes the entry out.">
+</picture>
+
+- **Each run reads the deliveries of the app's webhook** of the last three hours, newest first, with `GET /app/hook/deliveries`: 100 per page and three pages at most. The attempts of an event share its `guid`, and each has an id of its own.
+- **An event whose newest attempt failed comes again:** a `5xx` of the pager, or `0`, when no answer came within the ten seconds of GitHub. A `2xx` passed, and a `4xx` is a refusal of the pager, such as of a wrong signature, which it would refuse again. The schedule asks with `POST /app/hook/deliveries/{id}/attempts`, the oldest first, for ten events per run at most and three attempts per event, its first delivery included. It counts only an event whose first delivery is on the pages that it read, so that all its attempts are: an event older than three hours, or on a busy day older than the 300 newest deliveries, gets no more.
+- **A second delivery is safe:** each signal leaves the same state when it comes twice, as `test/deliveries.test.ts` checks for every kind of signal. A contribution that is shown already, the same discussion or comment, the same entry of a bundle, a release at the same head and the pictures of the same head change nothing the second time, and no message goes.
+- **A late event that a newer one overtook doesn't come again:** a redelivery comes up to 45 minutes late, and its signal would trust a payload that may be stale by then, such as a run that failed before a rerun passed, which would open the alarm again, or a release at a head that has moved since. So an event of a run, a check suite or a check, an alert of code scanning, an issue, a pull request, a discussion or a release doesn't come again once a newer event of the same kind in the same repository passed, which the list shows by its `event` and `repository_id`; the newer one stands, as before the pager asked for any event again. A comment adds to its thing and overtakes nothing, so it always comes again. The rule is coarse: a newer event of another check or another pull request of the repository counts as well, and the failed one is then left out, as it was before.
+- **A burst of messages waits a little:** when Telegram answers `429` and asks to wait three seconds at most (`retry_after`), the call waits and tries once more, which keeps a burst of events, also of those that come again, within the limit of the chat.
+- **An event whose third attempt fails** is an entry of the alarm of the control repository, the pager's own: *🚨 An event of GitHub fails: pull_request.opened*, linked to the Advanced page of the app, where GitHub shows each delivery with the answer of the pager and offers **Redeliver**. It comes once, by the `guid` of the event, and an attempt that passes later, such as one asked for there, takes it out, which turns the alarm green when it was the last entry. An entry that the alarm shows already, also one that was ignored, stays as it is. An alarm with only such entries offers no 🛠 Start fix, since Claude sees neither the deliveries nor the logs of the Worker.
+- **Within the free plan:** a request of a Worker makes 50 calls to the network at most. The deliveries come last in a run and count the calls of the steps before them: the pages and the redeliveries take what is left, and each change of the alarm needs room for ten calls; what doesn't fit comes in the next run. The pager writes nothing to Workers KV for the attempts, since the list of the deliveries counts them, and it signs one JWT of the app for all the calls of seven minutes.
+
+This needs no permission of the app and no secret: the JWT of the app reads and asks for the deliveries of its own webhook.
 
 ## State
 

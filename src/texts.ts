@@ -103,6 +103,7 @@ const en = {
 
   "blocker.closed": "it isn't open",
   "blocker.branch": "it isn't a release pull request",
+  "blocker.fork": "it comes from a fork",
   "blocker.base": "it doesn't go into {branch}",
   "blocker.title": "its title names no release",
   "blocker.draft": "it is a draft",
@@ -342,6 +343,7 @@ const de: Catalog = {
 
   "blocker.closed": "er ist nicht offen",
   "blocker.branch": "er ist kein Release-Pull-Request",
+  "blocker.fork": "er kommt aus einem Fork",
   "blocker.base": "er geht nicht in {branch}",
   "blocker.title": "sein Titel nennt kein Release",
   "blocker.draft": "er ist ein Entwurf",

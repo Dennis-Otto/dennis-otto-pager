@@ -1005,7 +1005,11 @@ describe("releases", () => {
     const pull = {
       number: 30,
       merged: true,
-      head: { ref: "release-please--branches--main", sha: "abc" },
+      head: {
+        ref: "release-please--branches--main",
+        sha: "abc",
+        repo: { full_name: "Dennis-Otto/demo" },
+      },
     };
     expect(
       classify(
@@ -1038,6 +1042,21 @@ describe("releases", () => {
         ME,
       ),
     ).toEqual({ signal: { ...at, type: "release-check", numbers: [30] } });
+    // A fork may name its branch like release-please: its edit is no release.
+    const { repo: _repo, ...nowhere } = pull.head;
+    for (const head of [
+      { ...pull.head, repo: { full_name: "mallory/demo" } },
+      { ...pull.head, repo: null },
+      nowhere,
+    ]) {
+      expect(
+        classify(
+          "pull_request",
+          event({ action: "edited", pull_request: { ...pull, head } }),
+          ME,
+        ),
+      ).toEqual({ ignored: "a release pull request of a fork" });
+    }
     expect(
       classify(
         "pull_request",
@@ -1089,10 +1108,18 @@ describe("releases", () => {
       title: "chore: release 1.2.3",
       mergeable_state: "clean",
       draft: false,
-      head: { ref: "release-please--branches--main" },
-      base: { ref: "main" },
+      head: {
+        ref: "release-please--branches--main",
+        repo: { full_name: "Dennis-Otto/demo" },
+      },
+      base: { ref: "main", repo: { full_name: "Dennis-Otto/demo" } },
     };
     expect(why(ready, "main")).toBeNull();
+    for (const repo of [{ full_name: "mallory/demo" }, null]) {
+      expect(why({ ...ready, head: { ...ready.head, repo } }, "main")).toBe(
+        "it comes from a fork",
+      );
+    }
     expect(why({ ...ready, state: "closed" }, "main")).toBe("it isn't open");
     expect(why({ ...ready, head: { ref: "feat/x" } }, "main")).toBe(
       "it isn't a release pull request",
@@ -1100,9 +1127,9 @@ describe("releases", () => {
     expect(why({ ...ready, head: {} }, "main")).toBe(
       "it isn't a release pull request",
     );
-    expect(why({ ...ready, base: { ref: "next" } }, "main")).toBe(
-      "it doesn't go into main",
-    );
+    expect(
+      why({ ...ready, base: { ...ready.base, ref: "next" } }, "main"),
+    ).toBe("it doesn't go into main");
     expect(why({ ...ready, title: "chore: tidy" }, "main")).toBe(
       "its title names no release",
     );

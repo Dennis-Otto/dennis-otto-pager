@@ -66,7 +66,7 @@ export interface Payload {
     html_url?: string;
     user?: Account;
     merged?: boolean;
-    head?: { ref?: string; sha?: string };
+    head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   };
   check_run?: {
     name?: string;
@@ -274,7 +274,7 @@ export interface PullRequestState {
   draft?: boolean;
   user?: Account;
   head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
-  base?: { ref?: string };
+  base?: { ref?: string; repo?: { full_name?: string } };
 }
 
 /**
@@ -306,8 +306,10 @@ export function picturesBlocker(
 
 /**
  * Why a release pull request may not merge yet, or null when it may: it is open,
- * from a branch of release-please into the default branch, not a draft, and GitHub
- * calls it clean, so every required check passed and the branch is up to date.
+ * from a branch of release-please of the repository itself into the default branch,
+ * not a draft, and GitHub calls it clean, so every required check passed and the
+ * branch is up to date. A fork may name its branch like release-please, but what it
+ * holds is someone else's code, never a release.
  */
 export function releaseBlocker(
   pull: PullRequestState,
@@ -318,6 +320,9 @@ export function releaseBlocker(
   }
   if (!(pull.head?.ref ?? "").startsWith(RELEASE_BRANCH)) {
     return { key: "blocker.branch" };
+  }
+  if (pull.head?.repo?.full_name !== pull.base?.repo?.full_name) {
+    return { key: "blocker.fork" };
   }
   if (pull.base?.ref !== defaultBranch) {
     return { key: "blocker.base", values: { branch: defaultBranch } };
@@ -507,8 +512,12 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
       return { signal: { ...at, type: "release-merged", number } };
     }
     // A new title or new notes, such as notes changed by hand before the merge:
-    // the pager reads the pull request again, as when its checks finish.
+    // the pager reads the pull request again, as when its checks finish. Only for
+    // a branch of the repository itself: a fork may name its branch like that.
     if (payload.action === "edited") {
+      if (pull?.head?.repo?.full_name !== at.repo) {
+        return { ignored: "a release pull request of a fork" };
+      }
       return { signal: { ...at, type: "release-check", numbers: [number] } };
     }
     return { ignored: `a release pull request ${payload.action}` };

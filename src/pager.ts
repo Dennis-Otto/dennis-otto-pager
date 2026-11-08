@@ -200,7 +200,6 @@ function base(id: string, repo: string, installation: number) {
   };
 }
 
-/** Whether two entries of a bundle show the same. */
 /** The start of what a signal's issue, pull request, discussion or comment says, as a field of its thing. */
 function excerptOf(signal: { excerpt?: string }): { excerpt?: string } {
   return signal.excerpt === undefined ? {} : { excerpt: signal.excerpt };
@@ -214,6 +213,7 @@ function sameNotes(
   return JSON.stringify(one) === JSON.stringify(other);
 }
 
+/** Whether two entries of a bundle show the same. */
 function sameEntry(one: Entry, other: Entry): boolean {
   return (
     one.label === other.label &&

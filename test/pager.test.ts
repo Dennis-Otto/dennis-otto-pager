@@ -1047,8 +1047,15 @@ describe("a release", () => {
     draft: false,
     mergeable_state: "clean",
     html_url: "https://github.com/Dennis-Otto/demo/pull/30",
-    head: { ref: "release-please--branches--main", sha: "abc" },
-    base: { ref: "main", repo: { default_branch: "main" } },
+    head: {
+      ref: "release-please--branches--main",
+      sha: "abc",
+      repo: { full_name: "Dennis-Otto/demo" },
+    },
+    base: {
+      ref: "main",
+      repo: { full_name: "Dennis-Otto/demo", default_branch: "main" },
+    },
   };
   const check: Signal = { ...at, type: "release-check", numbers: [30] };
 
@@ -1275,11 +1282,26 @@ describe("a release", () => {
     );
   });
 
+  it("shows no release of a fork that names its branch like release-please", async () => {
+    const w = await world();
+    serve(w, {
+      ...pull,
+      head: { ...pull.head, repo: { full_name: "mallory/demo" } },
+    });
+    expect(await apply(w.context, check)).toBe(
+      "#30 not ready: it comes from a fork",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(0);
+  });
+
   it("takes a ready pull request without a head or address as it comes", async () => {
     const w = await world();
     const { html_url: _url, head: _head, ...bare } = pull;
     // A ready pull request always has its head; the rule reads the branch from it.
-    serve(w, { ...bare, head: { ref: "release-please--branches--main" } });
+    serve(w, {
+      ...bare,
+      head: { ref: "release-please--branches--main", repo: pull.head.repo },
+    });
     expect(await apply(w.context, check)).toBe("#30 ready");
     expect(await stored(w, keys.release(REPO))).toMatchObject({
       sha: "",

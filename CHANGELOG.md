@@ -7,6 +7,22 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.7.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.6.0...v0.7.0) (2026-11-08)
+
+
+### Features
+
+* a private vulnerability report and a secret scanning alert page you ([#98](https://github.com/Dennis-Otto/dennis-otto-pager/issues/98)) ([ace6f15](https://github.com/Dennis-Otto/dennis-otto-pager/commit/ace6f157be537177a531a4d693d31a433a6d931c))
+* a reply from someone else on an issue or a pull request pages you again, with a draft ([#83](https://github.com/Dennis-Otto/dennis-otto-pager/issues/83)) ([e22a75b](https://github.com/Dennis-Otto/dennis-otto-pager/commit/e22a75b789cdb95d0cc025dd9d6405b3516d8bc8))
+* a workflow that keeps failing on main pages you once, not as a mail per run ([#96](https://github.com/Dennis-Otto/dennis-otto-pager/issues/96)) ([aaccbaf](https://github.com/Dennis-Otto/dennis-otto-pager/commit/aaccbaf2285c6bee5bf88978468c07f58bf47864))
+* an event of GitHub that the pager failed to handle comes again by itself ([#89](https://github.com/Dennis-Otto/dennis-otto-pager/issues/89)) ([8cef40d](https://github.com/Dennis-Otto/dennis-otto-pager/commit/8cef40d7a9056fbc4cd716350eeee22c3729ebac))
+* the pager checks every day that it is alive, and reminds you before your GitHub tokens expire ([#93](https://github.com/Dennis-Otto/dennis-otto-pager/issues/93)) ([fcfacaf](https://github.com/Dennis-Otto/dennis-otto-pager/commit/fcfacaf7cadfaefb953e37c0725f429216b292ff))
+
+
+### Bug fixes
+
+* the album of a visual change shows the changed pixels in red ([#101](https://github.com/Dennis-Otto/dennis-otto-pager/issues/101)) ([2f29ee8](https://github.com/Dennis-Otto/dennis-otto-pager/commit/2f29ee80879f56cc15b9f4396533641aa6d849d4))
+
 ## [0.6.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.5.0...v0.6.0) (2026-11-08)
 
 ### Features

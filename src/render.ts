@@ -11,6 +11,7 @@ import {
   type Entry,
   type Item,
   isClosed,
+  MAX_ANSWER,
   MAX_OPTION,
   MAX_QUESTION,
   type Pictures,
@@ -223,15 +224,32 @@ function body(item: Item, t: Texts): string {
   }
 }
 
-/** A question of an agent, and the answer once the maintainer chose one. */
+/**
+ * How a question of an agent ended: the option that the maintainer chose, his own
+ * words, or that the agent took it back; null while it is open.
+ */
+function decisionEnd(item: Decision, t: Texts): string | null {
+  if (item.state === "withdrawn") {
+    return t("message.withdrawn");
+  }
+  if (item.ownAnswer !== undefined) {
+    return t("message.ownAnswer", {
+      answer: html(item.ownAnswer, MAX_ANSWER),
+    });
+  }
+  const chosen = item.choice === null ? undefined : item.options[item.choice];
+  return chosen === undefined
+    ? null
+    : t("message.chosen", { option: html(chosen, MAX_OPTION) });
+}
+
+/** A question of an agent, and how it ended, once it did. */
 function decisionText(item: Decision, t: Texts): string {
   const head = t("message.decision", {
     question: html(item.question, MAX_QUESTION),
   });
-  const chosen = item.choice === null ? undefined : item.options[item.choice];
-  return chosen === undefined
-    ? head
-    : `${head}\n\n${t("message.chosen", { option: html(chosen, MAX_OPTION) })}`;
+  const end = decisionEnd(item, t);
+  return end === null ? head : `${head}\n\n${end}`;
 }
 
 /** The whole text of a thing's message: what it is, its state and its last note. */

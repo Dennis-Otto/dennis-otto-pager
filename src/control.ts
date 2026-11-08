@@ -10,8 +10,8 @@
  * that ends without a change may propose one action of its thing, such as 🔁 Rerun
  * after an outage of GitHub, which comes as a proposal in the thing's topic. It
  * also forwards what the maintainer's own agents send it: a question whose options
- * are buttons, whose answer the pager saves in the control repository, and the
- * report of a run.
+ * are buttons, whose answer the pager saves in the control repository, the end of
+ * a question that the agent no longer needs, and the report of a run.
  */
 import { allowed, callbackData, type Labeled, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
@@ -74,6 +74,7 @@ export type Message = (
   | { type: "failed"; item?: string; text: string; action?: Labeled }
   | { type: "proposal"; text: string; action: Labeled; target: Target }
   | { type: "ask"; id: string; question: string; options: string[] }
+  | { type: "withdraw"; id: string; reason?: string }
   | { type: "report"; text: string; title?: string }
 ) & { usage?: Usage; message?: number };
 
@@ -116,6 +117,9 @@ export const MAX_OPTIONS = 4;
 /** The longest title of a report, in characters, which the name of its topic shows whole. */
 export const MAX_TITLE = 100;
 
+/** The longest reason why an agent takes a question back, as the note below a thing shows it whole. */
+export const MAX_REASON = 500;
+
 /** A text that is no text, or only white space. */
 function blank(value: unknown): boolean {
   return typeof value !== "string" || value.trim() === "";
@@ -150,10 +154,27 @@ function questionOf(message: Fields): Message | null {
   return { type: "ask", id, question: question as string, options: named };
 }
 
+/** The end of a question that the agent no longer needs: its id, and why, if it says so. */
+function withdrawalOf(message: Fields): Message | null {
+  const { id, reason } = message;
+  if (typeof id !== "string" || !ASK_ID.test(id)) {
+    return null;
+  }
+  if (reason === undefined) {
+    return { type: "withdraw", id };
+  }
+  return blank(reason) || (reason as string).trim().length > MAX_REASON
+    ? null
+    : { type: "withdraw", id, reason: (reason as string).trim() };
+}
+
 function shape(message: Fields): Message | null {
   const { type, item, text, action } = message;
   if (type === "ask") {
     return questionOf(message);
+  }
+  if (type === "withdraw") {
+    return withdrawalOf(message);
   }
   if (typeof text !== "string" || text.trim() === "") {
     return null;
@@ -406,6 +427,34 @@ async function ask(
 }
 
 /**
+ * A question that its agent no longer needs, such as one whose wait gave up: an
+ * open one loses its buttons, and its message and topic say that the agent took it
+ * back, with its reason. The same id again changes nothing; an answered one keeps
+ * its answer, which the agent reads, and one that the pager doesn't know, never
+ * asked or forgotten, is no thing of it.
+ */
+async function withdraw(
+  context: Context,
+  message: Extract<Message, { type: "withdraw" }>,
+): Promise<Response> {
+  const known = await context.store.get(
+    await itemId(keys.decision(message.id)),
+  );
+  if (known?.kind !== "decision") {
+    return new Response("Not Found", { status: 404 });
+  }
+  if (known.state !== "open") {
+    return known.state === "withdrawn"
+      ? new Response("withdrawn")
+      : new Response("Conflict", { status: 409 });
+  }
+  known.state = "withdrawn";
+  known.note = message.reason ?? null;
+  await show(context, known);
+  return new Response("withdrawn");
+}
+
+/**
  * The report of a run of an agent: a message in a topic of its own, without
  * buttons, which keeps nothing in the store.
  */
@@ -447,6 +496,9 @@ export async function handleControl(
   }
   if (message.type === "ask") {
     return ask(context, message);
+  }
+  if (message.type === "withdraw") {
+    return withdraw(context, message);
   }
   if (message.type === "report") {
     return report(context, message);

@@ -3,12 +3,15 @@
  * chat whose id TELEGRAM_CHAT_ID names is served, and only its own user; every
  * other update is dropped without an answer. An answer to a text goes into the
  * thread that the text came from, and a text in the topic of a thing goes to the
- * control repository with that thing.
+ * control repository with that thing. A text in the topic of an open question of
+ * an agent is its answer, in the maintainer's own words.
  */
-import { press } from "./actions.ts";
+import { answerDecision, press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
+import { GitHubError } from "./github.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
+import { type Decision, type Item, MAX_ANSWER } from "./store.ts";
 import { REACTIONS, threadOf } from "./telegram.ts";
 import { about } from "./topics.ts";
 
@@ -113,10 +116,48 @@ async function edited(
   return "draft edited";
 }
 
+/**
+ * A text in the topic of an open question of an agent: its answer, in the
+ * maintainer's own words, saved where a button saves its option, so that the agent
+ * reads it alike. The text gets 👍 once it is saved, and 😢 when GitHub refuses it,
+ * which leaves the question open for another text or a button.
+ */
+async function answerInWords(
+  context: Context,
+  message: Message,
+  text: string,
+  item: Decision,
+): Promise<string> {
+  const thread = threadOf(message);
+  if (text.length > MAX_ANSWER) {
+    await context.telegram.say(
+      context.t("decision.tooLong", { length: text.length, max: MAX_ANSWER }),
+      thread,
+    );
+    return "an answer that is too long";
+  }
+  try {
+    await answerDecision(context, item, null, text);
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    await context.telegram.say(
+      context.t("decision.notSaved", { detail: html(error.detail) }),
+      thread,
+    );
+    await context.telegram.react(message.message_id, REACTIONS.failed);
+    return "an answer that GitHub refused";
+  }
+  await context.telegram.react(message.message_id, REACTIONS.answered);
+  return "an answer in words";
+}
+
 async function freeText(
   context: Context,
   message: Message,
   text: string,
+  item: Item | null,
 ): Promise<string> {
   const thread = threadOf(message);
   const repo = context.settings.controlRepository;
@@ -133,7 +174,6 @@ async function freeText(
   // data, as everything else. A topic that the maintainer opened, and General,
   // have no thing: the text starts a conversation of its own.
   const answered = message.reply_to_message?.text?.trim() ?? "";
-  const item = thread === null ? null : await context.store.byTopic(thread);
   await context.github.dispatch(installation, repo, "pager-text", {
     text,
     message: message.message_id,
@@ -187,5 +227,10 @@ export async function handleUpdate(
   ) {
     return edited(context, message, text, pending.item, pending.prompt);
   }
-  return freeText(context, message, text);
+  const thread = threadOf(message);
+  const item = thread === null ? null : await context.store.byTopic(thread);
+  if (item?.kind === "decision" && item.state === "open") {
+    return answerInWords(context, message, text, item);
+  }
+  return freeText(context, message, text, item);
 }

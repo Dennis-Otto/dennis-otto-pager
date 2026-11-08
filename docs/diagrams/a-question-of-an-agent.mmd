@@ -5,20 +5,22 @@ config:
 ---
 flowchart TB
     accTitle: A question of an agent
-    accDescr: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, and the GitHub App saves his answer as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own.
+    accDescr: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, or writes his own answer in the topic, and the GitHub App saves it as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own, and wait takes only an answer newer than the question. An agent that no longer needs the answer sends pager-withdraw: the buttons go, and the topic says that it took the question back.
 
     agent["`**An agent of Dennis** sends pager-ask with gh: an id, a question and its options`"]
     control["`**The workflow of the control repository** takes only Dennis's own events and sends it on, signed`"]
     topic["`**🤔 A topic of its own** in Telegram, with one button per option`"]
-    press["Dennis presses an option"]
+    press["Dennis presses an option, or writes his own answer in the topic"]
     saved["`**answers/id.json** on the branch pager-answers, saved by the GitHub App`"]
-    read["The agent reads the answer with gh"]
+    read["The agent reads the answer with gh, one newer than its question"]
+    back["`**pager-withdraw** of the agent, which no longer needs it: the buttons go, and the topic says so`"]
 
     agent --> control --> topic --> press --> saved --> read
+    topic -.-> back
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
     classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
     classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
     class agent,press you
-    class control,topic bot
+    class control,topic,back bot
     class saved,read done

@@ -540,7 +540,7 @@ describe("the answers of Claude", () => {
     ]);
     expect(sent[1]?.text).toContain(`>${REPO}#12</a>`);
     expect(sent[2]?.text).toContain(`/${REPO}/actions">${REPO}</a>`);
-    expect(sent[3]?.text).toContain(`>code scanning of ${REPO}</a>`);
+    expect(sent[3]?.text).toContain(`>the security of ${REPO}</a>`);
     // A proposal changes no thing: only the press of its button does.
     expect(await w.context.store.get(release.id)).toEqual(release);
   });
@@ -1092,6 +1092,7 @@ describe("the schedule", () => {
     expect(await w.context.store.pending(START - 1, START, 1)).toEqual({
       due: [],
       waiting: ["i444444444444444"],
+      remind: [],
     });
     expect((await w.context.store.pending(START, START - 1)).waiting).toEqual(
       [],

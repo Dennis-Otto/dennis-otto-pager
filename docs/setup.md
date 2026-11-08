@@ -91,12 +91,16 @@ The app is private, so only your account can install it. Its permissions:
 | Issues | Read | A new issue, a comment on one or on a pull request, and its end; a `bot-failure` issue |
 | Metadata | Read | Required by GitHub; the required checks of `main` |
 | Pull requests | Read | A new pull request; the state of a release pull request; who opened a pull request whose pictures changed, and its head |
+| Repository security advisories | Read | A private vulnerability report and its advisory published; on day 6, whether a report still waits in triage, the one field that the pager reads of it |
+| Secret scanning alerts | Read | An alert of secret scanning and the file of its secret, never the secret |
 
 An app that you registered before 🔁 **Rerun** came has *Actions: Read*: raise it to *Read and write* in the settings of the app, under *Permissions & events*, and accept the new permission for each installation, as GitHub asks you in a mail. Until then, the button says that GitHub refused it.
 
 An app that you registered before discussions came has neither *Discussions* nor its events: give it *Discussions: Read and write* in the settings of the app, under *Permissions & events*, subscribe it to the events *Discussion* and *Discussion comment*, and accept the new permission for each installation. Until then, no discussion reaches the pager.
 
 An app that you registered before the comments on issues and pull requests came lacks their event: subscribe it to *Issue comment* in the settings of the app, under *Permissions & events*. Its permissions *Issues* and *Pull requests* cover it, so no installation needs to accept anything. Until then, no comment on an issue or a pull request reaches the pager, and a thing still closes with its issue or pull request.
+
+An app that you registered before the vulnerability reports and the secrets came lacks both: give it *Repository security advisories: Read* and *Secret scanning alerts: Read* in the settings of the app, under *Permissions & events*, subscribe it to the events *Repository advisory* and *Secret scanning alert*, and accept the new permissions for each installation. Until then, GitHub tells of a report and a secret only by mail, as before.
 
 ## 5. The webhook of Telegram
 

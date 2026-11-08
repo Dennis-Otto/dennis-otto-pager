@@ -34,7 +34,8 @@ A request reaches the code of the pager only on one of its three routes and with
 | `updates.ts` | A pressed button or a text of the maintainer; only the chat of `TELEGRAM_CHAT_ID` and its user are served. |
 | `rules.ts` | What counts: the one place that decides which event of GitHub needs the maintainer, and as what. [How it works](how-it-works.md) lists the same rules in words. |
 | `control.ts` | The answers of the control repository: a draft, a note, a proposal of one action of the allowlist, or the end of a job that failed. |
-| `schedule.ts` | The run every 15 minutes: what ⏰ Later put aside, a job or a text whose answer didn't come in time, and the reminder of the token of Claude. |
+| `schedule.ts` | The run every 15 minutes: what ⏰ Later put aside, a job or a text whose answer didn't come in time, the reminder of a vulnerability report that still waits in triage, and the reminder of the token of Claude. |
+| `advisories.ts` | The reminder of a private vulnerability report on the day before its acknowledgement is due, which reads only the state of the advisory. |
 | `deliveries.ts` | The events of GitHub that failed, which the schedule has GitHub deliver again, three attempts in all, within the 50 calls of a request; an event whose attempts all failed is an entry of the alarm of the control repository. |
 | `pager.ts` | What a signal does to the things: one message per thing, edited in place, and a new message, which notifies, only when something new needs the maintainer. |
 | `buttons.ts` | The allowlist: which buttons each kind of thing offers in each of its states. |

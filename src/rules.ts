@@ -10,6 +10,7 @@
  * the pager words it in the language of its settings.
  */
 import { excerpt } from "./content.ts";
+import { SECRET_ENTRY } from "./store.ts";
 import type { Phrase } from "./texts.ts";
 
 /** The conclusions of a check or a workflow that count as a failure. */
@@ -31,6 +32,23 @@ export const VISUAL_WORKFLOW = ".github/workflows/visual.yml";
 export const BOT_FAILURE = "bot-failure";
 /** The severities of a code-scanning alert that page the maintainer. */
 export const SEVERE = new Set(["high", "critical"]);
+/** The severities that a reporter or the maintainer may give a vulnerability report. */
+export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+export type Severity = (typeof SEVERITIES)[number];
+/**
+ * The id of a security advisory of GitHub, such as GHSA-4f6x-8m2c-jq7p: four
+ * letters and three groups of four, which nothing else can pass for.
+ */
+const GHSA = /^GHSA(?:-[0-9a-z]{4}){3}$/;
+/**
+ * The actions of secret scanning that put an alert into the security message of
+ * its repository: found, found again, or found in public as well.
+ */
+const SECRET_OPENS: ReadonlySet<string> = new Set([
+  "created",
+  "reopened",
+  "publicly_leaked",
+]);
 /** The branches of release-please, whose pull requests are releases. */
 export const RELEASE_BRANCH = "release-please--";
 
@@ -93,9 +111,26 @@ export interface Payload {
     /** The pull requests of the repository itself whose head the run ran on; none of a fork. */
     pull_requests?: { number?: number; head?: { sha?: string } }[];
   };
+  /**
+   * The alert of a code_scanning_alert or a secret_scanning_alert event. Secret
+   * scanning names the kind of its secret; the rules read nothing else of it,
+   * and never the secret, which its webhook doesn't carry.
+   */
   alert?: {
     number?: number;
     html_url?: string;
+    /** The kind of secret of an alert of secret scanning, such as mailchimp_api_key. */
+    secret_type?: string;
+    /** Its name in words, such as Mailchimp API Key. */
+    secret_type_display_name?: string | null;
+    /** How the alert of secret scanning was resolved; null while it is open. */
+    resolution?: string | null;
+    /** Whether secret scanning found the secret in public as well. */
+    publicly_leaked?: boolean | null;
+    /** When the alert of secret scanning was found, changed last, and resolved. */
+    created_at?: string;
+    updated_at?: string | null;
+    resolved_at?: string | null;
     rule?: {
       id?: string;
       description?: string;
@@ -105,6 +140,16 @@ export interface Payload {
   };
   ref?: string;
   release?: { tag_name?: string; prerelease?: boolean };
+  /**
+   * The security advisory of a repository_advisory event: a private vulnerability
+   * report or a published advisory. Its summary and description are under embargo
+   * until it is published: the rules read only its id, its severity and its day.
+   */
+  repository_advisory?: {
+    ghsa_id?: string;
+    severity?: string | null;
+    created_at?: string | null;
+  };
   discussion?: {
     number?: number;
     title?: string;
@@ -243,7 +288,37 @@ export type Signal = Where &
       }
     | { type: "pull-closed"; number: number; merged: boolean }
     | { type: "alert-open"; key: string; label: Phrase; url: string }
+    | {
+        type: "secret-open";
+        key: string;
+        /** The number of the alert of secret scanning, whose first place the pager reads. */
+        number: number;
+        /** The kind of secret, in words; never the secret. */
+        what: string;
+        /** Whether secret scanning found it in public as well. */
+        leaked: boolean;
+        url: string;
+        /** When the alert last changed, by the event, so that a late copy shows as such. */
+        time: number | null;
+      }
     | { type: "alert-closed"; key: string }
+    | {
+        type: "secret-closed";
+        key: string;
+        number: number;
+        /** When the alert was resolved. */
+        time: number | null;
+      }
+    | {
+        type: "advisory";
+        /** The id of the advisory, such as GHSA-4f6x-8m2c-jq7p. */
+        ghsa: string;
+        url: string;
+        severity: Severity | null;
+        /** When it was reported, in milliseconds since 1970, if GitHub says so. */
+        reported: number | null;
+      }
+    | { type: "advisory-published"; ghsa: string }
   );
 
 export type Outcome = { signal: Signal } | { ignored: string };
@@ -944,6 +1019,87 @@ function codeScanning(payload: Payload, at: Where): Outcome {
   };
 }
 
+/**
+ * An alert of secret scanning, which comes on any branch: an entry of the security
+ * message of its repository while it is open, named by the kind of its secret.
+ */
+function secretScanning(payload: Payload, at: Where): Outcome {
+  const alert = payload.alert;
+  const number = alert?.number ?? 0;
+  const key = `${SECRET_ENTRY}${number}`;
+  const action = payload.action ?? "";
+  if (action === "resolved") {
+    return {
+      signal: {
+        ...at,
+        type: "secret-closed",
+        key,
+        number,
+        time: timeOf(alert?.resolved_at) ?? timeOf(alert?.updated_at),
+      },
+    };
+  }
+  if (!SECRET_OPENS.has(action)) {
+    return { ignored: `a secret alert ${action}` };
+  }
+  // GitHub also tells of a secret found in public whose alert was resolved, such
+  // as one that was revoked: it needs nothing more.
+  if ((alert?.resolution ?? null) !== null) {
+    return { ignored: "a secret alert that was resolved" };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "secret-open",
+      key,
+      number,
+      what: alert?.secret_type_display_name || (alert?.secret_type ?? ""),
+      leaked: action === "publicly_leaked" || alert?.publicly_leaked === true,
+      url: alert?.html_url ?? "",
+      time: timeOf(alert?.updated_at) ?? timeOf(alert?.created_at),
+    },
+  };
+}
+
+/** A severity that GitHub knows, or null for none or any other. */
+function severityOf(value: string | null | undefined): Severity | null {
+  return SEVERITIES.find((each) => each === value) ?? null;
+}
+
+/** A time of GitHub in milliseconds since 1970, or null where it names none. */
+function timeOf(value: string | null | undefined): number | null {
+  const time = Date.parse(value ?? "");
+  return Number.isNaN(time) ? null : time;
+}
+
+/**
+ * A private vulnerability report, and the advisory that GitHub publishes: the
+ * report is a thing of its own, under embargo, and its publication ticks it.
+ */
+function advisory(payload: Payload, at: Where): Outcome {
+  const report = payload.repository_advisory;
+  const ghsa = report?.ghsa_id ?? "";
+  if (!GHSA.test(ghsa)) {
+    return { ignored: "an advisory without its id" };
+  }
+  if (payload.action === "published") {
+    return { signal: { ...at, type: "advisory-published", ghsa } };
+  }
+  if (payload.action !== "reported") {
+    return { ignored: `an advisory ${payload.action}` };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "advisory",
+      ghsa,
+      url: `https://github.com/${at.repo}/security/advisories/${ghsa}`,
+      severity: severityOf(report?.severity),
+      reported: timeOf(report?.created_at),
+    },
+  };
+}
+
 function release(payload: Payload, at: Where): Outcome {
   const published = payload.release;
   if (payload.action !== "published" || published?.prerelease === true) {
@@ -987,6 +1143,10 @@ export function classify(
       return workflowRun(payload, at);
     case "code_scanning_alert":
       return codeScanning(payload, at);
+    case "secret_scanning_alert":
+      return secretScanning(payload, at);
+    case "repository_advisory":
+      return advisory(payload, at);
     case "release":
       return release(payload, at);
     default:

@@ -91,12 +91,16 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 | Issues | Read | Ein neues Issue, ein Kommentar dazu oder zu einem Pull Request, und sein Ende; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
 | Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests; wer einen Pull Request eröffnet hat, dessen Bilder sich geändert haben, und sein Head |
+| Repository security advisories | Read | Eine vertrauliche Meldung einer Sicherheitslücke und ihr veröffentlichtes Advisory; an Tag 6, ob eine Meldung noch in der Triage wartet, das einzige Feld, das der Pager von ihr liest |
+| Secret scanning alerts | Read | Eine Warnung des Secret Scannings und die Datei ihres Secrets, nie das Secret |
 
 Eine App, die du vor 🔁 **Neu starten** registriert hast, hat *Actions: Read*: Setz es in den Einstellungen der App unter *Permissions & events* auf *Read and write* und nimm die neue Berechtigung für jede Installation an, wie GitHub dich per Mail bittet. Bis dahin sagt der Knopf, dass GitHub ihn ablehnte.
 
 Eine App, die du registriert hast, bevor es Diskussionen gab, hat weder *Discussions* noch ihre Ereignisse: Gib ihr in den Einstellungen der App unter *Permissions & events* *Discussions: Read and write*, abonniere die Ereignisse *Discussion* und *Discussion comment* und nimm die neue Berechtigung für jede Installation an. Bis dahin erreicht keine Diskussion den Pager.
 
 Einer App, die du registriert hast, bevor es die Kommentare zu Issues und Pull Requests gab, fehlt ihr Ereignis: Abonniere in den Einstellungen der App unter *Permissions & events* *Issue comment*. Ihre Berechtigungen *Issues* und *Pull requests* decken es ab, also muss keine Installation etwas annehmen. Bis dahin erreicht kein Kommentar zu einem Issue oder Pull Request den Pager, und eine Sache schließt trotzdem mit ihrem Issue oder Pull Request.
+
+Einer App, die du registriert hast, bevor es die Meldungen von Sicherheitslücken und die Secrets gab, fehlt beides: Gib ihr in den Einstellungen der App unter *Permissions & events* *Repository security advisories: Read* und *Secret scanning alerts: Read*, abonniere die Ereignisse *Repository advisory* und *Secret scanning alert* und nimm die neuen Berechtigungen für jede Installation an. Bis dahin meldet GitHub eine Meldung und ein Secret nur per Mail, wie bisher.
 
 ## 5. Der Webhook von Telegram
 

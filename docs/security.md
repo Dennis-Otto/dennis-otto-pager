@@ -29,6 +29,8 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 | An issue, a comment or a log steers Claude | Claude reads them as data, with tools that only read, behind a firewall; both sides check its answer against the allowlist, and only a press acts |
 | A forged answer of the control repository | The Worker takes only a body signed with `CONTROL_SECRET` within five minutes; a proposal gets a button only while its thing offers the action |
 | Someone else asks a question in the maintainer's name, or an answer runs | The control repository is private, and its workflow forwards only the events of its owner; an option is a label and an answer is data, a file that the agent reads, and neither acts on GitHub |
+| A private vulnerability report leaks through the chat before its advisory is published | The pager keeps only its id, severity and day: its summary and description reach no message, record, log, answer to GitHub or the control repository |
+| A secret that secret scanning found reaches the chat | It is named by its kind and its file, from the places of the alert, which carry no secret; the pager never reads the alert itself |
 | A package that it depends on runs code as it installs | Every install, in the CI, the dev container, Workers Builds and the documentation, is `npm ci --ignore-scripts`; Workers Builds skips its own install with `SKIP_DEPENDENCY_INSTALL` |
 
 ## Residual risks

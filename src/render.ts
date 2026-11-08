@@ -6,6 +6,7 @@
  */
 import { cut, MAX_EXCERPT, type ReleaseNotes } from "./content.ts";
 import {
+  type Advisory,
   type Changed,
   type Contribution,
   type Decision,
@@ -286,6 +287,47 @@ function releaseText(item: Release, t: Texts): string {
     .join(notes === null ? "\n" : "\n\n");
 }
 
+/** The page of GitHub that lists every alert of code scanning and secret scanning of a repository. */
+export function securityPage(repo: string): string {
+  return `https://github.com/${repo}/security`;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The days within which SECURITY.md promises to acknowledge a vulnerability report. */
+export const ACKNOWLEDGE_DAYS = 7;
+/** The days within which SECURITY.md promises to assess a vulnerability report. */
+export const ASSESS_DAYS = 14;
+
+/** The day that lies a number of days after a time, such as 2026-11-15. */
+export function dayAfter(time: number, days: number): string {
+  return new Date(time + days * DAY).toISOString().slice(0, 10);
+}
+
+/**
+ * A private vulnerability report: its repository, its id with its link, its
+ * severity and, while it is open, the days that SECURITY.md promises. What it says
+ * is under embargo, so the message never shows it, and the pager doesn't keep it.
+ */
+function advisoryText(item: Advisory, t: Texts): string {
+  const head = t("message.advisory", {
+    repo: repoLink(item.repo),
+    link: link(item.ghsa, item.url),
+    severity: t(`severity.${item.severity ?? "none"}`),
+  });
+  if (item.state === "published") {
+    return `${head}\n${t("message.published")}`;
+  }
+  if (item.state !== "open") {
+    return head;
+  }
+  const due = t("message.advisoryDue", {
+    acknowledge: t.date(dayAfter(item.reported, ACKNOWLEDGE_DAYS)),
+    assess: t.date(dayAfter(item.reported, ASSESS_DAYS)),
+  });
+  return `${head}\n${due}`;
+}
+
 /**
  * A workflow that fails on the default branch: the jobs that failed last, each
  * linked to its log, or the run where GitHub didn't list them, and how often and
@@ -351,12 +393,10 @@ function body(item: Item, t: Texts, room: number): string {
     case "alert":
       return t("message.alert", {
         repo: html(item.repo),
-        entries: entries(
-          item.entries,
-          `https://github.com/${item.repo}/security/code-scanning`,
-          t,
-        ),
+        entries: entries(item.entries, securityPage(item.repo), t),
       });
+    case "advisory":
+      return advisoryText(item, t);
     case "release":
       return releaseText(item, t);
     case "pictures":

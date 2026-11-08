@@ -5,10 +5,13 @@
  * an old button of a changed message does nothing.
  */
 import {
+  type Alarm,
+  type Alert,
   type Contribution,
   DELIVERY_ENTRY,
   type Decision,
   type Item,
+  SECRET_ENTRY,
 } from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
@@ -53,6 +56,38 @@ function contribution(item: Contribution): Action[] {
   }
 }
 
+/** Whether a bundle has entries, and the key of each starts with start. */
+function onlyOf(item: Alarm | Alert, start: string): boolean {
+  return (
+    item.entries.length > 0 &&
+    item.entries.every((entry) => entry.key.startsWith(start))
+  );
+}
+
+/** The actions of an alarm or of the security message of a repository in its current state. */
+function bundle(item: Alarm | Alert): Action[] {
+  switch (item.state) {
+    case "open":
+      // 🔁 Rerun where an entry of an alarm names a run that failed: it costs no
+      // run of Claude. An alarm of events of GitHub that failed alone gets no 🛠
+      // Start fix: Claude sees neither the deliveries on the app's Advanced page
+      // nor the logs of the Worker. Nor does a security message of secrets
+      // alone: a secret that leaked is revoked where it was issued, which no
+      // change of the code does, and Claude sees no alert of secret scanning.
+      if (onlyOf(item, item.kind === "alarm" ? DELIVERY_ENTRY : SECRET_ENTRY)) {
+        return ["later", "ignore"];
+      }
+      return item.kind === "alarm" &&
+        item.entries.some((entry) => entry.run !== undefined)
+        ? ["rerun", "fix", "later", "ignore"]
+        : ["fix", "later", "ignore"];
+    case "fixing":
+      return ["later", "ignore"];
+    default:
+      return [];
+  }
+}
+
 /** The actions that a thing offers in its current state, in the order of its buttons. */
 export function allowed(item: Item): Action[] {
   switch (item.kind) {
@@ -66,28 +101,11 @@ export function allowed(item: Item): Action[] {
           );
     case "alarm":
     case "alert":
-      switch (item.state) {
-        case "open":
-          // 🔁 Rerun where an entry of an alarm names a run that failed: it
-          // costs no run of Claude. An alarm of events of GitHub that failed
-          // alone gets no 🔧 Fix: Claude sees neither the deliveries on the
-          // app's Advanced page nor the logs of the Worker.
-          if (
-            item.kind === "alarm" &&
-            item.entries.length > 0 &&
-            item.entries.every((entry) => entry.key.startsWith(DELIVERY_ENTRY))
-          ) {
-            return ["later", "ignore"];
-          }
-          return item.kind === "alarm" &&
-            item.entries.some((entry) => entry.run !== undefined)
-            ? ["rerun", "fix", "later", "ignore"]
-            : ["fix", "later", "ignore"];
-        case "fixing":
-          return ["later", "ignore"];
-        default:
-          return [];
-      }
+      return bundle(item);
+    case "advisory":
+      // A report under embargo: what it says stays on GitHub, where it is dealt
+      // with, so neither 🛠 Start fix nor a draft of Claude sees it.
+      return item.state === "open" ? ["later", "ignore"] : [];
     case "workflow":
       // 🔁 Rerun runs the failed jobs of its newest run again, which costs no
       // run of Claude; one that runs again waits for its end.

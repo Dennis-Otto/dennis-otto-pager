@@ -525,7 +525,7 @@ describe("the text of a message", () => {
     const listed = hundred.split("\n").filter((line) => line.startsWith("•"));
     expect(listed).toHaveLength(MAX_ENTRIES);
     expect(hundred).toContain(
-      '<a href="https://github.com/Dennis-Otto/demo/security/code-scanning">… and 80 more</a>',
+      '<a href="https://github.com/Dennis-Otto/demo/security">… and 80 more</a>',
     );
     const long = render(
       many(100, (n) => `${n} ${"x".repeat(400)}`),
@@ -581,7 +581,7 @@ describe("the text of a message", () => {
         START,
         en,
       ),
-    ).toBe("🛡 <b>Code scanning in Dennis-Otto/demo</b>\n");
+    ).toBe("🛡 <b>Security in Dennis-Otto/demo</b>\n");
     const release: Item = {
       ...base(ID),
       kind: "release",

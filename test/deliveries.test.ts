@@ -430,6 +430,32 @@ describe("an event that the pager failed to handle", () => {
     ]);
   });
 
+  it("lets neither an alert of secret scanning nor a report be overtaken", async () => {
+    // Secret scanning sends one event per alert in a burst, and a leak missed is
+    // worse than a late copy, which its time keeps out once the alert was
+    // resolved; a report that comes again is shown once, and a report missed is
+    // a promise missed.
+    const found = attempt("found", 40, 500, {
+      event: "secret_scanning_alert",
+      repository: 1,
+    });
+    const resolved = attempt("resolved", 30, 200, {
+      event: "secret_scanning_alert",
+      repository: 1,
+    });
+    const reported = attempt("reported", 38, 500, {
+      event: "repository_advisory",
+      repository: 1,
+    });
+    const published = attempt("published", 20, 200, {
+      event: "repository_advisory",
+      repository: 1,
+    });
+    const w = listing(await world(), [[published, resolved, reported, found]]);
+    await failedEvents(w.context);
+    expect(redelivered(w)).toEqual([found.id, reported.id]);
+  });
+
   it("counts a passing redelivery of a newer event as newer, and of an older one not", async () => {
     const suite = (
       guid: string,
@@ -724,7 +750,10 @@ describe("each signal applied twice", () => {
         () =>
           new Response(null, { status: 302, headers: { location: STORAGE } }),
       )
-      .on("GET", STORAGE, () => new Response(bytes as Uint8Array<ArrayBuffer>));
+      .on("GET", STORAGE, () => new Response(bytes as Uint8Array<ArrayBuffer>))
+      .on("GET", /\/secret-scanning\/alerts\/\d+\/locations\?per_page=1$/, () =>
+        json([{ type: "commit", details: { path: "config/.env" } }]),
+      );
     return w;
   }
 
@@ -771,6 +800,24 @@ describe("each signal applied twice", () => {
     label: { key: "entry.alert", values: { severity: "High", what: key } },
     url: "https://github.com/alert",
   });
+  const secret: Signal = {
+    ...at,
+    type: "secret-open",
+    key: "secret:3",
+    number: 3,
+    what: "Mailchimp API Key",
+    leaked: false,
+    url: `https://github.com/${REPO}/security/secret-scanning/3`,
+    time: 0,
+  };
+  const report: Signal = {
+    ...at,
+    type: "advisory",
+    ghsa: "GHSA-4f6x-8m2c-jq7p",
+    url: `https://github.com/${REPO}/security/advisories/GHSA-4f6x-8m2c-jq7p`,
+    severity: "high",
+    reported: START,
+  };
   const release: Signal = { ...at, type: "release-check", numbers: [30] };
   const workflow = (run: number, attempt: number, failed: boolean): Signal => ({
     ...at,
@@ -935,6 +982,23 @@ describe("each signal applied twice", () => {
       [alert("alert:1"), alert("alert:2")],
       { ...at, type: "alert-closed", key: "alert:1" },
     ],
+    ["secret-open", [alert("alert:1")], secret],
+    [
+      "secret-closed",
+      [secret],
+      { ...at, type: "secret-closed", key: "secret:3", number: 3, time: 1 },
+    ],
+    [
+      "secret-open: leaked in public too",
+      [secret],
+      { ...secret, leaked: true },
+    ],
+    ["advisory", [], report],
+    [
+      "advisory-published",
+      [report],
+      { ...at, type: "advisory-published", ghsa: "GHSA-4f6x-8m2c-jq7p" },
+    ],
   ];
 
   it("covers every kind of signal", () => {
@@ -958,7 +1022,11 @@ describe("each signal applied twice", () => {
       pictures: true,
       "pull-closed": true,
       "alert-open": true,
+      "secret-open": true,
       "alert-closed": true,
+      "secret-closed": true,
+      advisory: true,
+      "advisory-published": true,
     };
     expect(new Set(cases.map(([, , signal]) => signal.type))).toEqual(
       new Set(Object.keys(every)),

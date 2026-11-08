@@ -7,6 +7,16 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.5.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.4.0...v0.5.0) (2026-11-08)
+
+
+### Features
+
+* a discussion from someone else comes as a thing with a reply draft ([#56](https://github.com/Dennis-Otto/dennis-otto-pager/issues/56)) ([8816c9a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/8816c9a89e285566ecfca2bab72b50a0d4be7e4c))
+* decisions that wait for Dennis come as buttons, and a run can send its report ([#66](https://github.com/Dennis-Otto/dennis-otto-pager/issues/66)) ([c1ab073](https://github.com/Dennis-Otto/dennis-otto-pager/commit/c1ab07305c3c70cd0b626e44ddac25aac1ee2b6a))
+* the control repository proposes a rerun when GitHub was down ([#60](https://github.com/Dennis-Otto/dennis-otto-pager/issues/60)) ([79c355a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/79c355ad0b726131f4b8a15d078a765bce693c7f))
+* the pager shows the before and after pictures of a visual change ([#63](https://github.com/Dennis-Otto/dennis-otto-pager/issues/63)) ([328c82a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/328c82afdb5b0042d9c141be4c2295f0e062c106))
+
 ## [0.4.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.3.1...v0.4.0) (2026-11-05)
 
 ### Features

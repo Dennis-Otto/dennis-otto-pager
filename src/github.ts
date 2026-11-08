@@ -32,6 +32,26 @@ export class NoUserToken extends GitHubError {
   }
 }
 
+/** GitHub refuses GITHUB_USER_TOKEN with a 401: it expired, or it was revoked. */
+export class UserTokenRefused extends GitHubError {
+  constructor(detail: string) {
+    super(401, detail);
+  }
+}
+
+/** What GitHub says of a call that it refused: its message, or the start of its text. */
+async function detailOf(response: Response): Promise<string> {
+  const text = await response.text();
+  try {
+    return (
+      (JSON.parse(text) as { message?: string }).message ?? text.slice(0, 200)
+    );
+  } catch {
+    // Not JSON: the start of the text says enough.
+    return text.slice(0, 200);
+  }
+}
+
 /** The DER length of n bytes. */
 function derLength(length: number): number[] {
   if (length < 0x80) {
@@ -287,14 +307,7 @@ export class GitHub {
 
   private async json<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      const text = await response.text();
-      let detail = text.slice(0, 200);
-      try {
-        detail = (JSON.parse(text) as { message?: string }).message ?? detail;
-      } catch {
-        // Not JSON: the start of the text says enough.
-      }
-      throw new GitHubError(response.status, detail);
+      throw new GitHubError(response.status, await detailOf(response));
     }
     return response.json<T>();
   }
@@ -671,22 +684,43 @@ export class GitHub {
     );
   }
 
-  private user(): string {
+  /**
+   * A call in the maintainer's name, with GITHUB_USER_TOKEN: a 401 says that
+   * GitHub refuses the token, because it expired or was revoked.
+   */
+  private async asUser(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<Response> {
     if (this.userToken === null) {
       throw new NoUserToken();
     }
-    return this.userToken;
+    const response = await this.call(this.userToken, method, path, body);
+    if (response.status === 401) {
+      throw new UserTokenRefused(await detailOf(response));
+    }
+    return response;
+  }
+
+  /**
+   * When GITHUB_USER_TOKEN expires, as GitHub names it in the header
+   * github-authentication-token-expiration of each answer, such as
+   * "2026-12-03 10:00:00 UTC", or null for a token without a day. GET /rate_limit
+   * counts against no limit of the API.
+   */
+  async userTokenExpiration(): Promise<string | null> {
+    const response = await this.asUser("GET", "/rate_limit");
+    await this.json(response);
+    return response.headers.get("github-authentication-token-expiration");
   }
 
   /** Post a comment in the maintainer's name. Returns its address. */
   async comment(repo: string, number: number, body: string): Promise<string> {
     const answer = await this.json<{ html_url: string }>(
-      await this.call(
-        this.user(),
-        "POST",
-        `/repos/${repo}/issues/${number}/comments`,
-        { body },
-      ),
+      await this.asUser("POST", `/repos/${repo}/issues/${number}/comments`, {
+        body,
+      }),
     );
     return answer.html_url;
   }
@@ -730,8 +764,7 @@ export class GitHub {
    * started it, and an app has none.
    */
   async issueAssistant(repo: string, issue: number): Promise<void> {
-    const response = await this.call(
-      this.user(),
+    const response = await this.asUser(
       "POST",
       `/repos/${repo}/actions/workflows/issue-assistant.yml/dispatches`,
       {

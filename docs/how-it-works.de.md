@@ -139,7 +139,8 @@ Der Body ist eines von:
 - `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Bestätigen;
 - `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann;
 - `{"type": "failed", "item": "<id>", "text": "<Grund>", "action": "rerun"}`: ein Fix ohne Änderung, der eine Aktion seines Alarms oder seiner Warnung vorschlägt, etwa 🔁 Neu starten, wenn die Logs einen Ausfall von GitHub oder eines Downloads zeigen. Die Sache kehrt zurück wie oben, mit dem Grund als Notiz, aber ihre Nachricht bleibt an ihrem Platz, und die Antwort kommt im Thema der Sache als Vorschlag, mit einem einzigen Knopf ✅ Bestätigen, der benachrichtigt. Eine Sache, die die Aktion dann nicht anbietet, etwa ein Alarm, dessen Einträge keinen Lauf nennen, kehrt zurück wie bei jedem gescheiterten Job. Ein älterer Pager übergeht `action`, daher darf jede Seite zuerst deployen;
-- `{"type": "failed", "text": "<Grund>"}`: freier Text, dessen Antwort nicht zustande kam, gezeigt als eigene Nachricht.
+- `{"type": "failed", "text": "<Grund>"}`: freier Text, dessen Antwort nicht zustande kam, gezeigt als eigene Nachricht;
+- `{"type": "health"}`: die Prüfung des Workflows *Health*, einmal am Tag, die der Pager mit seinem [Zustand](#der-zustand-des-pagers) als JSON beantwortet und die nichts ändert.
 
 Eine Antwort auf freien Text, also eine Notiz oder ein Fehlschlag ohne `item` oder ein Vorschlag, trägt `"message": <ID>`, die `message` ihres `pager-text`. Der Pager macht dann aus dem 👀 auf diesem Text ein 👍, bei einem Fehlschlag ein 😢; ein Job, der von Hand im Actions-Tab startet, hat keinen Text und lässt sie weg. Die Antwort geht in den Thread dieses Textes, wie [der Thread einer Antwort](#der-thread-einer-antwort) sagt.
 
@@ -153,6 +154,8 @@ Jeder Body kann tragen, was der Lauf von Claude vom Wochenlimit des Abos genomme
   "models": [{"model": "claude-opus-5-5", "tokens": 48213}]
 }
 ```
+
+Jeder Body kann außerdem den Tag nennen, an dem `PAGER_FIX_TOKEN` des Steuer-Repositorys abläuft, den seine Prüfung *Health* einmal am Tag bei GitHub liest, für seine [Erinnerung](#die-tokens-die-ablaufen): `"tokens": {"fix": "2026-12-03"}`, oder `{"fix": null}` für ein Token ohne Tag. Einen Wert, den der Pager nicht lesen kann, übergeht er, damit kein Entwurf daran scheitert, und ein älterer Pager übergeht `tokens`, daher darf jede Seite zuerst deployen.
 
 `effort` ist das `--effort`, das der Workflow gesetzt hat: `low`, `medium`, `high`, `xhigh` oder `max`. `models` nennt jedes Modell, das gearbeitet hat, höchstens fünf, mit jedem Token, das es gelesen und geschrieben hat, den Cache eingeschlossen, aus dem `modelUsage` des Ergebnisses im Transkript der Claude Code Action. Die Nachricht zeigt es unter der Antwort, in einer Zeile, in der Sprache des Pagers:
 
@@ -337,8 +340,58 @@ GitHub stellt ein Ereignis eines Webhooks von sich aus nie noch einmal zu. Schei
 
 Das braucht keine Berechtigung der App und kein Geheimnis: Das JWT der App liest die Zustellungen ihres eigenen Webhooks und bittet um sie.
 
+## Wenn der Pager kaputtgeht
+
+Der Pager schreibt nur, wenn etwas seinen Maintainer braucht, also sieht ein ruhiger Tag gleich aus, ob alles gut ist oder der Pager tot: ein Token des Bots, das Telegram nicht mehr annimmt, ein Webhook, der nichts mehr zustellt, ein Zeitplan, der nicht mehr läuft, ein Schlüssel der App, den GitHub ablehnt, oder ein Token des Maintainers, das abgelaufen ist. Zwei Dinge sagen es dem Maintainer vorher: die Erinnerungen an die Tokens, die ablaufen, und eine Prüfung des Zustands des Pagers einmal am Tag, aus dem Steuer-Repository, deren Scheitern GitHub von sich aus meldet.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/when-the-pager-breaks.de.dark.svg">
+  <img src="images/diagrams/when-the-pager-breaks.de.svg" alt="Wenn der Pager kaputtgeht: Einmal am Tag schickt der Workflow Health des privaten Steuer-Repositorys dem Pager den signierten Body health. Der Pager antwortet, wann sein Zeitplan zuletzt lief, ob Telegram das Token des Bots annimmt und an seinen Webhook zustellt, ob GitHub den Schlüssel der App annimmt und wann die Tokens ablaufen, ohne ein Geheimnis. Ist alles gut, besteht der Lauf, und niemand hört etwas. Ist etwas falsch oder antwortet der Pager nicht, scheitert der Lauf mit einem Fehler, der es nennt, und GitHub benachrichtigt Dennis von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist. Außerdem liest der Zeitplan einmal am Tag den Tag von GITHUB_USER_TOKEN bei GitHub, und drei Wochen bevor ein Token abläuft, kommt eine Erinnerung in einem eigenen Thema, mit dem Weg, es zu erneuern.">
+</picture>
+
+### Die Tokens, die ablaufen
+
+| Token | Gebraucht von | Woher sein Tag kommt | So erneuerst du es |
+| --- | --- | --- | --- |
+| `CLAUDE_CODE_OAUTH_TOKEN` des Steuer-Repositorys | jedem Job von Claude | `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` | `claude setup-token`, `gh secret set CLAUDE_CODE_OAUTH_TOKEN` und der neue Tag in `wrangler.jsonc` |
+| `GITHUB_USER_TOKEN` des Workers | ✅ Senden bei einem Issue oder Pull Request, 🤖 Assistent nochmal | dem Header `github-authentication-token-expiration` von GitHub, den der Zeitplan einmal am Tag liest | auf GitHub neu erzeugen, dann `npx wrangler secret put GITHUB_USER_TOKEN` |
+| `PAGER_FIX_TOKEN` des Steuer-Repositorys | dem Pull Request von 🛠 Fix starten | `tokens.fix`, das die Prüfung *Health* des Steuer-Repositorys einmal am Tag aus demselben Header liest | auf GitHub neu erzeugen, dann `gh secret set PAGER_FIX_TOKEN` |
+
+- **Drei Wochen vor dem Tag eines Tokens** kommt eine 🔔 Erinnerung in einem eigenen Thema, etwa *🔔 GitHub-Token des Pagers*, mit dem Tag und dem Weg, das Token zu erneuern; ✅ Erneuert schließt sie, und ⏰ Später legt sie beiseite. Sie kommt einmal pro Token und Tag, also erinnert ein erneuertes Token mit einem neuen Tag wieder drei Wochen vor diesem Tag. Ein Token ohne Tag, oder ein Header, den der Pager nicht lesen kann, erinnert an nichts.
+- **Einmal am Tag,** nach dem Tag in UTC, fragt der Zeitplan GitHub mit `GET /rate_limit` nach `GITHUB_USER_TOKEN`, was gegen kein Limit der API zählt, und liest den Header der Antwort: Ein feingranulares Token läuft nach 30 Tagen ab, wenn sein Maintainer keinen anderen Tag gewählt hat. Nach einem neuen Token fragt er sofort, was der Pager an einem kurzen Hash davon im Speicher des Durable Objects erkennt; das Token selbst liegt nirgends außer in den Geheimnissen von Cloudflare. Antwortet GitHub nicht, sagt es das Log, und der nächste Lauf fragt erneut.
+- **Ein Token, das GitHub ablehnt,** mit `401`, weil es abgelaufen ist oder widerrufen wurde, bekommt eine eigene Erinnerung, einmal, bis GitHub es wieder annimmt. ✅ Senden und 🤖 Assistent nochmal antworten dann *GitHub lehnt GITHUB_USER_TOKEN ab: Das Token ist abgelaufen oder wurde widerrufen*, statt einer bloßen Ablehnung.
+
+### Der Zustand des Pagers
+
+Der Workflow *Health* des Steuer-Repositorys läuft einmal am Tag und von Hand, mit `permissions: {}` oben und nur mit `contents: read` für den Checkout, und schickt `{"type": "health"}` an `/control`, signiert wie jede Antwort des Steuer-Repositorys. Der Pager antwortet mit JSON, das kein Geheimnis nennt:
+
+```json
+{
+  "schedule": "2026-11-08T06:45:00.000Z",
+  "telegram": {
+    "ok": true,
+    "webhook": true,
+    "pending": 0,
+    "lastError": {"at": "2026-11-07T21:12:03.000Z", "message": "Wrong response from the webhook: 502 Bad Gateway"}
+  },
+  "github": {"ok": true},
+  "tokens": {
+    "claude": {"expires": "2027-10-07"},
+    "user": {"expires": "2026-12-03"},
+    "fix": {"expires": "2026-12-04"}
+  }
+}
+```
+
+- `schedule` ist, wann der Zeitplan zuletzt bis zu seinem Ende lief, was er im Speicher des Durable Objects notiert, oder `null`, wenn er das nie tat.
+- `telegram` sagt, ob Telegram das Token des Bots annimmt, mit `getMe`, und aus `getWebhookInfo`, ob ein Webhook gesetzt ist, wie viele Updates noch auf ihn warten und seinen letzten Fehler, wenn Telegram einen hält. Eine Ablehnung ist `{"ok": false, "error": "Telegram getMe: Unauthorized"}`.
+- `github` sagt, ob GitHub den Schlüssel der App annimmt, mit `GET /app` und dem JWT der App; eine Ablehnung nennt die Antwort von GitHub.
+- `tokens` nennt, was der Pager von jedem Token weiß: seinen Tag, `null` für keinen, und bei `user` auch `refused`, den Tag, seit dem GitHub es ablehnt. Ein Token, von dem der Pager noch nichts weiß, fehlt.
+
+Der Lauf scheitert mit einem `::error::`, das nennt, was falsch ist, wenn der Pager nicht antwortet, der Zeitplan älter als eine Stunde ist, Telegram den Bot ablehnt, kein Webhook gesetzt ist oder er am letzten Tag einen Fehler gemeldet hat, GitHub die App ablehnt oder ein Token innerhalb einer Woche abläuft oder abgelehnt wird. GitHub benachrichtigt den Maintainer von sich aus über einen gescheiterten Lauf eines Zeitplans, per Mail und auf github.com, was auch funktioniert, wenn Telegram oder der Worker der kaputte Teil ist. Die Prüfung kostet etwa eine Minute der Actions-Minuten des privaten Repositorys am Tag und kein Geheimnis außer dem, das seine Antworten signiert.
+
 ## Zustand
 
 Workers KV hält einen Eintrag pro Sache: ihre Art, ihren Zustand, das Repository, die ID ihrer Nachricht, den Thread und den Namen ihres Themas und, bei einem Beitrag, den Anfang seines Textes, den Entwurf, ob er der eigene des Maintainers ist, bei einer Diskussion mit den IDs der Diskussion und des Kommentars, auf den ihre Antwort antwortet, und bei einem Issue oder Pull Request mit der ID des neuesten Kommentars von jemand anderem und der Zeit, zu der zuletzt einer benachrichtigt hat, und bei einem Release die Zeilen seiner Versionshinweise, die die Nachricht zeigt; eine geschlossene Sache verfällt nach 30 Tagen. Ein Verweis vom Thread eines Themas auf seine Sache, `topic:<thread>`, lässt einen Text im Thema sie finden: ein Schreibvorgang, wenn sich das Thema öffnet, und einer, wenn es umbenannt wird, und er verfällt 30 Tage, nachdem seine Sache erledigt ist. Die Zeit eines „Später“ und die eines Jobs des Steuer-Repositorys, solange seine Sache auf die Antwort wartet, stehen in den Metadaten ihres Eintrags, sodass der Zeitplan mit einer Liste findet, was fällig ist und was zu lange wartet, die Rückfrage einer Bearbeitung lebt einen Tag, und ein Eintrag hält die Texte, die auf ihre Antwort warten, mit der Zeit, zu der jeder ging, und dem Thread, aus dem er kam, sodass der Zeitplan ihn einmal pro Lauf liest und nur schreibt, wenn ein Text kommt oder geht. Jede Änderung einer Sache ist ein Schreibvorgang, wie es der kostenlose Tarif von Workers KV verlangt. Nichts Geheimes wird gespeichert, und die Logs nennen nur die Antworten der APIs, nie ein Token oder den Text eines Issues.
 
-Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt hält selbst nichts; es ist eines mit SQLite, das der kostenlose Tarif von Workers bietet.
+Workers KV kennt kein Compare-and-Swap, und ein Schreibvorgang zeigt sich an anderen Orten des Netzes erst nach einer Weile. Darum gibt der Worker jede Anfrage, die seine Prüfung von Route und Methode bestanden hat, an ein einziges Durable Object, `Serial` in `src/serial.ts`, das die Änderungen nacheinander ausführt, an einem Ort: Zwei Pflicht-Checks, die im selben Moment scheitern, enden in einer Nachricht mit beiden, und ein zweimal gedrücktes ✅ Senden postet einmal. Das Objekt ist eines mit SQLite, das der kostenlose Tarif von Workers bietet, und sein eigener Speicher hält nur die Notizen des Pagers über sich selbst: die Zeit des letzten Laufs des Zeitplans, einmal pro Lauf geschrieben, und was der Pager von den Tokens von GitHub weiß, ihre Tage und den kurzen Hash, der sagt, welches `GITHUB_USER_TOKEN` er geprüft hat. In Workers KV nähme ein Schreibvorgang alle 15 Minuten ein Zehntel seiner 1000 Schreibvorgänge am Tag.

@@ -1,8 +1,9 @@
 /**
  * The context of each request and of each run of the schedule: the settings, the
  * state, the two APIs and the texts of its language, which the tests make with a
- * simulated network and clock. It counts the calls to the network, which the
- * free plan of Workers allows 50 of per request.
+ * simulated network and clock, and the storage of the Durable Object. It counts
+ * the calls to the network, which the free plan of Workers allows 50 of per
+ * request.
  */
 import { GitHub, GitHubError } from "./github.ts";
 import type { Context } from "./pager.ts";
@@ -10,6 +11,32 @@ import type { PagerEnv, Settings } from "./settings.ts";
 import { Store } from "./store.ts";
 import { type Fetch, Telegram, TelegramError } from "./telegram.ts";
 import { texts } from "./texts.ts";
+
+/**
+ * The storage of the one Durable Object, for the few small values that change
+ * often, such as the time of the schedule's last run: in Workers KV, they would
+ * take the writes of its free plan, 1000 a day, from the things.
+ */
+export interface Local {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+}
+
+/** A storage in memory, outside the Durable Object, as in the tests. */
+export class Memory implements Local {
+  private readonly values = new Map<string, unknown>();
+
+  async get<T>(key: string): Promise<T | undefined> {
+    // A copy, as the storage of a Durable Object hands out: a change of the
+    // value changes nothing until it is put.
+    const value = this.values.get(key);
+    return value === undefined ? undefined : structuredClone(value as T);
+  }
+
+  async put<T>(key: string, value: T): Promise<void> {
+    this.values.set(key, structuredClone(value));
+  }
+}
 
 /** The context of a request: the settings, the state, the two APIs and the texts. */
 export function makeContext(
@@ -20,6 +47,7 @@ export function makeContext(
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
   exclusive: Context["exclusive"] = (work) => work(),
+  local: Local = new Memory(),
 ): Context {
   let subrequests = 0;
   const counted: Fetch = (input, init) => {
@@ -41,6 +69,7 @@ export function makeContext(
     now,
     sleep,
     exclusive,
+    local,
     subrequests: () => subrequests,
   };
 }

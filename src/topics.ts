@@ -36,6 +36,13 @@ const COLORS: Readonly<Record<Kind, TopicColor>> = {
 /** The color of the topic of a report of a run, which is no thing: what came out. */
 export const REPORT_COLOR = TOPIC_COLORS.green;
 
+/** The name of the topic of a reminder, by the token that it names (src/tokens.ts). */
+const REMINDER_TOPICS = {
+  claude: "topic.reminder",
+  user: "topic.reminderUser",
+  fix: "topic.reminderFix",
+} as const;
+
 /**
  * Whether a thing is done, as the name of its topic shows: closed, or a release
  * that is merged, whose publishing is left to its workflow.
@@ -72,7 +79,7 @@ function what(item: Item, t: Texts): string {
         title: item.title.replace(/\s+/g, " ").trim(),
       });
     case "reminder":
-      return t("topic.reminder");
+      return t(REMINDER_TOPICS[item.token ?? "claude"]);
     case "decision":
       return t("topic.decision", {
         question: item.question.replace(/\s+/g, " ").trim(),

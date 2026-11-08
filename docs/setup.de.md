@@ -67,7 +67,7 @@ printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/
 npx wrangler secret put GITHUB_USER_TOKEN
 ```
 
-Ohne es arbeitet der Pager auch, und diese zwei Knöpfe sagen, was fehlt.
+Ohne es arbeitet der Pager auch, und diese zwei Knöpfe sagen, was fehlt. Ein feingranulares Token läuft ab, nach 30 Tagen, wenn du keinen anderen Tag wählst: Der Pager liest seinen Tag einmal am Tag bei GitHub und erinnert dich drei Wochen vorher, wie [Später](#später) sagt.
 
 ## 4. Die GitHub-App
 
@@ -132,7 +132,11 @@ Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass
 
 ## Später
 
-- **Das Token von Claude** im Steuer-Repository läuft ab; `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag, und der Pager erinnert drei Wochen vorher. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control` und ändere dann den Tag in einem Pull Request.
+- **Deine Tokens laufen ab,** und der Pager erinnert dich drei Wochen vor jedem, in einem eigenen Thema, mit dem Weg, es zu erneuern; ✅ **Erneuert** schließt die Erinnerung:
+  - **Das Token von Claude** im Steuer-Repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control` und ändere dann den Tag in einem Pull Request.
+  - **`GITHUB_USER_TOKEN`** des Workers: GitHub nennt seinen Tag in den Antworten seiner API, die der Pager einmal am Tag liest. Erzeug es auf der Seite deiner [feingranularen Tokens](https://github.com/settings/personal-access-tokens) neu, mit einem neuen Tag, und setz es mit `npx wrangler secret put GITHUB_USER_TOKEN`; nach einem neuen Token fragt der Pager GitHub sofort. Lehnt GitHub das Token ab, weil es abgelaufen ist oder widerrufen wurde, sagt die Erinnerung das, und ✅ **Senden** und 🤖 **Assistent nochmal** auch.
+  - **`PAGER_FIX_TOKEN`** des Steuer-Repositorys: Seine tägliche Prüfung *Health* liest den Tag bei GitHub und schickt ihn mit. Erzeug es genauso neu und setz es mit `gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control`.
+- **Der Zustand des Pagers:** Der Workflow *Health* des Steuer-Repositorys fragt den Pager einmal am Tag, wie es ihm geht, wie [So arbeitet er](how-it-works.md#wenn-der-pager-kaputtgeht) beschreibt, was etwa eine Minute seiner Actions-Minuten kostet. Sein Lauf scheitert, wenn der Zeitplan steht, Telegram den Bot ablehnt oder sein Webhook am letzten Tag einen Fehler gemeldet hat, GitHub die App ablehnt oder ein Token innerhalb einer Woche abläuft; GitHub benachrichtigt dich dann von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist. Starte ihn von Hand im Actions-Tab, um den Pager nach einer Änderung zu prüfen.
 - **Ein Geheimnis ist durchgesickert:** Setz ein neues mit `npx wrangler secret put NAME`; für die App erzeuge in ihren Einstellungen einen neuen privaten Schlüssel und setz `GITHUB_APP_PRIVATE_KEY`; für den Bot `/revoke` bei @BotFather, dann `TELEGRAM_BOT_TOKEN` und Schritt 5 noch einmal.
 - **Wie lange „Später“ wartet**, steht in `LATER_HOURS` in `wrangler.jsonc`.
 - **Die Sprache** des Pagers steht in `LANGUAGE` in `wrangler.jsonc`: `de` für Deutsch, `en` oder leer für Englisch. Sie bestimmt jeden Text, den der Pager schickt, und der Worker gibt sie jedem Job an das Steuer-Repository mit, dessen Antworten ihr folgen. Eine Nachricht, die der Pager schon gezeigt hat, nimmt die neuen Worte, sobald sich ihre Sache ändert. Nach einer Änderung stell den Worker neu bereit, wie [Releases and Cloudflare](releases.md) beschreibt.

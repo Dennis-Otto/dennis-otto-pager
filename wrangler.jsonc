@@ -18,14 +18,16 @@
     { "binding": "PAGER", "id": "0be27f71241449238f549709800427bd" }
   ],
   // The one Durable Object of the pager, src/serial.ts, which runs every change of
-  // that state one after another, in one place. It keeps nothing itself; SQLite is
-  // the storage that the Free plan of Workers offers for it.
+  // that state one after another, in one place. Its own SQLite storage, the one the
+  // Free plan of Workers offers for it, holds only the pager's notes on itself: the
+  // last run of the schedule and the days of the tokens.
   "durable_objects": {
     "bindings": [{ "name": "SERIAL", "class_name": "Serial" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Serial"] }],
   // Every 15 minutes: the things that "Later" put aside come back when their time
-  // is up, and the reminder of the Claude token comes in time.
+  // is up, the reminders of the tokens come in time, and the run notes its time for
+  // the health check.
   "triggers": { "crons": ["*/15 * * * *"] },
   // What isn't secret. The chat id of Telegram is a secret all the same: it is
   // personal, so it lives in Cloudflare only, as TELEGRAM_CHAT_ID.

@@ -11,10 +11,13 @@
  * after an outage of GitHub, which comes as a proposal in the thing's topic. It
  * also forwards what the maintainer's own agents send it: a question whose options
  * are buttons, whose answer the pager saves in the control repository, the end of
- * a question that the agent no longer needs, and the report of a run.
+ * a question that the agent no longer needs, and the report of a run. Once a day,
+ * it asks for the health of the pager (src/health.ts), and any body may name the
+ * day on which PAGER_FIX_TOKEN expires, for its reminder (src/tokens.ts).
  */
 import { allowed, callbackData, type Labeled, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
+import { health } from "./health.ts";
 import { type Context, draftOrWhyNot, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import {
@@ -29,6 +32,7 @@ import {
 } from "./store.ts";
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
+import { learnTokens, tokensOf } from "./tokens.ts";
 import { postInNewTopic, REPORT_COLOR } from "./topics.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
@@ -77,7 +81,8 @@ export type Message = (
   | { type: "ask"; id: string; question: string; options: string[] }
   | { type: "withdraw"; id: string; reason?: string }
   | { type: "report"; text: string; title?: string }
-) & { usage?: Usage; message?: number };
+  | { type: "health" }
+) & { usage?: Usage; message?: number; tokens?: { fix: string | null } };
 
 type Fields = Partial<Record<string, unknown>>;
 
@@ -177,6 +182,9 @@ function shape(message: Fields): Message | null {
   if (type === "withdraw") {
     return withdrawalOf(message);
   }
+  if (type === "health") {
+    return { type };
+  }
   if (typeof text !== "string" || text.trim() === "") {
     return null;
   }
@@ -238,10 +246,12 @@ function parse(body: string): Message | null {
   ) {
     return null;
   }
+  const tokens = tokensOf(fields.tokens);
   return {
     ...message,
     ...(usage === undefined ? {} : { usage }),
     ...(asked === undefined ? {} : { message: asked as number }),
+    ...(tokens === undefined ? {} : { tokens }),
   };
 }
 
@@ -494,6 +504,12 @@ export async function handleControl(
   const message = parse(body);
   if (message === null) {
     return new Response("Bad Request", { status: 400 });
+  }
+  if (message.tokens !== undefined) {
+    await learnTokens(context, message.tokens);
+  }
+  if (message.type === "health") {
+    return Response.json(await health(context));
   }
   if (message.type === "ask") {
     return ask(context, message);

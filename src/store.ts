@@ -191,6 +191,11 @@ export interface Reminder extends Base {
   kind: "reminder";
   state: "open" | "done";
   text: string;
+  /**
+   * The token of GitHub that it names, GITHUB_USER_TOKEN of the Worker or
+   * PAGER_FIX_TOKEN of the control repository; none for the token of Claude.
+   */
+  token?: "user" | "fix";
 }
 
 /**

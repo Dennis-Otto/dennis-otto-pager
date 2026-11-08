@@ -4,7 +4,7 @@
  * and writes only through the few calls of github.ts.
  */
 import { allowed, headTag, type Press } from "./buttons.ts";
-import { GitHubError, NoUserToken } from "./github.ts";
+import { GitHubError, NoUserToken, UserTokenRefused } from "./github.ts";
 import { askForDraft, type Context, show, toControl } from "./pager.ts";
 import { PASSED, releaseBlocker } from "./rules.ts";
 import type {
@@ -282,6 +282,9 @@ export async function press(
   } catch (error) {
     if (error instanceof NoUserToken) {
       return refused(context.t("answer.noUserToken"));
+    }
+    if (error instanceof UserTokenRefused) {
+      return refused(context.t("answer.userTokenRefused"));
     }
     if (error instanceof GitHubError) {
       return refused(context.t("answer.refused", { detail: error.detail }));

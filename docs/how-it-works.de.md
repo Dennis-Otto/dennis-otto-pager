@@ -52,7 +52,7 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 - **🤖 Assistent nochmal** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
 - **🔁 Neu starten** liest jeden Lauf, den die Einträge nennen, mit einem Token der App für `actions: read`, und startet seine gescheiterten Jobs erneut, wie *Re-run failed jobs* auf GitHub, mit einem Token für `actions: write`. Ein Lauf, der noch läuft oder dessen neuerer Versuch läuft, und einer, der bei einem neuen Versuch schon grün wurde, bleiben, wie sie sind, und der Knopf sagt das. Die Einträge eines Laufs, der erneut läuft, zeigen *🔁 läuft erneut …* in der Nachricht, die sich an Ort und Stelle ändert, bis der Lauf wieder scheitert oder grün wird: Ein Erfolg schließt das Issue des Bot-Health-Bots oder beendet den Fehlschlag des Releases, was den Eintrag herausnimmt, und der letzte macht den Alarm ✅. Der Knopf kostet keinen Lauf von Claude, daher steht er vorn, für einen kurzen Ausfall von GitHub, etwa einen Download, der mit 504 antwortete.
 - **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort nennt sein Modell, seinen Aufwand und seine Tokens; ein Fix, der in den Logs einen Ausfall von GitHub oder eines Downloads findet, etwa eine 504, eine Zeitüberschreitung oder `error connecting to api.github.com`, ändert nichts und schlägt 🔁 **Neu starten** mit einem Knopf ✅ **Bestätigen** vor; ein Job, der fehlschlägt, bringt seinen Knopf zurück, und ebenso ein Job, der binnen einer Stunde keine Antwort schickte: Der Zeitplan gibt seiner Sache die Knöpfe einmal zurück, als neue Nachricht mit der Notiz *⌛ Keine Antwort vom Steuer-Repository*.
-- **Ein Knopf pro Option** beantwortet die [Frage eines Agenten](#fragen-und-berichte-deiner-agenten) und speichert die Antwort.
+- **Ein Knopf pro Option** beantwortet die [Frage eines Agenten](#fragen-und-berichte-deiner-agenten) und speichert die Antwort; ein Text in ihrem Thema beantwortet sie in den eigenen Worten des Maintainers.
 - **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie.
 
 <picture>
@@ -100,7 +100,7 @@ Der Workflow des privaten Repositorys `Dennis-Otto/dennis-otto-pager-control` f�
 | --- | --- | --- |
 | `pager-draft` | ✍️ Antwort entwerfen, und eine Diskussion oder ein Kommentar zu einer, sobald er kommt | `item`, `repo`, `number`, `pull`, `language`; bei einer Diskussion auch `discussion`: `true` und `comment`, die GraphQL-ID des Kommentars, auf den die Antwort antwortet, falls es einen gibt |
 | `pager-fix` | 🛠 Fix starten | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url`, `language`. Die `url` eines gescheiterten Release-Laufs nennt seinen Versuch, etwa `…/actions/runs/3/attempts/2`, damit der Fix die Jobs dieses Versuchs liest und nicht die einer Wiederholung, die noch läuft |
-| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
+| `pager-text` | Ein Text, der auf keine Rückfrage und keine [offene Frage eines Agenten](#fragen-und-berichte-deiner-agenten) antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
 
 `language` ist `LANGUAGE` des Workers, `en` oder `de`: Darin antwortet das Steuer-Repository dem Maintainer, die Notiz eines Fixes und der Grund eines gescheiterten Jobs eingeschlossen, während ein Antwortentwurf in der Sprache seines Issues oder Pull Requests bleibt.
 
@@ -170,14 +170,15 @@ Die eigenen Agenten des Maintainers, etwa ein Orchestrator, der die Nacht über 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.de.dark.svg">
-  <img src="images/diagrams/a-question-of-an-agent.de.svg" alt="Die Frage eines Agenten: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen, und die GitHub App speichert seine Antwort als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis.">
+  <img src="images/diagrams/a-question-of-an-agent.de.svg" alt="Die Frage eines Agenten: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen oder schreibt seine eigene Antwort in das Thema, und die GitHub App speichert sie als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis, und wait nimmt nur eine Antwort, die neuer ist als die Frage. Ein Agent, der die Antwort nicht mehr braucht, schickt pager-withdraw: Die Knöpfe verschwinden, und das Thema sagt, dass er die Frage zurückgenommen hat.">
 </picture>
 
-Ein Agent schickt dem Steuer-Repository einen von zwei [Repository Dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event):
+Ein Agent schickt dem Steuer-Repository einen von drei [Repository Dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event):
 
 | Ereignistyp | Client Payload | Was der Pager zeigt |
 | --- | --- | --- |
 | `pager-ask` | `id`, `question`, `options` | Ein Thema *🤔 Entscheidung: …*, mit einem Knopf pro Option |
+| `pager-withdraw` | `id`, und `reason`, falls es einen gibt | Die Frage verliert ihre Knöpfe, und ihre Nachricht sagt, dass der Agent sie zurückgenommen hat |
 | `pager-report` | `text`, und `title`, falls es einen gibt | Ein Thema *🧾 Lauf: …*, oder *🧾 Lauf* ohne Titel, mit dem Bericht und ohne Knopf |
 
 ```sh
@@ -189,6 +190,7 @@ JSON
 Der Workflow des Steuer-Repositorys nimmt nur ein Ereignis, das der Besitzer des Repositorys geschickt hat, nie eines der GitHub App oder von jemand anderem, prüft es, wie der Pager es tut, und schickt es an `/control` weiter, signiert wie jede Antwort:
 
 - `{"type": "ask", "id": "<id>", "question": "<Frage>", "options": ["<Option>", …]}`: Die `id` benennt die Antwort, aus Buchstaben, Ziffern, Punkten, Bindestrichen und Unterstrichen, höchstens 64 Zeichen, am Anfang ein Buchstabe oder eine Ziffer; die `question` hat höchstens 1000 Zeichen; zwei bis vier `options`, jede anders und höchstens 64 Zeichen lang, werden die Knöpfe, einer pro Reihe. Dieselbe `id` noch einmal fragt nichts Neues: Eine offene Frage bleibt, wie sie ist, und für eine schon beantwortete antwortet der Pager 409. Eine beantwortete `id` behält ihre Datei auf `pager-answers` für immer und lässt sich nicht noch einmal fragen, daher braucht jede Frage eine neue `id`, mit dem Datum oder dem Lauf darin, etwa `2026-11-08-merge-order`: Sonst läse der Agent die alte Antwort als Wahl für seine neue Frage. Ohne die GitHub App im Steuer-Repository antwortet der Pager 503, weil er die Antwort nicht speichern könnte;
+- `{"type": "withdraw", "id": "<id>", "reason": "<Grund>"}`: Der Agent braucht die Antwort nicht mehr, etwa nachdem sein Warten aufgegeben hat und er ohne sie weitergemacht hat. Eine offene Frage verliert ihre Knöpfe, ihre Nachricht sagt, dass der Agent sie zurückgenommen hat, mit dem `reason`, höchstens 500 Zeichen, darunter, und ihr Thema bekommt ✅; auf `pager-answers` wird nichts gespeichert. Dieselbe `id` noch einmal ändert nichts, für eine schon beantwortete Frage antwortet der Pager 409, ihre Antwort bleibt und der Agent liest sie, und 404 für eine, die er nicht kennt, nie gefragt oder 30 Tage nach ihrem Ende vergessen. Eine zurückgenommene Frage behält ihre `id` als benutzt: Noch einmal gefragt, bekommt sie 409;
 - `{"type": "report", "text": "<Bericht>", "title": "<Titel>"}`: der Bericht eines Laufs, seine ersten 3000 Zeichen, mit einem `title` von höchstens 100 Zeichen, den der Pager nicht in seinem Speicher behält.
 
 Ein Druck speichert die Antwort im Steuer-Repository, als GitHub App, mit einem Token nur für dieses Repository und seinem Recht, den Inhalt zu schreiben, das sie für die Dispatches schon hat: die Datei `answers/<id>.json` auf dem Branch `pager-answers`, den ihre erste Antwort mit einem eigenen Commit anlegt, ohne Vorgänger und ohne den Code des Repositorys, damit kein Workflow darauf läuft.
@@ -204,13 +206,26 @@ Ein Druck speichert die Antwort im Steuer-Repository, als GitHub App, mit einem 
 }
 ```
 
+Ein Text, den der Maintainer in das Thema einer offenen Frage schreibt, ist ihre Antwort in seinen eigenen Worten, für den Fall, dass keine der Optionen passt ([Entscheidung 0010](decisions/0010-a-text-in-the-topic-of-a-question-answers-it-and-an-agent-may-take-it-back.md)): Der Pager speichert ihn in derselben Datei, mit `choice` `null` und dem Text als `answer`, damit der Agent ihn liest, wie er einen Knopf liest, und gibt dem Text ein 👍. Er nimmt höchstens 1000 Zeichen; ein längerer, und einer, den GitHub ablehnt, bekommt im Thema eine Antwort, die sagt warum, und die Frage bleibt offen. Ist eine Frage beantwortet oder zurückgenommen, geht ein Text in ihrem Thema an das Steuer-Repository, wie im Thema jeder anderen Sache.
+
+```json
+{
+  "id": "2026-11-08-merge-order",
+  "question": "Welches Release zuerst?",
+  "options": ["Der Blueprint", "Der Pager"],
+  "choice": null,
+  "answer": "Keins: Warte auf das Release von Paperless.",
+  "answered": "2026-11-08T07:14:40.000Z"
+}
+```
+
 Die Nachricht zeigt dann die Antwort, ihre Knöpfe verschwinden, und ihr Thema bekommt ✅. Lehnt GitHub die Antwort ab, sagt der Knopf warum, und die Frage bleibt offen, damit ein Druck sie noch einmal speichert. Eine Frage hat kein ⏰ Später und kein ✖ Ignorieren: Ein Agent wartet auf sie. Der Agent liest die Antwort mit seinem eigenen `gh`, das 404 antwortet, solange es keine gibt, für eine `id`, die noch nie gefragt wurde:
 
 ```sh
 gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/2026-11-08-merge-order.json?ref=pager-answers"
 ```
 
-Das Skript `scripts/ask.mjs` des Steuer-Repositorys kann alle drei: Es fragt, berichtet und wartet auf eine Antwort, wie seine README beschreibt.
+Das Skript `scripts/ask.mjs` des Steuer-Repositorys kann alles, wie seine README beschreibt: Es fragt, nimmt eine Frage zurück, berichtet und wartet auf eine Antwort. `ask` gibt die Zeit seiner Frage aus, und `wait` und `answer` mit `--since` und dieser Zeit übergehen eine ältere Antwort, etwa die einer früheren Frage mit derselben `id`.
 
 ## Die Reaktion auf einen Text
 
@@ -244,7 +259,7 @@ Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `cr
 </picture>
 
 - **Alles über die Sache steht in ihrem Thema.** Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie an Ort und Stelle, wie bisher. Ein Entwurf, die Antwort von 🛠 Fix starten, ein gescheiterter Job, die Nachricht, die ⏰ Später zurückbringt, die Rückfrage von ✏️ Bearbeiten und die Antworten auf Texte im Thema folgen dort.
-- **Ein Text im Thema einer Sache handelt von dieser Sache.** Er geht mit der Sache als `thing` an das Steuer-Repository, wie die Tabelle oben sagt, so braucht eine Frage wie *warum?* keine weiteren Worte. Ein Thema, das der Maintainer öffnet, und General haben keine Sache: Ein Text dort beginnt ein eigenes Gespräch, wie bisher.
+- **Ein Text im Thema einer Sache handelt von dieser Sache.** Er geht mit der Sache als `thing` an das Steuer-Repository, wie die Tabelle oben sagt, so braucht eine Frage wie *warum?* keine weiteren Worte. Ein Thema, das der Maintainer öffnet, und General haben keine Sache: Ein Text dort beginnt ein eigenes Gespräch, wie bisher. Ein Text im Thema einer offenen [Frage eines Agenten](#fragen-und-berichte-deiner-agenten) ist stattdessen ihre Antwort.
 - **Ein Thema pro Sache, nie eines pro Änderung.** Das Bündel dessen, was in einem Repository fehlschlägt, behält sein Thema, auch wenn es sich wieder öffnet, nachdem es grün wurde, und ebenso sein Code Scanning. Eine neue Version eines Releases, das noch gezeigt wird, behält das Thema der Version, die sie ersetzt, umbenannt; das nächste Release, nachdem eines veröffentlicht oder ignoriert wurde, bekommt ein eigenes.
 - **✅, sobald sie erledigt ist.** Eine Sache, die geschlossen ist, oder ein Release, das gemergt ist, bekommt mit `editForumTopic` ein ✅ vor den Namen ihres Themas, und ein Bündel, das sich wieder öffnet, verliert es. Erledigte Themen bleiben, als Geschichte ihrer Sachen, wie [Entscheidung 0005](decisions/0005-one-topic-per-thing-kept-when-done.md) erklärt: Der Maintainer löscht eines von Hand, wenn er es nicht mehr braucht.
 - **Themen des Maintainers.** Die Dienstnachricht `forum_topic_created` eines Themas, das der Maintainer öffnet, übergeht der Pager, und jeden Text darin beantwortet er darin. Telegram schickt den ersten Text eines Themas, das auf dem Handy geöffnet wurde, womöglich ohne seinen Thread: Seine Antwort geht dann in die Hauptansicht.

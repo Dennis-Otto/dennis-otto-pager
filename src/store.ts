@@ -155,12 +155,13 @@ export interface Reminder extends Base {
 /**
  * A question of the maintainer's own agents, such as an orchestrator that runs
  * through the night, which the control repository forwards: its options are its
- * buttons, and the one pressed is saved in the control repository, where the agent
- * reads it. Its repository is the control repository.
+ * buttons, and the one pressed, or a text of the maintainer in its topic, is saved
+ * in the control repository, where the agent reads it. The agent may take it back
+ * while it is open. Its repository is the control repository.
  */
 export interface Decision extends Base {
   kind: "decision";
-  state: "open" | "answered";
+  state: "open" | "answered" | "withdrawn";
   /** The id that the agent gave the question, which names its answer. */
   ask: string;
   question: string;
@@ -168,6 +169,8 @@ export interface Decision extends Base {
   options: string[];
   /** The place in options of the one that the maintainer chose, once answered. */
   choice: number | null;
+  /** The answer in the maintainer's own words, a text in the topic instead of a button. */
+  ownAnswer?: string;
 }
 
 /** The longest question of a decision, in characters, which its message shows whole. */
@@ -175,6 +178,9 @@ export const MAX_QUESTION = 1000;
 
 /** The longest option of a decision, in characters, which its button shows whole. */
 export const MAX_OPTION = 64;
+
+/** The longest answer in the maintainer's own words, in characters, which its message shows whole. */
+export const MAX_ANSWER = 1000;
 
 export type Item =
   | Contribution
@@ -194,6 +200,7 @@ const CLOSED: ReadonlySet<string> = new Set([
   "published",
   "done",
   "answered",
+  "withdrawn",
 ]);
 
 /** The states in which a job of the control repository runs, and the one before. */

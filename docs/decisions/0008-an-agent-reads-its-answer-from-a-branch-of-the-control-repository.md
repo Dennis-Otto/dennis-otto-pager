@@ -1,6 +1,6 @@
 # An agent reads its answer from a branch of the control repository
 
-- Status: accepted
+- Status: accepted, amended by [0010](0010-a-text-in-the-topic-of-a-question-answers-it-and-an-agent-may-take-it-back.md)
 - Date: 2026-11-08
 
 ## Context

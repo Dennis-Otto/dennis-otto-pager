@@ -52,7 +52,7 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
 - **🔁 Rerun** reads each run that the entries name, with a token of the app for `actions: read`, and runs its failed jobs again, as *Re-run failed jobs* on GitHub does, with a token for `actions: write`. A run that still runs, or whose newer attempt runs, and one that passed on a retry stay as they are, and the button says so. The entries of a run that runs again show *🔁 running again…* in the message, edited in place, until the run fails again or passes: a pass closes the issue of the bot-health bot or ends the failure of the release, which takes the entry out, and the last one turns the alarm ✅. It costs no run of Claude, so it comes first, for a short outage of GitHub, such as a download that answered 504.
 - **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a fix that finds an outage of GitHub or of a download in the logs, such as a 504, a timeout or `error connecting to api.github.com`, changes nothing and proposes 🔁 **Rerun** with one ✅ **Confirm** button; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
-- **One button per option** answers the [question of an agent](#questions-and-reports-of-your-agents) and saves the answer.
+- **One button per option** answers the [question of an agent](#questions-and-reports-of-your-agents) and saves the answer; a text in its topic answers it in the maintainer's own words.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
 
 <picture>
@@ -100,7 +100,7 @@ The workflow of the private repository `Dennis-Otto/dennis-otto-pager-control` r
 | --- | --- | --- |
 | `pager-draft` | ✍️ Draft a reply, and a discussion or a comment on one as it comes | `item`, `repo`, `number`, `pull`, `language`; for a discussion also `discussion`: `true` and `comment`, the GraphQL id of the comment that the reply answers, if any |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, `language`. The `url` of a release run that failed names its attempt, such as `…/actions/runs/3/attempts/2`, so that the fix reads the jobs of that attempt and not those of a rerun that still runs |
-| `pager-text` | A text that answers no prompt | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
+| `pager-text` | A text that answers no prompt and no [open question of an agent](#questions-and-reports-of-your-agents) | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
 
 `language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
@@ -170,14 +170,15 @@ The maintainer's own agents, such as an orchestrator that runs on their PC throu
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.dark.svg">
-  <img src="images/diagrams/a-question-of-an-agent.svg" alt="A question of an agent: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, and the GitHub App saves his answer as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own.">
+  <img src="images/diagrams/a-question-of-an-agent.svg" alt="A question of an agent: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, or writes his own answer in the topic, and the GitHub App saves it as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own, and wait takes only an answer newer than the question. An agent that no longer needs the answer sends pager-withdraw: the buttons go, and the topic says that it took the question back.">
 </picture>
 
-An agent sends one of two [repository dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event) to the control repository:
+An agent sends one of three [repository dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event) to the control repository:
 
 | Event type | Client payload | What the pager shows |
 | --- | --- | --- |
 | `pager-ask` | `id`, `question`, `options` | A topic *🤔 Decision: …*, with one button per option |
+| `pager-withdraw` | `id`, and `reason` if any | The question loses its buttons, and its message says that the agent took it back |
 | `pager-report` | `text`, and `title` if any | A topic *🧾 Run: …*, or *🧾 Run* without a title, with the report and no button |
 
 ```sh
@@ -189,6 +190,7 @@ JSON
 The workflow of the control repository takes only an event that the owner of the repository sent, never one of the GitHub App or of anyone else, checks it as the pager does and sends it on to `/control`, signed as every answer:
 
 - `{"type": "ask", "id": "<id>", "question": "<question>", "options": ["<option>", …]}`: the `id` names the answer, with letters, digits, dots, dashes and underscores, 64 characters at most, starting with a letter or a digit; the `question` has 1000 characters at most; two to four `options`, each different and 64 characters at most, become the buttons, one a row. The same `id` again asks nothing new: an open question stays as it is, and the pager answers 409 for one that is answered already. An answered `id` keeps its file on `pager-answers` for good and can't be asked again, so each question takes a new `id`, with the date or the run in it, such as `2026-11-08-merge-order`: the agent would read the old answer as the choice for its new question. Without the GitHub App on the control repository, the pager answers 503, since it couldn't save the answer;
+- `{"type": "withdraw", "id": "<id>", "reason": "<reason>"}`: the agent no longer needs the answer, such as after its wait gave up and it went on without one. An open question loses its buttons, its message says that the agent took it back, with the `reason`, 500 characters at most, below it, and its topic gets ✅; nothing is saved on `pager-answers`. The same `id` again changes nothing, the pager answers 409 for a question that is answered already, whose answer stands for the agent to read, and 404 for one that it doesn't know, never asked or forgotten 30 days after its end. A question taken back keeps its `id` used: asked again, it gets 409;
 - `{"type": "report", "text": "<report>", "title": "<title>"}`: the report of a run, its first 3000 characters, with a `title` of 100 characters at most, which the pager leaves out of its store.
 
 A press saves the answer in the control repository, as the GitHub App, with a token for that repository alone and its permission to write the contents, which it has for the dispatches already: the file `answers/<id>.json` on the branch `pager-answers`, which its first answer makes with a commit of its own, without a parent and without the code of the repository, so no workflow runs on it.
@@ -204,13 +206,26 @@ A press saves the answer in the control repository, as the GitHub App, with a to
 }
 ```
 
+A text that the maintainer writes in the topic of an open question is its answer in his own words, for when none of the options fits ([decision 0010](decisions/0010-a-text-in-the-topic-of-a-question-answers-it-and-an-agent-may-take-it-back.md)): the pager saves it in the same file, with `choice` `null` and the text as `answer`, so that the agent reads it as it reads a button, and gives the text a 👍. It takes 1000 characters at most; a longer one, and one that GitHub refuses, gets an answer in the topic that says why, and the question stays open. Once a question is answered or taken back, a text in its topic goes to the control repository, as in the topic of any other thing.
+
+```json
+{
+  "id": "2026-11-08-merge-order",
+  "question": "Which release goes first?",
+  "options": ["The blueprint", "The pager"],
+  "choice": null,
+  "answer": "Neither: wait for the release of Paperless.",
+  "answered": "2026-11-08T07:14:40.000Z"
+}
+```
+
 The message then shows the answer, its buttons go, and its topic gets ✅. When GitHub refuses the answer, the button says why and the question stays open, so that a press saves it again. A question takes no ⏰ Later and no ✖ Ignore: an agent waits for it. The agent reads the answer with its own `gh`, which answers 404 until there is one, for an `id` that was never asked before:
 
 ```sh
 gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/2026-11-08-merge-order.json?ref=pager-answers"
 ```
 
-The script `scripts/ask.mjs` of the control repository does all three: it asks, reports and waits for an answer, as its README describes.
+The script `scripts/ask.mjs` of the control repository does all of it, as its README describes: it asks, takes a question back, reports and waits for an answer. `ask` prints the time of its question, and `wait` and `answer` with `--since` and that time ignore an older answer, such as that of an earlier question with the same `id`.
 
 ## The reaction on a text
 
@@ -244,7 +259,7 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 </picture>
 
 - **Everything about the thing is in its topic.** Its message with the buttons comes first, and its changes edit it in place, as before. A draft, the answer of 🛠 Start fix, a job that failed, the message that ⏰ Later brings back, the prompt of ✏️ Edit and the answers to texts written in the topic follow there.
-- **A text in the topic of a thing is about that thing.** It goes to the control repository with the thing as `thing`, as the table above says, so a question such as *why?* needs no more words. A topic that the maintainer opens, and General, have no thing: a text there starts a conversation of its own, as before.
+- **A text in the topic of a thing is about that thing.** It goes to the control repository with the thing as `thing`, as the table above says, so a question such as *why?* needs no more words. A topic that the maintainer opens, and General, have no thing: a text there starts a conversation of its own, as before. A text in the topic of an open [question of an agent](#questions-and-reports-of-your-agents) is its answer instead.
 - **One topic per thing, never one per change.** The bundle of what fails in a repository keeps its topic, also when it opens again after it turned green, and so does its code scanning. A new version of a release that is still shown keeps the topic of the one that it replaces, renamed; the next release, after one was published or ignored, gets its own.
 - **✅ once it is done.** A thing that is closed, or a release that is merged, gets ✅ in front of the name of its topic with `editForumTopic`, and a bundle that opens again loses it. Done topics stay, as the history of their things, as [decision 0005](decisions/0005-one-topic-per-thing-kept-when-done.md) explains: the maintainer deletes one by hand when it is no longer needed.
 - **Topics of the maintainer.** The service message `forum_topic_created` of a topic that the maintainer opens is passed over, and each text in it is answered in it. Telegram may send the first text of a topic opened on a phone without its thread: its answer then goes into the main view.

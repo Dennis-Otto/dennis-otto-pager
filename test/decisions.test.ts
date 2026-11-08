@@ -6,12 +6,18 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { handleControl, MAX_OPTIONS, MAX_TITLE } from "../src/control.ts";
+import {
+  handleControl,
+  MAX_OPTIONS,
+  MAX_REASON,
+  MAX_TITLE,
+} from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
 import {
   type Decision,
   itemId,
   keys,
+  MAX_ANSWER,
   MAX_OPTION,
   MAX_QUESTION,
 } from "../src/store.ts";
@@ -326,6 +332,281 @@ describe("a question of an agent", () => {
     const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
     expect(edited.text).toBe(
       "🤔 <b>Eine Entscheidung für dich</b>\nWhich release goes first tonight?\n\n✅ Deine Antwort: <b>The pager</b>",
+    );
+  });
+});
+
+/** A text of the maintainer in the topic of the question, or in another thread. */
+function write(w: World, text: string, thread = 900) {
+  return handleUpdate(w.context, {
+    message: {
+      message_id: 500,
+      chat: { id: CHAT },
+      from: { id: CHAT },
+      text,
+      message_thread_id: thread,
+      is_topic_message: true,
+    },
+  });
+}
+
+/** A control repository that takes the free texts of the maintainer. */
+function withDispatches(net: Net): Net {
+  return net.on(
+    "POST",
+    `${CONTROL}/dispatches`,
+    () => new Response(null, { status: 204 }),
+  );
+}
+
+function reactions(w: World) {
+  return w.net
+    .telegram("setMessageReaction")
+    .map((call) => [call.body.message_id, call.body.reaction[0]?.emoji]);
+}
+
+/** What the pager said in a thread, with sendMessage, other than the question itself. */
+function said(w: World) {
+  return w.net
+    .telegram("sendMessage")
+    .slice(1)
+    .map((call) => [call.body.message_thread_id, call.body.text]);
+}
+
+describe("an answer in the maintainer's own words", () => {
+  it("is a text in the topic of the question, saved where a button saves its option, without a choice", async () => {
+    const w = await world();
+    withoutBranch(withTopics(withControl(w.net)));
+    await send(w, QUESTION);
+    w.clock.now = START + 120000;
+    expect(
+      await write(w, "  Neither: wait for <the release> of Paperless.  "),
+    ).toBe("an answer in words");
+    const [put] = w.net.github(FILE).map((call) => call.body);
+    expect(put.message).toBe("The answer to n15-merge-order");
+    expect(saved(put.content)).toEqual({
+      id: "n15-merge-order",
+      question: "Which release goes first tonight?",
+      options: ["The blueprint", "The pager"],
+      choice: null,
+      answer: "Neither: wait for <the release> of Paperless.",
+      answered: "2026-11-04T08:02:00.000Z",
+    });
+    const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
+    expect(edited.text).toBe(
+      "🤔 <b>A decision for you</b>\nWhich release goes first tonight?\n\n✅ Your answer, in your own words:\nNeither: wait for &lt;the release&gt; of Paperless.",
+    );
+    expect(edited.reply_markup.inline_keyboard).toEqual([]);
+    expect(
+      w.net.telegram("editForumTopic").map((call) => call.body.name),
+    ).toEqual(["✅ 🤔 Decision: Which release goes first tonight?"]);
+    expect(reactions(w)).toEqual([[500, "👍"]]);
+    // It is the agent's answer, not a question for Claude.
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(said(w)).toEqual([]);
+    expect(await stored(w)).toMatchObject({
+      state: "answered",
+      choice: null,
+      ownAnswer: "Neither: wait for <the release> of Paperless.",
+    });
+    expect(await press(w, `choose:${await idOf()}:0`)).toBe(
+      "choose: This button is out of date.",
+    );
+  });
+
+  it("takes as many characters as the agent reads, and says so for a longer one, which leaves the question open", async () => {
+    const w = await world();
+    withoutBranch(withTopics(withControl(w.net)));
+    await send(w, QUESTION);
+    expect(await write(w, "x".repeat(MAX_ANSWER + 1))).toBe(
+      "an answer that is too long",
+    );
+    expect(said(w)).toEqual([
+      [
+        900,
+        `That answer has ${MAX_ANSWER + 1} characters; your agent takes ${MAX_ANSWER} at most. Write a shorter one, or press an option.`,
+      ],
+    ]);
+    expect(w.net.github(FILE)).toHaveLength(0);
+    expect(await stored(w)).toMatchObject({ state: "open" });
+    expect(await write(w, "x".repeat(MAX_ANSWER))).toBe("an answer in words");
+    expect(await stored(w)).toMatchObject({
+      state: "answered",
+      ownAnswer: "x".repeat(MAX_ANSWER),
+    });
+  });
+
+  it("stays open when GitHub refuses it, and the topic says why", async () => {
+    const w = await world();
+    withoutBranch(withTopics(withControl(w.net))).on("PUT", FILE, () =>
+      json({ message: "Conflict <sha>" }, 409),
+    );
+    await send(w, QUESTION);
+    expect(await write(w, "Neither.")).toBe("an answer that GitHub refused");
+    expect(said(w)).toEqual([
+      [
+        900,
+        "😢 Not saved for your agent: GitHub refused: Conflict &lt;sha&gt;. The question stays open: write your answer again, or press an option.",
+      ],
+    ]);
+    expect(reactions(w)).toEqual([[500, "😢"]]);
+    expect(w.net.telegram("editMessageText")).toHaveLength(0);
+    expect(await stored(w)).toMatchObject({ state: "open", choice: null });
+    expect(await stored(w)).not.toHaveProperty("ownAnswer");
+  });
+
+  it("fails the update on a failure of the network, which the log keeps", async () => {
+    const w = await world();
+    withoutBranch(withTopics(withControl(w.net))).on("PUT", FILE, () => {
+      throw new TypeError("Network connection lost.");
+    });
+    await send(w, QUESTION);
+    await expect(write(w, "Neither.")).rejects.toThrow(
+      "Network connection lost.",
+    );
+    expect(await stored(w)).toMatchObject({ state: "open" });
+  });
+
+  it("is a text in the topic of an open question only: one that ended, and another thread, go to the control repository", async () => {
+    const w = await world();
+    withDispatches(withoutBranch(withTopics(withControl(w.net))));
+    await send(w, QUESTION);
+    expect(await write(w, "And the pager?", 950)).toBe("free text sent");
+    await press(w, `choose:${await idOf()}:1`);
+    expect(await write(w, "Why did I choose that?")).toBe("free text sent");
+    expect(
+      w.net
+        .github("/dispatches")
+        .map((call) => [
+          call.body.event_type,
+          call.body.client_payload.text,
+          call.body.client_payload.thing?.kind,
+          call.body.client_payload.thing?.state,
+        ]),
+    ).toEqual([
+      ["pager-text", "And the pager?", undefined, undefined],
+      ["pager-text", "Why did I choose that?", "decision", "answered"],
+    ]);
+    expect(
+      w.net.github(FILE).filter((call) => call.method === "PUT"),
+    ).toHaveLength(1);
+  });
+
+  it("is saved and shown in German", async () => {
+    const w = await world({ language: "de" });
+    withoutBranch(withTopics(withControl(w.net)));
+    await send(w, QUESTION);
+    await write(w, "Keins von beiden.");
+    const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
+    expect(edited.text).toBe(
+      "🤔 <b>Eine Entscheidung für dich</b>\nWhich release goes first tonight?\n\n✅ Deine Antwort, in deinen eigenen Worten:\nKeins von beiden.",
+    );
+  });
+});
+
+describe("a question that its agent takes back", () => {
+  const WITHDRAW = { type: "withdraw", id: QUESTION.id };
+
+  it("loses its buttons, and its message and its topic say so, with the reason", async () => {
+    const w = await world();
+    withTopics(withControl(w.net));
+    await send(w, QUESTION);
+    expect(
+      await send(w, {
+        ...WITHDRAW,
+        reason: "  No answer within the hour: the <blueprint> went first.  ",
+      }),
+    ).toEqual({ status: 200, text: "withdrawn" });
+    const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
+    expect(edited.text).toBe(
+      "🤔 <b>A decision for you</b>\nWhich release goes first tonight?\n\n↩️ Your agent took this question back: it no longer waits for an answer.\n<i>No answer within the hour: the &lt;blueprint&gt; went first.</i>",
+    );
+    expect(edited.reply_markup.inline_keyboard).toEqual([]);
+    expect(
+      w.net.telegram("editForumTopic").map((call) => call.body.name),
+    ).toEqual(["✅ 🤔 Decision: Which release goes first tonight?"]);
+    expect(await stored(w)).toMatchObject({
+      state: "withdrawn",
+      choice: null,
+      note: "No answer within the hour: the <blueprint> went first.",
+    });
+    // Nothing is saved for the agent: it no longer reads an answer.
+    expect(w.net.github(FILE)).toHaveLength(0);
+    expect(await press(w, `choose:${await idOf()}:0`)).toBe(
+      "choose: This button is out of date.",
+    );
+  });
+
+  it("is taken back once, keeps its id used, and leaves a text in its topic to the control repository", async () => {
+    const w = await world();
+    withDispatches(withTopics(withControl(w.net)));
+    await send(w, QUESTION);
+    await send(w, WITHDRAW);
+    expect(await send(w, WITHDRAW)).toEqual({
+      status: 200,
+      text: "withdrawn",
+    });
+    expect(w.net.telegram("editMessageText")).toHaveLength(1);
+    const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
+    expect(edited.text).toBe(
+      "🤔 <b>A decision for you</b>\nWhich release goes first tonight?\n\n↩️ Your agent took this question back: it no longer waits for an answer.",
+    );
+    expect(await send(w, QUESTION)).toEqual({
+      status: 409,
+      text: "Conflict",
+    });
+    expect(await write(w, "Why?")).toBe("free text sent");
+    expect(await stored(w)).toMatchObject({ state: "withdrawn", note: null });
+  });
+
+  it("keeps an answer that came first, and finds no question that the pager doesn't know", async () => {
+    const w = await world();
+    withoutBranch(withTopics(withControl(w.net)));
+    expect(await send(w, WITHDRAW)).toEqual({
+      status: 404,
+      text: "Not Found",
+    });
+    await send(w, QUESTION);
+    await press(w, `choose:${await idOf()}:0`);
+    expect(await send(w, WITHDRAW)).toEqual({
+      status: 409,
+      text: "Conflict",
+    });
+    expect(await stored(w)).toMatchObject({ state: "answered", choice: 0 });
+    expect(w.net.telegram("editMessageText")).toHaveLength(1);
+  });
+
+  it("takes an id and a short reason, and nothing else", async () => {
+    const w = await world();
+    const wrong = [
+      { type: "withdraw" },
+      { ...WITHDRAW, id: 7 },
+      { ...WITHDRAW, id: "../answers" },
+      { ...WITHDRAW, reason: 7 },
+      { ...WITHDRAW, reason: "  " },
+      { ...WITHDRAW, reason: "r".repeat(MAX_REASON + 1) },
+    ];
+    for (const body of wrong) {
+      expect(await send(w, body), JSON.stringify(body)).toEqual({
+        status: 400,
+        text: "Bad Request",
+      });
+    }
+    // A body that the pager takes, for a question that it doesn't know.
+    expect(
+      (await send(w, { ...WITHDRAW, reason: ` ${"r".repeat(MAX_REASON)} ` }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("is taken back in German", async () => {
+    const w = await world({ language: "de" });
+    withControl(w.net);
+    await send(w, QUESTION);
+    await send(w, WITHDRAW);
+    const [edited] = w.net.telegram("editMessageText").map((call) => call.body);
+    expect(edited.text).toBe(
+      "🤔 <b>Eine Entscheidung für dich</b>\nWhich release goes first tonight?\n\n↩️ Dein Agent hat die Frage zurückgenommen: Er wartet nicht mehr auf eine Antwort.",
     );
   });
 });

@@ -193,10 +193,35 @@ async function edit(context: Context, item: Contribution): Promise<Reply> {
 }
 
 /**
- * Save the option of a decision in the control repository, where the agent that
- * asked reads it, and show it as the answer. When GitHub refuses, the question
- * stays open, so that a press can save it again.
+ * Save the answer to a decision in the control repository, where the agent that
+ * asked reads it, and show it: the place of an option and its text, or no place and
+ * the maintainer's own words, in the same file, so that the agent reads both alike.
+ * When GitHub refuses, it throws, and the question stays open, so that the answer
+ * can be saved again.
  */
+export async function answerDecision(
+  context: Context,
+  item: Decision,
+  choice: number | null,
+  answer: string,
+): Promise<void> {
+  await context.github.saveAnswer(item.installation, item.repo, item.ask, {
+    id: item.ask,
+    question: item.question,
+    options: item.options,
+    choice,
+    answer,
+    answered: new Date(context.now()).toISOString(),
+  });
+  item.state = "answered";
+  item.choice = choice;
+  if (choice === null) {
+    item.ownAnswer = answer;
+  }
+  await show(context, item);
+}
+
+/** Save the option of a decision whose button the maintainer pressed. */
 async function choose(
   context: Context,
   item: Decision,
@@ -206,17 +231,7 @@ async function choose(
   if (place === null || option === undefined) {
     return refused(context.t("answer.unknown"));
   }
-  await context.github.saveAnswer(item.installation, item.repo, item.ask, {
-    id: item.ask,
-    question: item.question,
-    options: item.options,
-    choice: place,
-    answer: option,
-    answered: new Date(context.now()).toISOString(),
-  });
-  item.state = "answered";
-  item.choice = place;
-  await show(context, item);
+  await answerDecision(context, item, place, option);
   return done(context.t("answer.chosen", { option }));
 }
 

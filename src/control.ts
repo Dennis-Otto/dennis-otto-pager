@@ -33,7 +33,7 @@ import {
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { learnTokens, tokensOf } from "./tokens.ts";
-import { postInNewTopic, REPORT_COLOR } from "./topics.ts";
+import { postBelow, postInNewTopic, REPORT_COLOR } from "./topics.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
 
@@ -390,7 +390,14 @@ async function propose(
   if (line !== null) {
     lines.push(`<i>${html(line)}</i>`);
   }
-  await context.telegram.send(lines.join("\n\n"), keyboard, thread);
+  const topic = item?.topic ?? null;
+  if (item !== null && topic !== null && thread === topic.thread) {
+    // In the thing's topic, which opens anew with the thing's own message first
+    // when the maintainer deleted it.
+    await postBelow(context, item, lines.join("\n\n"), keyboard);
+  } else {
+    await context.telegram.send(lines.join("\n\n"), keyboard, thread);
+  }
   return keyboard.length > 0;
 }
 
@@ -562,14 +569,16 @@ export async function handleControl(
   ) {
     // The maintainer wrote the draft himself while this job ran: his text stays
     // the reply. The draft of the job only goes into the thing's topic, to read,
-    // and the failure of a job that he needs no more says nothing.
+    // below its message, and the failure of a job that he needs no more says
+    // nothing.
     if (message.type === "draft") {
-      await context.telegram.say(
+      await postBelow(
+        context,
+        item,
         context.t("message.otherDraft", {
           thing: html(`${item.repo}#${item.number}`),
           draft: html(message.text, MAX_DRAFT),
         }),
-        item.topic?.thread ?? null,
       );
     }
     return new Response("kept");

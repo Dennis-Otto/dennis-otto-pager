@@ -63,14 +63,21 @@ export class Net {
   private handlers: Handler[] = [];
   private nextMessage = 100;
 
-  /** Answer the calls whose method and address match; a later rule wins. */
-  on(method: string, pattern: string | RegExp, answer: () => Response): this {
+  /**
+   * Answer the calls whose method and address match; a later rule wins, and one
+   * that answers undefined for a call leaves it to the rules before it.
+   */
+  on(
+    method: string,
+    pattern: string | RegExp,
+    answer: (call: Call) => Response | undefined,
+  ): this {
     this.handlers.unshift((call) => {
       const matches =
         typeof pattern === "string"
           ? call.url.endsWith(pattern)
           : pattern.test(call.url);
-      return call.method === method && matches ? answer() : undefined;
+      return call.method === method && matches ? answer(call) : undefined;
     });
     return this;
   }
@@ -259,5 +266,30 @@ export function withTopics(net: Net, first = 900): Net {
     )
     .on("POST", /\/createForumTopic$/, () =>
       json({ ok: true, result: { message_thread_id: next++, name: "topic" } }),
+    );
+}
+
+/**
+ * A topic that the maintainer deleted, and with it each of its messages, as
+ * messages names them: Telegram finds neither the thread for a new message or an
+ * album nor a message of it to edit.
+ */
+export function withDeletedTopic(
+  net: Net,
+  thread: number,
+  messages: readonly number[] = [],
+): Net {
+  const refused = (description: string) =>
+    json({ ok: false, error_code: 400, description }, 400);
+  return net
+    .on("POST", /\/(sendMessage|sendMediaGroup|sendPhoto)$/, (call) =>
+      Number(call.body.message_thread_id) === thread
+        ? refused("Bad Request: message thread not found")
+        : undefined,
+    )
+    .on("POST", /\/editMessageText$/, (call) =>
+      messages.includes(call.body.message_id)
+        ? refused("Bad Request: message to edit not found")
+        : undefined,
     );
 }

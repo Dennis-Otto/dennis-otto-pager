@@ -69,7 +69,7 @@ import {
   type Thread,
 } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
-import { retitle, sendThing } from "./topics.ts";
+import { postBelow, retitle, sendThing } from "./topics.ts";
 
 export interface Context {
   settings: Settings;
@@ -650,18 +650,23 @@ async function comment(
   // The comment needs the maintainer now, not once "Later" brings it back.
   known.snoozedUntil = null;
   const outcome = await redraft(context, known);
+  const before = known.messageId;
   await show(context, known);
   if (quiet) {
     return `comment shown in place${outcome}, quietly`;
   }
-  await context.telegram.send(
+  if (known.messageId !== before) {
+    // Its message was gone, such as with a topic that the maintainer deleted, and
+    // the new one, which names the comment, notified already.
+    return `comment shown in a new message${outcome}`;
+  }
+  await postBelow(
+    context,
+    known,
     context.t("message.newComment", {
       author: html(signal.author, 100),
       link: link(`#${signal.number} ${signal.title}`, signal.url),
     }),
-    [],
-    known.topic?.thread ?? null,
-    known.messageId,
   );
   return `comment shown in place${outcome}`;
 }
@@ -703,7 +708,8 @@ async function sendAlbum(
 /**
  * The pictures of a release that the pager shows: a message of their own in its
  * topic, without buttons, since its own message keeps 🔀 Merge, and the album
- * below; the release keeps the head whose pictures went.
+ * below; a topic that the maintainer deleted opens anew, with the release's own
+ * message first. The release keeps the head whose pictures went.
  */
 async function releasePictures(
   context: Context,
@@ -712,12 +718,7 @@ async function releasePictures(
   photos: readonly Photo[],
 ): Promise<string> {
   const text = picturesText(view, context.t);
-  const sent = await context.telegram.post(
-    text,
-    [],
-    release.topic?.thread ?? null,
-    release.messageId,
-  );
+  const sent = await postBelow(context, release, text);
   // The message notified already: the album below it comes quietly.
   const failed = await sendAlbum(
     context,

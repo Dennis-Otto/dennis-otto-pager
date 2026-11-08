@@ -7,6 +7,14 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.6.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.5.0...v0.6.0) (2026-11-08)
+
+
+### Features
+
+* a discussion thing closes when Dennis answers on GitHub, and keeps his own draft ([#74](https://github.com/Dennis-Otto/dennis-otto-pager/issues/74)) ([d11b4b8](https://github.com/Dennis-Otto/dennis-otto-pager/commit/d11b4b88c6b83b5348d28534659668d4c402e090))
+* Dennis can answer a decision in his own words, and an agent can take a question back ([#78](https://github.com/Dennis-Otto/dennis-otto-pager/issues/78)) ([a64a476](https://github.com/Dennis-Otto/dennis-otto-pager/commit/a64a4761fa778879a290ea915efa77550335ba82))
+
 ## [0.5.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.4.0...v0.5.0) (2026-11-08)
 
 ### Features

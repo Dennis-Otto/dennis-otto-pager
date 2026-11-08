@@ -363,7 +363,7 @@ The pager writes only when something needs its maintainer, so a quiet day looks 
 
 ### The health of the pager
 
-The workflow *Health* of the control repository runs once a day and by hand, without permissions of its own, and sends `{"type": "health"}` to `/control`, signed as every answer of the control repository. The pager answers with JSON that names no secret:
+The workflow *Health* of the control repository runs once a day and by hand, with `permissions: {}` at the top and only `contents: read` for its checkout, and sends `{"type": "health"}` to `/control`, signed as every answer of the control repository. The pager answers with JSON that names no secret:
 
 ```json
 {

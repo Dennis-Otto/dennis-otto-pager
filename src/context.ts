@@ -1,8 +1,9 @@
 /**
  * The context of each request and of each run of the schedule: the settings, the
  * state, the two APIs and the texts of its language, which the tests make with a
- * simulated network and clock, and the storage of the Durable Object. It counts the calls to the network, which the
- * free plan of Workers allows 50 of per request.
+ * simulated network and clock, and the storage of the Durable Object. It counts
+ * the calls to the network, which the free plan of Workers allows 50 of per
+ * request.
  */
 import { GitHub, GitHubError } from "./github.ts";
 import type { Context } from "./pager.ts";

@@ -363,7 +363,7 @@ Der Pager schreibt nur, wenn etwas seinen Maintainer braucht, also sieht ein ruh
 
 ### Der Zustand des Pagers
 
-Der Workflow *Health* des Steuer-Repositorys läuft einmal am Tag und von Hand, ohne eigene Rechte, und schickt `{"type": "health"}` an `/control`, signiert wie jede Antwort des Steuer-Repositorys. Der Pager antwortet mit JSON, das kein Geheimnis nennt:
+Der Workflow *Health* des Steuer-Repositorys läuft einmal am Tag und von Hand, mit `permissions: {}` oben und nur mit `contents: read` für den Checkout, und schickt `{"type": "health"}` an `/control`, signiert wie jede Antwort des Steuer-Repositorys. Der Pager antwortet mit JSON, das kein Geheimnis nennt:
 
 ```json
 {

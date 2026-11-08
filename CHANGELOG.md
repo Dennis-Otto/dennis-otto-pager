@@ -9,11 +9,11 @@ requests when there is none.
 
 ## [0.6.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.5.0...v0.6.0) (2026-11-08)
 
-
 ### Features
 
-* a discussion thing closes when Dennis answers on GitHub, and keeps his own draft ([#74](https://github.com/Dennis-Otto/dennis-otto-pager/issues/74)) ([d11b4b8](https://github.com/Dennis-Otto/dennis-otto-pager/commit/d11b4b88c6b83b5348d28534659668d4c402e090))
-* Dennis can answer a decision in his own words, and an agent can take a question back ([#78](https://github.com/Dennis-Otto/dennis-otto-pager/issues/78)) ([a64a476](https://github.com/Dennis-Otto/dennis-otto-pager/commit/a64a4761fa778879a290ea915efa77550335ba82))
+- When none of the buttons of a question of your agent fits, write your answer in its topic: it reaches the agent in your own words, in the same file as a button, the message shows it, and your text gets 👍.
+- An agent can take back a question that it no longer needs, with `node scripts/ask.mjs withdraw` of the control repository: the buttons go, and the message says that the agent took it back, with its reason.
+- A discussion that is dealt with on GitHub itself is done in the pager too: when you reply there, someone marks an answer, or the discussion is closed or deleted, its message loses its buttons, says why, and its topic gets ✅, so ✅ Send can't post a second answer. A text that you wrote with ✏️ Edit stays your draft: a draft of the control repository that comes later only shows in the topic to read, and a new comment keeps your text instead of asking for a new draft.
 
 ## [0.5.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.4.0...v0.5.0) (2026-11-08)
 

@@ -12,7 +12,7 @@ on:
   # tool, fails here and repairs itself through the fix bot, not in the next pull
   # request. At the time of Lint, so that one commit of the bot holds what both fix.
   schedule:
-    - cron: "46 4 * * 5"
+    - cron: "27 4 * * 3"
   workflow_dispatch:
 
 permissions:

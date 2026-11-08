@@ -17,6 +17,16 @@ requests when there is none.
 
 - A message about a thing whose topic you deleted opens a new topic instead of landing in the main chat. That holds for every message of the thing: its own message when it changes or ⏰ Later brings it back, and the messages below it, such as the pictures of a release and their album, the notice of a new comment, a draft to read or a proposal with ✅ Confirm, which bring the thing's own message with its buttons into the new topic first. The thing keeps the new topic, so its later messages follow there. A thing that an earlier version left in the main chat after you deleted its topic, such as a release whose pictures kept landing there, moves into a new topic with its next message. The main chat is left for a chat without topics, for a topic that Telegram refuses, and for a thing from before topics, and a comment whose message went anew no longer notifies twice. It needs no new permission and no new secret.
 
+## [0.8.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.7.0...v0.8.0) (2026-11-08)
+
+### Features
+
+- Dennis Otto Pager is now **Repo Pager**, a pager that anyone runs for their own repositories. The repository is [Dennis-Otto/repo-pager](https://github.com/Dennis-Otto/repo-pager) and the website <https://dennis-otto.github.io/repo-pager/>, and the old addresses of the repository lead there. [Set up](https://dennis-otto.github.io/repo-pager/setup.html) starts with your own copy, says what to set in its `wrangler.jsonc`, and why there is no shared app to install: your tokens and the events of your repositories stay yours, each pager serves the one chat of its maintainer, and your own subscription of Claude answers. A new GitHub App of the pager is called *Repo Pager*, which you change to a name of your own when you confirm it. A pager that runs needs no change: it keeps its Worker, its address, its secrets, its state and its GitHub App.
+
+### Bug fixes
+
+- A message about a thing whose topic you deleted opens a new topic instead of landing in the main chat. That holds for every message of the thing: its own message when it changes or ⏰ Later brings it back, and the messages below it, such as the pictures of a release and their album, the notice of a new comment, a draft to read or a proposal with ✅ Confirm, which bring the thing's own message with its buttons into the new topic first. The thing keeps the new topic, so its later messages follow there. A thing that an earlier version left in the main chat after you deleted its topic, such as a release whose pictures kept landing there, moves into a new topic with its next message. The main chat is left for a chat without topics, for a topic that Telegram refuses, and for a thing from before topics, and a comment whose message went anew no longer notifies twice. It needs no new permission and no new secret.
+
 ## [0.7.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.6.0...v0.7.0) (2026-11-08)
 
 ### Features

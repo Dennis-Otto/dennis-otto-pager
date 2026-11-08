@@ -147,6 +147,8 @@ export interface Delivery {
   status_code: number;
   event: string;
   action: string | null;
+  /** The repository of the event, or null for one of none, such as of the app itself. */
+  repository_id: number | null;
 }
 
 /** A page of the deliveries, newest first, and the cursor of the next page, if any. */

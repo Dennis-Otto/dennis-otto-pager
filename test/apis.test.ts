@@ -11,6 +11,7 @@ import {
   pkcs1ToPkcs8,
 } from "../src/github.ts";
 import {
+  MAX_RETRY_AFTER,
   REACTIONS,
   Telegram,
   TelegramError,
@@ -506,6 +507,80 @@ describe("Telegram", () => {
     expect(second.text).toBe("Hi");
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+
+  it("waits once when Telegram asks for a short wait, and tries again", async () => {
+    const waits: number[] = [];
+    let tries = 0;
+    const busy = new Net().on("POST", /sendMessage$/, () =>
+      tries++ === 0
+        ? json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 2",
+              parameters: { retry_after: 2 },
+            },
+            429,
+          )
+        : json({ ok: true, result: { message_id: 8 } }),
+    );
+    const patient = new Telegram("123:test", 4242, busy.fetch, async (s) => {
+      waits.push(s);
+    });
+    expect(await patient.send("Hi", [])).toBe(8);
+    expect(waits).toEqual([2]);
+    expect(busy.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("waits no longer than MAX_RETRY_AFTER, and only once", async () => {
+    const limited = (after: number) =>
+      new Net().on("POST", /sendMessage$/, () =>
+        json(
+          {
+            ok: false,
+            error_code: 429,
+            description: "Too Many Requests",
+            parameters: { retry_after: after },
+          },
+          429,
+        ),
+      );
+    const waits: number[] = [];
+    const record = async (s: number) => {
+      waits.push(s);
+    };
+    const long = limited(MAX_RETRY_AFTER + 1);
+    await expect(
+      new Telegram("123:test", 4242, long.fetch, record).send("Hi", []),
+    ).rejects.toThrow("Too Many Requests");
+    expect(long.telegram("sendMessage")).toHaveLength(1);
+    const again = limited(1);
+    await expect(
+      new Telegram("123:test", 4242, again.fetch, record).send("Hi", []),
+    ).rejects.toThrow("Too Many Requests");
+    expect(again.telegram("sendMessage")).toHaveLength(2);
+    expect(waits).toEqual([1]);
+  });
+
+  it("waits for real by default", async () => {
+    vi.useFakeTimers();
+    try {
+      let tries = 0;
+      const busy = new Net().on("POST", /sendMessage$/, () =>
+        tries++ === 0
+          ? json(
+              { ok: false, error_code: 429, parameters: { retry_after: 1 } },
+              429,
+            )
+          : json({ ok: true, result: { message_id: 9 } }),
+      );
+      const sent = telegram(busy).send("Hi", []);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await sent).toBe(9);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("passes on every other error of a message for a thread", async () => {

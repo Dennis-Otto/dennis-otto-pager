@@ -9,11 +9,13 @@
  * as one asked for there, takes it out. The list of the deliveries counts the
  * attempts, so the pager writes nothing for them, and each signal leaves the same
  * state when it comes twice, since a redelivery may bring one that went through
- * before its answer failed.
+ * before its answer failed. A redelivery comes late, so an event that a newer one
+ * of the same kind and repository overtook doesn't come again: its signal could
+ * bring back an older state.
  */
 import { type Delivery, GitHubError } from "./github.ts";
 import { apply, type Context } from "./pager.ts";
-import { type Alarm, isClosed, itemId, keys } from "./store.ts";
+import { type Alarm, DELIVERY_ENTRY, isClosed, itemId, keys } from "./store.ts";
 
 /** How far back the schedule reads the deliveries of the webhook, in milliseconds. */
 export const LOOK_BACK = 3 * 60 * 60 * 1000;
@@ -38,12 +40,37 @@ export const SUBREQUESTS = 50;
  */
 export const ALARM_CHANGE = 10;
 
+/**
+ * The events whose signal a newer one of the same kind and repository can
+ * overtake: a run, a check or an alert that changed since, a pull request at a
+ * new head, or an issue, a pull request, a discussion or a release that was
+ * closed, answered, edited or deleted since. A late copy would bring back the
+ * older state. A comment adds to its thing and overtakes nothing.
+ */
+export const SUPERSEDED = new Set([
+  "check_run",
+  "check_suite",
+  "code_scanning_alert",
+  "discussion",
+  "issues",
+  "pull_request",
+  "release",
+  "workflow_run",
+]);
+
 /** An event as its deliveries show it: its newest attempt, and how many it had. */
 interface Event {
   newest: Delivery;
   attempts: number;
-  /** Whether its first delivery is among those read, so that all its attempts are. */
-  counted: boolean;
+  /** Its first delivery, when it is among those read, so that all its attempts are. */
+  first: Delivery | null;
+  /** Whether one of its attempts passed. */
+  passed: boolean;
+}
+
+/** Whether the pager handled an attempt: a 2xx or 3xx. */
+function passed(delivery: Delivery): boolean {
+  return delivery.status_code > 0 && delivery.status_code < 400;
 }
 
 /** Whether the pager failed an attempt: a 5xx, or no answer in time. */
@@ -55,7 +82,7 @@ export function failed(delivery: Delivery): boolean {
 
 /** The key of the entry of an event in the alarm, by the guid that all its attempts share. */
 export function entryKey(guid: string): string {
-  return `delivery:${guid}`;
+  return `${DELIVERY_ENTRY}${guid}`;
 }
 
 /** How many more calls to the network this request may make. */
@@ -110,10 +137,32 @@ function events(deliveries: Delivery[]): Event[] {
           ? known.newest
           : delivery,
       attempts: (known?.attempts ?? 0) + 1,
-      counted: known?.counted === true || !delivery.redelivery,
+      first: delivery.redelivery ? (known?.first ?? null) : delivery,
+      passed: known?.passed === true || passed(delivery),
     });
   }
   return [...found.values()];
+}
+
+/**
+ * Whether a newer event of the same kind and repository passed after this one
+ * was first delivered: its signal may be stale by now, so it doesn't come again,
+ * and the newer one stands, as it did before the pager asked for any event again.
+ */
+function overtaken(event: Event, all: Event[]): boolean {
+  const first = event.first as Delivery;
+  return (
+    SUPERSEDED.has(first.event) &&
+    first.repository_id !== null &&
+    all.some(
+      (other) =>
+        other.passed &&
+        other.first !== null &&
+        other.first.id > first.id &&
+        other.first.event === first.event &&
+        other.first.repository_id === first.repository_id,
+    )
+  );
 }
 
 /**
@@ -219,7 +268,8 @@ async function alarm(
 export async function failedEvents(context: Context): Promise<string[]> {
   const found = events(await recent(context));
   const failing = found.filter(
-    (event) => event.counted && failed(event.newest),
+    (event) =>
+      event.first !== null && failed(event.newest) && !overtaken(event, found),
   );
   await redeliver(
     context,
@@ -234,12 +284,7 @@ export async function failedEvents(context: Context): Promise<string[]> {
       .map((event) => event.newest),
     // Only an attempt asked for again can pass after one that failed.
     found
-      .filter(
-        (event) =>
-          event.newest.redelivery &&
-          event.newest.status_code > 0 &&
-          event.newest.status_code < 400,
-      )
+      .filter((event) => event.newest.redelivery && passed(event.newest))
       .map((event) => event.newest),
   );
 }

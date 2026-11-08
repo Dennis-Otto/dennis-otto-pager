@@ -6,7 +6,7 @@
 // state as it was after the first.
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { allowed } from "../src/buttons.ts";
 import {
   ALARM_CHANGE,
   entryKey,
@@ -50,6 +50,7 @@ function attempt(
     redelivery = false,
     event = "pull_request",
     action = "opened" as string | null,
+    repository = null as number | null,
   } = {},
 ): Delivery {
   serial += 1;
@@ -61,6 +62,7 @@ function attempt(
     status_code: status,
     event,
     action,
+    repository_id: repository,
   };
 }
 
@@ -185,6 +187,11 @@ describe("an event that the pager failed to handle", () => {
     expect(w.net.telegram("sendMessage")).toHaveLength(1);
     expect(w.net.telegram("editMessageText")).toHaveLength(0);
     expect(w.net.github("/app")).toHaveLength(1);
+    // Claude can't fix an event that fails: its alarm offers no 🔧 Fix.
+    expect(allowed((await theAlarm(w)) as Alarm)).toEqual(["later", "ignore"]);
+    const mixed = (await theAlarm(w)) as Alarm;
+    mixed.entries.push({ ...mixed.entries[0], key: "check:build" } as never);
+    expect(allowed(mixed)).toEqual(["fix", "later", "ignore"]);
   });
 
   it("names the event without its action, and the page of an app of an organization", async () => {
@@ -360,6 +367,104 @@ describe("an event that the pager failed to handle", () => {
     ]);
     await failedEvents(w.context);
     expect(redelivered(w)).toEqual([]);
+  });
+
+  it("doesn't come again once a newer event of its kind and repository passed", async () => {
+    // A late copy of a run, a check or a pull request would bring back an older
+    // state, such as an alarm that a rerun ended, or a release at an old head.
+    const stale = attempt("stale", 40, 500, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const newer = attempt("newer", 30, 200, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const elsewhere = attempt("elsewhere", 35, 500, {
+      event: "workflow_run",
+      repository: 2,
+    });
+    const comment = attempt("comment", 38, 500, {
+      event: "issue_comment",
+      repository: 1,
+    });
+    const later = attempt("later", 20, 200, {
+      event: "issue_comment",
+      repository: 1,
+    });
+    const before = attempt("before", 45, 200, {
+      event: "pull_request",
+      repository: 1,
+    });
+    const opened = attempt("opened", 42, 500, { repository: 1 });
+    const failedToo = attempt("failed-too", 25, 500, {
+      event: "check_run",
+      repository: 1,
+    });
+    const check = attempt("check", 28, 502, {
+      event: "check_run",
+      repository: 1,
+    });
+    const w = listing(await world(), [
+      [
+        later,
+        failedToo,
+        check,
+        newer,
+        elsewhere,
+        comment,
+        opened,
+        stale,
+        before,
+      ],
+    ]);
+    await failedEvents(w.context);
+    // Not the stale run; a comment overtakes nothing, an older pass and one of
+    // another repository don't count, and neither does a newer one that failed.
+    expect(redelivered(w)).toEqual([
+      opened.id,
+      comment.id,
+      elsewhere.id,
+      check.id,
+      failedToo.id,
+    ]);
+  });
+
+  it("counts a passing redelivery of a newer event as newer, and of an older one not", async () => {
+    const suite = (
+      guid: string,
+      minutes: number,
+      status: number,
+      again = false,
+    ) =>
+      attempt(guid, minutes, status, {
+        redelivery: again,
+        event: "check_suite",
+        repository: 1,
+      });
+    const overtaken = listing(await world(), [
+      [
+        suite("newer", 10, 200, true),
+        suite("newer", 30, 500),
+        suite("stale", 40, 500),
+      ],
+    ]);
+    await failedEvents(overtaken.context);
+    expect(redelivered(overtaken)).toEqual([]);
+    const stale = suite("stale", 40, 500);
+    // An event of no repository: nothing overtakes it.
+    const none = attempt("none", 55, 500, { event: "check_suite" });
+    const kept = listing(await world(), [
+      [
+        suite("older", 12, 200, true),
+        attempt("newest", 11, 200, { event: "check_suite" }),
+        stale,
+        suite("older", 50, 500),
+        none,
+      ],
+    ]);
+    await failedEvents(kept.context);
+    expect(redelivered(kept)).toEqual([none.id, stale.id]);
   });
 
   it("takes the newest attempt by its id, whatever the order of the list", async () => {

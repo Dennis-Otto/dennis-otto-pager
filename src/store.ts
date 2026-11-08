@@ -267,6 +267,12 @@ export async function itemId(key: string): Promise<string> {
 }
 
 /**
+ * The start of the key of an entry of an alarm for an event of GitHub that the
+ * pager failed to handle, which src/deliveries.ts writes.
+ */
+export const DELIVERY_ENTRY = "delivery:";
+
+/**
  * The key of each kind of thing: one thing per issue, pull request or discussion,
  * whose numbers GitHub counts together, one bundle per repository, the
  * pictures of one pull request, and one question of an agent per id.

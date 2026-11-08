@@ -25,12 +25,14 @@ Make a copy of this repository: a fork, or a repository of your own. `wrangler.j
 | `LANGUAGE` | `de` for German, `en` or empty for English |
 | `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
 
-The commands below name your control repository with a variable of the shell. Create it now, empty and private, because step 3 gives it a secret and step 4 installs the app on it; step 7 adds its workflow:
+The commands below name your control repository with a variable of the shell. Create it now, private, from [the template of the control repository](https://github.com/Dennis-Otto/repo-pager-control-template), because step 3 gives it a secret and step 4 installs the app on it; step 7 sets up the rest:
 
 ```sh
 CONTROL=octocat/repo-pager-control   # your account and the name of your control repository
-gh repo create "$CONTROL" --private
+gh repo create "$CONTROL" --private --template Dennis-Otto/repo-pager-control-template
 ```
+
+The template holds the workflows of the control repository and their scripts, and its README is their guide. Your copy stays private, because the logs of its runs show issues, drafts and what Claude read. Until step 7, its daily check *Health* fails, which GitHub mails you.
 
 ## 1. The bot of Telegram
 
@@ -159,12 +161,17 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 ## 7. The control repository
 
-Your private control repository, which `CONTROL_REPOSITORY` names, drafts the replies, starts the fixes and answers the free text, with Claude Code and `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. [How it works](how-it-works.md#the-control-repository) has the contract between the two: the events that the pager sends it and the signed answers that the pager takes. The workflow of the maintainer's own control repository is private, so a workflow of your own answers by that contract. Besides the token of Claude and `PAGER_CONTROL_SECRET` of step 3, it needs the address of the Worker, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix:
+Your private control repository, which `CONTROL_REPOSITORY` names, drafts the replies, starts the fixes and answers the free text, with Claude Code and your own subscription. You made it from the template at the start, so its workflows are there, and [the README of the template](https://github.com/Dennis-Otto/repo-pager-control-template#readme) describes each of its jobs, secrets and variables; [How it works](how-it-works.md#the-control-repository) has the contract between the two: the events that the pager sends it and the signed answers that the pager takes. Besides `PAGER_CONTROL_SECRET` of step 3, it needs the token of your Claude subscription from `claude setup-token`, the address of the Worker, the name of your app in its address, `github.com/apps/NAME`, which is the only bot whose events start Claude, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories and for the control repository itself, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix and that of a change of the template:
 
 ```sh
+claude setup-token                                   # prints the token of your subscription
+gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"  # paste it
 gh variable set PAGER_URL -R "$CONTROL" --body "$WORKER"
+gh variable set PAGER_APP -R "$CONTROL" --body repo-pager-of-octocat   # the name of your app in its address
 gh secret set PAGER_FIX_TOKEN -R "$CONTROL"
 ```
+
+Then write how you write into `pager/voice.md` of your control repository: a draft of a reply in your name follows it, and the template's copy is only an example. For a pager in German, `gh variable set PAGER_LANGUAGE -R "$CONTROL" --body de` lets the report of a change of the template speak German too. Once a week, the workflow *Template* of your control repository brings what changed in the template as a pull request, and the pager tells you; your README and your voice stay as they are ([decision 0019](decisions/0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md)).
 
 Then write a question to the bot, such as *What fails on main?*: the 👀 says that it went to the control repository, and its answer comes in a minute or two and turns it into 👍. A 😢 says that no answer came to be: the job failed, or it didn't answer within an hour, and the run of the workflow in the Actions tab of the control repository says why. Until the control repository is set up, its buttons send their events, and the summary of its run shows the answer instead of the chat.
 

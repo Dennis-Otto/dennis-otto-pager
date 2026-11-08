@@ -25,12 +25,14 @@ Leg eine Kopie dieses Repositorys an: einen Fork oder ein eigenes Repository. `w
 | `LANGUAGE` | `de` für Deutsch, `en` oder leer für Englisch |
 | `CLAUDE_TOKEN_EXPIRES` | Der Tag, an dem dein Token von Claude abläuft, oder leer |
 
-Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, leer und privat, denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 fügt seinen Workflow hinzu:
+Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, privat, aus [der Vorlage des Steuer-Repositorys](https://github.com/Dennis-Otto/repo-pager-control-template), denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 richtet den Rest ein:
 
 ```sh
 CONTROL=octocat/repo-pager-control   # dein Konto und der Name deines Steuer-Repositorys
-gh repo create "$CONTROL" --private
+gh repo create "$CONTROL" --private --template Dennis-Otto/repo-pager-control-template
 ```
+
+Die Vorlage enthält die Workflows des Steuer-Repositorys und ihre Skripte, und ihr README ist ihre Anleitung. Deine Kopie bleibt privat, denn die Logs ihrer Läufe zeigen Issues, Entwürfe und was Claude gelesen hat. Bis Schritt 7 schlägt ihre tägliche Prüfung *Health* fehl, worüber GitHub dir eine Mail schickt.
 
 ## 1. Der Bot von Telegram
 
@@ -159,12 +161,17 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 ## 7. Das Steuer-Repository
 
-Dein privates Steuer-Repository, das `CONTROL_REPOSITORY` nennt, entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`. [So arbeitet er](how-it-works.md#das-steuer-repository) beschreibt den Vertrag zwischen beiden: die Ereignisse, die der Pager ihm schickt, und die signierten Antworten, die der Pager annimmt. Der Workflow des eigenen Steuer-Repositorys des Maintainers ist privat, also antwortet ein eigener Workflow nach diesem Vertrag. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Fix starten** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
+Dein privates Steuer-Repository, das `CONTROL_REPOSITORY` nennt, entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und deinem eigenen Abo. Du hast es am Anfang aus der Vorlage angelegt, also sind seine Workflows da, und [das README der Vorlage](https://github.com/Dennis-Otto/repo-pager-control-template#readme) beschreibt jeden seiner Jobs, jedes Geheimnis und jede Variable; [So arbeitet er](how-it-works.md#das-steuer-repository) beschreibt den Vertrag zwischen beiden: die Ereignisse, die der Pager ihm schickt, und die signierten Antworten, die der Pager annimmt. Neben `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es das Token deines Abos von Claude aus `claude setup-token`, die Adresse des Workers, den Namen deiner App in ihrer Adresse, `github.com/apps/NAME`, des einzigen Bots, dessen Ereignisse Claude starten, und für 🛠 **Fix starten** einen fein granulierten Token von dir für die beobachteten Repositorys und für das Steuer-Repository selbst, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet und den einer Änderung der Vorlage:
 
 ```sh
+claude setup-token                                   # gibt das Token deines Abos aus
+gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"  # füge es ein
 gh variable set PAGER_URL -R "$CONTROL" --body "$WORKER"
+gh variable set PAGER_APP -R "$CONTROL" --body repo-pager-of-octocat   # der Name deiner App in ihrer Adresse
 gh secret set PAGER_FIX_TOKEN -R "$CONTROL"
 ```
+
+Schreib dann in `pager/voice.md` deines Steuer-Repositorys, wie du schreibst: Ein Entwurf einer Antwort in deinem Namen folgt dem, und die Kopie der Vorlage ist nur ein Beispiel. Für einen Pager auf Deutsch lässt `gh variable set PAGER_LANGUAGE -R "$CONTROL" --body de` auch den Bericht einer Änderung der Vorlage Deutsch sprechen. Einmal pro Woche bringt der Workflow *Template* deines Steuer-Repositorys, was sich in der Vorlage geändert hat, als Pull Request, und der Pager sagt es dir; dein README und deine Stimme bleiben, wie sie sind ([Entscheidung 0019](decisions/0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md)).
 
 Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass sie an das Steuer-Repository ging, und seine Antwort kommt in ein, zwei Minuten und macht ein 👍 daraus. Ein 😢 sagt, dass keine Antwort zustande kam: Der Job schlug fehl oder antwortete nicht binnen einer Stunde, und der Lauf des Workflows im Actions-Tab des Steuer-Repositorys sagt, warum. Bis das Steuer-Repository eingerichtet ist, schicken seine Knöpfe ihre Ereignisse, und die Zusammenfassung seines Laufs zeigt die Antwort statt des Chats.
 

@@ -152,7 +152,7 @@ Der Blueprint schaltet in jedem Repository die vertrauliche Meldung von Sicherhe
 
 ## Das Steuer-Repository
 
-Der Workflow des privaten Steuer-Repositorys des Maintainers, das `CONTROL_REPOSITORY` in `wrangler.jsonc` nennt, etwa `OWNER/repo-pager-control`, führt Claude Code mit dem eigenen Abo des Maintainers aus; seine README beschreibt seine Jobs, seine Sicherheit und seine Einrichtung. Der Pager schickt ihm einen [Repository Dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), mit einem Token der App nur für dieses Repository:
+Der Workflow des privaten Steuer-Repositorys des Maintainers, das `CONTROL_REPOSITORY` in `wrangler.jsonc` nennt, etwa `OWNER/repo-pager-control`, führt Claude Code mit dem eigenen Abo des Maintainers aus. Jedes Steuer-Repository ist eine private Kopie [der öffentlichen Vorlage des Steuer-Repositorys](https://github.com/Dennis-Otto/repo-pager-control-template), deren README seine Jobs, seine Sicherheit und seine Einrichtung beschreibt, und übernimmt die Änderungen der Vorlage per Pull Request seines Workflows *Template* ([Entscheidung 0019](decisions/0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md)). Der Pager schickt ihm einen [Repository Dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), mit einem Token der App nur für dieses Repository:
 
 | Ereignistyp | Gesendet von | Client Payload |
 | --- | --- | --- |

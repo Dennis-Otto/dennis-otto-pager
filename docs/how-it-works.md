@@ -44,12 +44,14 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Release | ready | 🔀 Merge, ⏰ Later, ✖ Ignore |
 | Pictures | open | ✖ Ignore |
 | Reminder | open | ✅ Renewed, ⏰ Later |
+| Question of an agent | open | One button per option (no ⏰ Later, no ✖ Ignore) |
 
 - **🔀 Merge** asks GitHub for the pull request again and squash-merges it only at the head that the message showed, while it is still clean; a changed release goes back to waiting for its checks.
 - **✅ Send** posts the draft whose version its button carries, exactly as the message showed it, in the maintainer's name, and in a discussion as the app; an older button of the same thing refuses. **✏️ Edit** asks for the new text in reply to its prompt, and shows it as the next draft.
 - **🤖 Assistant again** starts the workflow `issue-assistant.yml` of the repository on the issue with `override`, in the maintainer's name. A repository whose issue assistant doesn't take the override yet answers 422, and the button says so.
 - **🔁 Rerun** reads each run that the entries name, with a token of the app for `actions: read`, and runs its failed jobs again, as *Re-run failed jobs* on GitHub does, with a token for `actions: write`. A run that still runs, or whose newer attempt runs, and one that passed on a retry stay as they are, and the button says so. The entries of a run that runs again show *🔁 running again…* in the message, edited in place, until the run fails again or passes: a pass closes the issue of the bot-health bot or ends the failure of the release, which takes the entry out, and the last one turns the alarm ✅. It costs no run of Claude, so it comes first, for a short outage of GitHub, such as a download that answered 504.
 - **✍️ Draft a reply** and **🛠 Start fix** send the thing to the control repository, whose answer comes back as below. Each is a run of Claude with the maintainer's subscription, which counts against its weekly limit, and the answer names its model, its effort and its tokens; a fix that finds an outage of GitHub or of a download in the logs, such as a 504, a timeout or `error connecting to api.github.com`, changes nothing and proposes 🔁 **Rerun** with one ✅ **Confirm** button; a job that fails brings its button back, and so does a job that sent no answer within the hour: the schedule gives its thing the buttons back once, as a new message with the note *⌛ No answer from the control repository*.
+- **One button per option** answers the [question of an agent](#questions-and-reports-of-your-agents) and saves the answer.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it.
 
 <picture>
@@ -175,20 +177,20 @@ An agent sends one of two [repository dispatches](https://docs.github.com/rest/r
 
 ```sh
 gh api repos/Dennis-Otto/dennis-otto-pager-control/dispatches --input - <<'JSON'
-{"event_type": "pager-ask", "client_payload": {"id": "merge-order", "question": "Which release goes first?", "options": ["The blueprint", "The pager"]}}
+{"event_type": "pager-ask", "client_payload": {"id": "2026-11-08-merge-order", "question": "Which release goes first?", "options": ["The blueprint", "The pager"]}}
 JSON
 ```
 
 The workflow of the control repository takes only an event that the owner of the repository sent, never one of the GitHub App or of anyone else, checks it as the pager does and sends it on to `/control`, signed as every answer:
 
-- `{"type": "ask", "id": "<id>", "question": "<question>", "options": ["<option>", …]}`: the `id` names the answer, with letters, digits, dots, dashes and underscores, 64 characters at most, starting with a letter or a digit; the `question` has 1000 characters at most; two to four `options`, each different and 64 characters at most, become the buttons, one a row. The same `id` again asks nothing new: an open question stays as it is, and the pager answers 409 for one that is answered already. Without the GitHub App on the control repository, the pager answers 503, since it couldn't save the answer;
+- `{"type": "ask", "id": "<id>", "question": "<question>", "options": ["<option>", …]}`: the `id` names the answer, with letters, digits, dots, dashes and underscores, 64 characters at most, starting with a letter or a digit; the `question` has 1000 characters at most; two to four `options`, each different and 64 characters at most, become the buttons, one a row. The same `id` again asks nothing new: an open question stays as it is, and the pager answers 409 for one that is answered already. An answered `id` keeps its file on `pager-answers` for good and can't be asked again, so each question takes a new `id`, with the date or the run in it, such as `2026-11-08-merge-order`: the agent would read the old answer as the choice for its new question. Without the GitHub App on the control repository, the pager answers 503, since it couldn't save the answer;
 - `{"type": "report", "text": "<report>", "title": "<title>"}`: the report of a run, its first 3000 characters, with a `title` of 100 characters at most, which the pager leaves out of its store.
 
 A press saves the answer in the control repository, as the GitHub App, with a token for that repository alone and its permission to write the contents, which it has for the dispatches already: the file `answers/<id>.json` on the branch `pager-answers`, which its first answer makes with a commit of its own, without a parent and without the code of the repository, so no workflow runs on it.
 
 ```json
 {
-  "id": "merge-order",
+  "id": "2026-11-08-merge-order",
   "question": "Which release goes first?",
   "options": ["The blueprint", "The pager"],
   "choice": 1,
@@ -197,10 +199,10 @@ A press saves the answer in the control repository, as the GitHub App, with a to
 }
 ```
 
-The message then shows the answer, its buttons go, and its topic gets ✅. When GitHub refuses the answer, the button says why and the question stays open, so that a press saves it again. A question takes no ⏰ Later and no ✖ Ignore: an agent waits for it. The agent reads the answer with its own `gh`, which answers 404 until there is one:
+The message then shows the answer, its buttons go, and its topic gets ✅. When GitHub refuses the answer, the button says why and the question stays open, so that a press saves it again. A question takes no ⏰ Later and no ✖ Ignore: an agent waits for it. The agent reads the answer with its own `gh`, which answers 404 until there is one, for an `id` that was never asked before:
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/merge-order.json?ref=pager-answers"
+gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/2026-11-08-merge-order.json?ref=pager-answers"
 ```
 
 The script `scripts/ask.mjs` of the control repository does all three: it asks, reports and waits for an answer, as its README describes.

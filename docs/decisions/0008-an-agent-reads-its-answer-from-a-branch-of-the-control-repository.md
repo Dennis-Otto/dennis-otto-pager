@@ -17,7 +17,7 @@ The way to the pager exists: the private control repository answers the Worker a
 
 ## Decision
 
-Option 3. The first answer makes the branch with a commit without a parent, whose only file is a README: the branch holds no code of the repository and no workflow, so none runs on a push to it, and `main` stays as it is. Each answer is one commit of the app through the contents API, with the question, its options, the place and the text of the chosen one, and its time. The control repository forwards a question only when its owner sent the event, never one of the app or of anyone else, and the pager takes it only signed, as every other body. A question is a thing of the pager, with a topic of its own and one button per option; the same id again asks nothing new, and an answered one keeps its answer.
+Option 3. The first answer makes the branch with a commit without a parent, whose only file is a README: the branch holds no code of the repository and no workflow, so none runs on a push to it, and `main` stays as it is. Each answer is one commit of the app through the contents API, with the question, its options, the place and the text of the chosen one, and its time. The control repository forwards a question only when its owner sent the event, never one of the app or of anyone else, and the pager takes it only signed, as every other body. A question is a thing of the pager, with a topic of its own and one button per option; the same id again asks nothing new, and an answered one keeps its answer for good, so an id is used once: each question takes a new one, with the date or the run in it, such as `2026-11-08-merge-order`, and the script of the control repository refuses to ask an id that has an answer already.
 
 ## Consequences
 

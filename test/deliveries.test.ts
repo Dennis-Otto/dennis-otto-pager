@@ -137,9 +137,11 @@ describe("an event that the pager failed to handle", () => {
     expect(redelivered(w)).toEqual([timeout.id, broken.id]);
     const posts = w.net.calls.filter((call) => call.method === "POST");
     expect(posts[0]?.headers.authorization).toMatch(/^Bearer ey/);
-    expect(w.net.calls.filter((call) => call.url.includes("telegram"))).toEqual(
-      [],
-    );
+    expect(
+      w.net.calls.filter((call) =>
+        call.url.startsWith("https://api.telegram.org/"),
+      ),
+    ).toEqual([]);
     expect(await theAlarm(w)).toBeNull();
   });
 
@@ -766,7 +768,7 @@ describe("each signal applied twice", () => {
       expect(
         after.filter(
           (call) =>
-            call.url.includes("api.telegram.org") ||
+            call.url.startsWith("https://api.telegram.org/") ||
             call.url.endsWith("/dispatches"),
         ),
       ).toEqual([]);

@@ -29,7 +29,7 @@ on:
   # often hours late, and the bot-health bot starts a run that it missed. It is also
   # the daily run that merges a release of dependency updates.
   schedule:
-    - cron: "43 5 * * *"
+    - cron: "22 5 * * *"
   workflow_dispatch:
 
 permissions: {}

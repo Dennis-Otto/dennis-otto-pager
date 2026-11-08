@@ -42,6 +42,7 @@ import {
   START,
   type World,
   withControl,
+  withDeletedTopic,
   withTopics,
   world,
 } from "./helpers.ts";
@@ -515,30 +516,6 @@ describe("without topics", () => {
     expect(w.net.telegram("createForumTopic")).toHaveLength(1);
   });
 
-  it("goes on in the main view when the topic of a thing is gone", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const w = await chat();
-    await apply(w.context, contribution);
-    const item = (await stored(w, keys.contribution(REPO, 12))) as Item;
-    let tries = 0;
-    w.net.on("POST", /\/sendMessage$/, () =>
-      tries++ === 0
-        ? refused("Bad Request: message thread not found")()
-        : json({ ok: true, result: { message_id: 8 } }),
-    );
-    await show(w.context, item, true);
-    expect(w.net.telegram("deleteForumTopic")).toHaveLength(0);
-    expect(await stored(w, keys.contribution(REPO, 12))).toMatchObject({
-      messageId: 8,
-      topic: null,
-    });
-    // Its next message stays there, without a new topic.
-    await show(w.context, (await w.context.store.get(item.id)) as Item, true);
-    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
-    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
-    warn.mockRestore();
-  });
-
   it("keeps the old name when Telegram refuses a rename, and tries again", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const w = await chat();
@@ -574,6 +551,70 @@ describe("without topics", () => {
     expect(w.net.telegram("createForumTopic")).toHaveLength(0);
     expect(sent(w)[0]).not.toHaveProperty("message_thread_id");
     expect((await w.context.store.get(ID))?.topic).toBeNull();
+  });
+});
+
+describe("a topic that the maintainer deleted", () => {
+  /** A world with the issue shown in its topic 900, as message 100, which the maintainer then deleted. */
+  async function deleted(): Promise<World> {
+    const w = await chat();
+    await apply(w.context, contribution);
+    withDeletedTopic(w.net, 900, [100]);
+    return w;
+  }
+
+  const issueOf = async (w: World) =>
+    (await stored(w, keys.contribution(REPO, 12))) as Item;
+
+  it("opens a new topic with the next message of its thing, which keeps it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await deleted();
+    const item = await issueOf(w);
+    item.note = "Something changed.";
+    // Its message went with the topic: the edit finds nothing, and a new one goes.
+    await show(w.context, item);
+    expect(names(w, "createForumTopic")).toEqual([
+      "🙋 demo#12 It breaks",
+      "🙋 demo#12 It breaks",
+    ]);
+    expect(sent(w).map((body) => body.message_thread_id)).toEqual([
+      900, 900, 901,
+    ]);
+    expect(await issueOf(w)).toMatchObject({
+      messageId: 101,
+      topic: { thread: 901, name: "🙋 demo#12 It breaks" },
+    });
+    expect((await w.context.store.byTopic(901))?.id).toBe(item.id);
+    expect(await w.context.store.byTopic(900)).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram sendMessage: thread 900 not found",
+    );
+    // Its next message stays in the new topic.
+    await show(w.context, await issueOf(w), true);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    expect(sent(w).at(-1)?.message_thread_id).toBe(901);
+    warn.mockRestore();
+  });
+
+  it("goes on in the main view when Telegram refuses the new topic", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await deleted();
+    w.net.on(
+      "POST",
+      /\/createForumTopic$/,
+      refused("Bad Request: CHAT_NOT_FORUM"),
+    );
+    await show(w.context, await issueOf(w), true);
+    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
+    expect(await issueOf(w)).toMatchObject({ messageId: 101, topic: null });
+    // Its next message stays there, without asking for a topic again.
+    await show(w.context, await issueOf(w), true);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram createForumTopic: Bad Request: CHAT_NOT_FORUM; sent to the main view",
+    );
+    warn.mockRestore();
   });
 });
 

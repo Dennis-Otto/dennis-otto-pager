@@ -34,7 +34,15 @@ import {
 } from "../src/telegram.ts";
 import { type Texts, texts } from "../src/texts.ts";
 import { about, topicName } from "../src/topics.ts";
-import { json, REPO, START, type World, withTopics, world } from "./helpers.ts";
+import {
+  json,
+  REPO,
+  START,
+  type World,
+  withDeletedTopic,
+  withTopics,
+  world,
+} from "./helpers.ts";
 import { artifact, png, report, webp, zip } from "./zips.ts";
 
 const en = texts("en");
@@ -994,6 +1002,38 @@ describe("the pictures of a pull request", () => {
     expect(w.net.telegram("sendMessage")).toHaveLength(1);
   });
 
+  it("go with their album into a new topic when the maintainer deleted theirs", async () => {
+    const w = await withArtifact(await artifact(changes));
+    await apply(w.context, signal());
+    withDeletedTopic(w.net, 900, [100]);
+    w.net.on("GET", `/repos/${REPO}/pulls/8`, () =>
+      json({
+        number: 8,
+        state: "open",
+        title: "Make it blue",
+        html_url: `https://github.com/${REPO}/pull/8`,
+        user: { login: "Dennis-Otto" },
+        head: { sha: "newer", repo: { full_name: REPO } },
+      }),
+    );
+    expect(await apply(w.context, signal("newer"))).toBe("pictures shown anew");
+    expect(
+      w.net.telegram("createForumTopic").map((call) => call.body.name),
+    ).toEqual(["🖼 demo#8 Make the <button> blue", "🖼 demo#8 Make it blue"]);
+    const [, , message] = w.net.telegram("sendMessage");
+    expect(message?.body.message_thread_id).toBe(901);
+    // The new message notified already, so its album below it comes quietly.
+    const [, album] = w.net.telegram("sendMediaGroup");
+    expect(album?.body).toMatchObject({
+      message_thread_id: "901",
+      disable_notification: "true",
+    });
+    expect(await stored(w, keys.pictures(REPO, 8))).toMatchObject({
+      messageId: 101,
+      topic: { thread: 901, name: "🖼 demo#8 Make it blue" },
+    });
+  });
+
   it("say in place when the newest head looks as committed again, and nothing for a new one", async () => {
     const w = await withArtifact(await artifact(changes));
     await apply(w.context, signal());
@@ -1350,6 +1390,76 @@ describe("the pictures of a release", () => {
     });
     expect(await stored(w, keys.pictures(REPO, 8))).toBeNull();
     expect(await apply(w.context, signal())).toBe("pictures shown already");
+  });
+
+  it("go into a new topic when the maintainer deleted its own, below the release's message anew", async () => {
+    const w = await withRelease();
+    withDeletedTopic(w.net, 800, [7]);
+    expect(await apply(w.context, signal())).toBe(
+      "pictures shown with the release",
+    );
+    expect(
+      w.net.telegram("createForumTopic").map((call) => call.body.name),
+    ).toEqual(["📦 demo 1.2.0"]);
+    const [refused, own, pictures] = w.net
+      .telegram("sendMessage")
+      .map((call) => call.body);
+    expect(refused?.message_thread_id).toBe(800);
+    // The release's own message comes first, with its 🔀 Merge.
+    expect(own?.message_thread_id).toBe(900);
+    expect(
+      own?.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toContain("🔀 Merge");
+    expect(pictures).toMatchObject({
+      message_thread_id: 900,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(pictures?.text).toContain("<b>4 pictures look different</b>");
+    const [album] = w.net.telegram("sendMediaGroup");
+    expect(album?.body).toMatchObject({
+      message_thread_id: "900",
+      disable_notification: "true",
+    });
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      album: SHA,
+      messageId: 100,
+      topic: { thread: 900, name: "📦 demo 1.2.0" },
+    });
+    expect((await w.context.store.byTopic(900))?.kind).toBe("release");
+    expect(await apply(w.context, signal())).toBe("pictures shown already");
+  });
+
+  it("go into the main view, below the release's message anew, when Telegram refuses the new topic", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await withRelease();
+    withDeletedTopic(w.net, 800, [7]).on("POST", /\/createForumTopic$/, () =>
+      json({ ok: false, description: "Bad Request: CHAT_NOT_FORUM" }, 400),
+    );
+    expect(await apply(w.context, signal())).toBe(
+      "pictures shown with the release",
+    );
+    const [, own, pictures] = w.net
+      .telegram("sendMessage")
+      .map((call) => call.body);
+    expect(own).not.toHaveProperty("message_thread_id");
+    expect(pictures).not.toHaveProperty("message_thread_id");
+    expect(pictures?.reply_parameters).toEqual({
+      message_id: 100,
+      allow_sending_without_reply: true,
+    });
+    const [album] = w.net.telegram("sendMediaGroup");
+    expect(album?.body).not.toHaveProperty("message_thread_id");
+    expect(JSON.parse(album?.body.reply_parameters)).toEqual({
+      message_id: 101,
+      allow_sending_without_reply: true,
+    });
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      messageId: 100,
+      topic: null,
+    });
+    warn.mockRestore();
   });
 
   it("say below their message why Telegram refused the album", async () => {

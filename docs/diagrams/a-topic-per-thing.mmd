@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: A topic per thing
-    accDescr: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the answer of Fix, the prompt of Edit, what Later brings back and the answers to what Dennis asks in the topic follow in it; his question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.
+    accDescr: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the answer of Fix, the prompt of Edit, what Later brings back and the answers to what Dennis asks in the topic follow in it; his question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. When Dennis deletes the topic, the next message of the thing opens a new one, with the thing's own message first. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.
 
     thing["A new thing: an alarm, a contribution, a release, code scanning"]
     open["`**createForumTopic** opens its topic, such as 🚨 demo needs you`"]
@@ -13,7 +13,8 @@ flowchart TB
     ask["`Dennis asks in the topic: the text goes to the control repository **with the thing**`"]
     more["`Drafts, the answer of 🛠 Fix, ✏️ Edit, ⏰ Later and the answers follow in the topic`"]
     done["`**✅** in front of its name once it is done; the topic stays`"]
-    main["`**Main view**, as before: no Threaded Mode, a refused topic or message, or a topic that is gone`"]
+    gone["`Dennis deletes the topic: the **next message** of the thing opens a new one, its own message first`"]
+    main["`**Main view**, as before: no Threaded Mode, or a refused topic or message`"]
 
     thing --> open
     open --> first
@@ -21,6 +22,7 @@ flowchart TB
     ask -- "the answer" --> more
     first --> more
     more -- "merged, green again, ignored" --> done
+    done -- "done for Dennis" --> gone
     open -- "no topics, or Telegram refuses" --> main
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
@@ -28,6 +30,6 @@ flowchart TB
     classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
     classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
     class thing,ask you
-    class open,first,more bot
+    class open,first,more,gone bot
     class done done
     class main warn

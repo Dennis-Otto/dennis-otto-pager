@@ -33,7 +33,7 @@ import {
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { learnTokens, tokensOf } from "./tokens.ts";
-import { postInNewTopic, REPORT_COLOR } from "./topics.ts";
+import { postBelow, postInNewTopic, REPORT_COLOR } from "./topics.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
 
@@ -562,14 +562,16 @@ export async function handleControl(
   ) {
     // The maintainer wrote the draft himself while this job ran: his text stays
     // the reply. The draft of the job only goes into the thing's topic, to read,
-    // and the failure of a job that he needs no more says nothing.
+    // below its message, and the failure of a job that he needs no more says
+    // nothing.
     if (message.type === "draft") {
-      await context.telegram.say(
+      await postBelow(
+        context,
+        item,
         context.t("message.otherDraft", {
           thing: html(`${item.repo}#${item.number}`),
           draft: html(message.text, MAX_DRAFT),
         }),
-        item.topic?.thread ?? null,
       );
     }
     return new Response("kept");

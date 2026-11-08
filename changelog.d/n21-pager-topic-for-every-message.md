@@ -1,0 +1,3 @@
+### Bug fixes
+
+- A message about a thing whose topic you deleted opens a new topic instead of landing in the main chat. That holds for every message of the thing: its own message when it changes or ⏰ Later brings it back, and the messages below it, such as the pictures of a release and their album, the notice of a new comment or a draft to read, which bring the thing's own message with its buttons into the new topic first. The thing keeps the new topic, so its later messages follow there. The main chat is left for a chat without topics and for a topic that Telegram refuses, and a comment whose message went anew no longer notifies twice. It needs no new permission and no new secret.

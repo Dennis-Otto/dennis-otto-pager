@@ -1,6 +1,6 @@
 # One topic per thing, kept when it is done
 
-- Status: accepted
+- Status: accepted, amended by [0017](0017-a-topic-that-the-maintainer-deleted-opens-anew-with-the-next-message-of-its-thing.md): a topic that the maintainer deleted opens anew with the next message of its thing, instead of the main view
 - Date: 2026-11-04
 
 ## Context

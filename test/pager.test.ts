@@ -19,6 +19,7 @@ import {
   START,
   type World,
   withControl,
+  withDeletedTopic,
   withTopics,
   world,
 } from "./helpers.ts";
@@ -500,6 +501,63 @@ describe("comments on issues and pull requests", () => {
       reply_markup: { inline_keyboard: [] },
     });
     expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+  });
+
+  it("open a new topic when the maintainer deleted the old one, and notify once there", async () => {
+    const w = await shown();
+    withDeletedTopic(w.net, 900, [100]);
+    expect(await apply(w.context, commented())).toBe(
+      "comment shown in a new message",
+    );
+    const messages = w.net.telegram("sendMessage").map((call) => call.body);
+    expect(messages.map((body) => body.message_thread_id)).toEqual([
+      900, 900, 901,
+    ]);
+    // The new message names the comment and notified: no notice below it.
+    expect(messages.at(-1)?.text).toContain(
+      `<a href="${ISSUE}#issuecomment-99">#12 It breaks</a>`,
+    );
+    expect(await thing(w)).toMatchObject({
+      messageId: 101,
+      topic: { thread: 901, name: "🙋 demo#12 It breaks" },
+    });
+    // The next comment notifies below it, in the new topic.
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, commented(100))).toBe(
+      "comment shown in place",
+    );
+    expect(w.net.telegram("sendMessage").at(-1)?.body).toMatchObject({
+      message_thread_id: 901,
+      text: `💬 <b>hubot</b> commented: <a href="${ISSUE}#issuecomment-100">#12 It breaks</a>`,
+    });
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+  });
+
+  it("take the notice into a new topic, below the thing's message anew, when only the topic is gone", async () => {
+    const w = await shown();
+    // The topic went after its message was edited, so the notice finds no thread.
+    withDeletedTopic(w.net, 900);
+    expect(await apply(w.context, commented())).toBe("comment shown in place");
+    const messages = w.net.telegram("sendMessage").map((call) => call.body);
+    expect(messages.map((body) => body.message_thread_id)).toEqual([
+      900, 900, 901, 901,
+    ]);
+    expect(
+      messages[2]?.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toContain("✍️ Draft a reply");
+    expect(messages[3]).toMatchObject({
+      text: `💬 <b>hubot</b> commented: <a href="${ISSUE}#issuecomment-99">#12 It breaks</a>`,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(messages[3]).not.toHaveProperty("reply_parameters");
+    expect(await thing(w)).toMatchObject({
+      messageId: 101,
+      comment: { id: 99, noticed: START },
+      topic: { thread: 901, name: "🙋 demo#12 It breaks" },
+    });
+    expect((await w.context.store.byTopic(901))?.id).toBe((await thing(w)).id);
   });
 
   it("quote the newest comment, which the reply answers", async () => {

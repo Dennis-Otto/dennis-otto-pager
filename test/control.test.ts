@@ -24,6 +24,8 @@ import {
   START,
   type World,
   withControl,
+  withDeletedTopic,
+  withTopics,
   world,
 } from "./helpers.ts";
 
@@ -305,13 +307,52 @@ describe("a draft that the maintainer wrote himself", () => {
     ).toEqual({ status: 200, text: "kept" });
     expect(w.net.github("/dispatches")).toHaveLength(0);
     expect(w.net.telegram("sendMessage")).toHaveLength(1);
-    // Without a topic, the draft goes into the main view.
+    // Without a topic, the draft goes into the main view, below its message.
     expect(
       await send(w, { type: "draft", item: ID, text: "Answers DC_8" }),
     ).toEqual({ status: 200, text: "kept" });
     expect(w.net.telegram("sendMessage")[1]?.body).not.toHaveProperty(
       "message_thread_id",
     );
+    expect(w.net.telegram("sendMessage")[1]?.body.reply_parameters).toEqual({
+      message_id: 7,
+      allow_sending_without_reply: true,
+    });
+  });
+
+  it("goes into a new topic with its draft to read when the maintainer deleted the old one", async () => {
+    const w = await world();
+    withDeletedTopic(withTopics(w.net, 901), 900, [7]);
+    await w.context.store.put({ ...own, jobStarted: START });
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_8" }),
+    ).toEqual({ status: 200, text: "kept" });
+    const [refused, thing, draft] = w.net
+      .telegram("sendMessage")
+      .map((call) => call.body);
+    expect(refused?.message_thread_id).toBe(900);
+    // The thing's own message comes first, with ✅ Send of the maintainer's text.
+    expect(thing?.message_thread_id).toBe(901);
+    expect(thing?.text).toContain("My own words.");
+    expect(
+      thing?.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toContain("✅ Send");
+    expect(draft).toMatchObject({
+      message_thread_id: 901,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(draft?.text).toContain("Only for you to read");
+    const kept = (await w.context.store.get(ID)) as Contribution;
+    expect(kept).toMatchObject({
+      state: "draft",
+      draft: "My own words.",
+      messageId: 100,
+      topic: { thread: 901, name: "💬 demo#12 It breaks" },
+    });
+    // The answer ended the wait for the job.
+    expect(kept).not.toHaveProperty("jobStarted");
   });
 
   it("is no reason to show a draft once the reply went", async () => {

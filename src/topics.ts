@@ -3,10 +3,12 @@
  * The first message of a thing opens its topic, named after its repository and what
  * it is; its later messages, a draft, the prompt of an edit and the answers to a
  * text written in the topic go into it. A done thing gets ✅ in front of the name of
- * its topic, which stays as its history: the maintainer deletes one by hand. A chat
+ * its topic, which stays as its history: the maintainer deletes one by hand when he
+ * is done with it, and the next message of the thing opens a new topic. A chat
  * without topics, or a topic that Telegram refuses, keeps the thing in the main view,
  * as before topics.
  */
+import { keyboard } from "./buttons.ts";
 import { cut } from "./content.ts";
 import type { Context } from "./pager.ts";
 import { render, securityPage } from "./render.ts";
@@ -104,11 +106,13 @@ export function topicName(item: Item, t: Texts): string {
 
 /**
  * Send a new message of a thing: into its topic, which its first message opens, or
- * into the main view when the chat has no topics, Telegram refuses one, or the topic
- * is gone. A bundle that opens again goes back into its topic, or into a new one
- * when the maintainer deleted the old one. A topic that the pager opened for this
- * message and that took none is deleted again, so that no empty topic stays.
- * Returns the id of the message.
+ * into the main view when the chat has no topics or Telegram refuses one. A topic
+ * that the maintainer deleted is done for him, so the next message of its thing,
+ * such as one whose message went with the topic or a bundle that opens again, opens
+ * a new topic, which the thing keeps. A thing in the main view, from before topics
+ * or since Telegram refused its topic, stays there. A topic that the pager opened
+ * for this message and that took none is deleted again, so that no empty topic
+ * stays. Returns the id of the message.
  */
 export async function sendThing(
   context: Context,
@@ -117,37 +121,86 @@ export async function sendThing(
   buttons: Keyboard,
 ): Promise<number> {
   const topic: Topic | null = item.topic ?? null;
-  if (item.messageId === null) {
-    if (topic !== null) {
-      const message = await context.telegram.postInto(
-        text,
-        buttons,
-        topic.thread,
-      );
-      if (message !== null) {
-        return message;
-      }
-    }
-    const opened = await postInNewTopic(
-      context,
-      topicName(item, context.t),
-      COLORS[item.kind],
+  if (topic !== null) {
+    const message = await context.telegram.postInto(
       text,
       buttons,
+      topic.thread,
     );
-    if (opened.topic !== null) {
-      await context.store.link(opened.topic.thread, item.id, isDone(item));
+    if (message !== null) {
+      return message;
     }
-    item.topic = opened.topic;
-    return opened.message;
+  } else if (item.messageId !== null) {
+    // A record from before topics has none at all, and keeps null from now on.
+    item.topic = null;
+    return context.telegram.send(text, buttons);
   }
-  const sent = await context.telegram.post(
+  return sendInNewTopic(context, item, text, buttons);
+}
+
+/**
+ * Send a message of a thing that opens a new topic of the thing, named after it,
+ * which the thing keeps, or into the main view when Telegram refuses one. Returns
+ * the id of the message.
+ */
+async function sendInNewTopic(
+  context: Context,
+  item: Item,
+  text: string,
+  buttons: Keyboard,
+): Promise<number> {
+  const opened = await postInNewTopic(
+    context,
+    topicName(item, context.t),
+    COLORS[item.kind],
     text,
     buttons,
-    topic?.thread ?? null,
   );
-  item.topic = sent.thread === null ? null : topic;
-  return sent.message;
+  if (opened.topic !== null) {
+    await context.store.link(opened.topic.thread, item.id, isDone(item));
+  }
+  item.topic = opened.topic;
+  return opened.message;
+}
+
+/**
+ * Send a message below the message of a thing, such as the pictures of a release,
+ * the notice of a new comment or a draft only to read: into the thing's topic, or
+ * into the main view as a reply to its message when the thing has no topic. When
+ * the maintainer deleted the topic, and the thing's message with it, the thing
+ * opens a new one, as sendThing() does: its own message first, with its buttons,
+ * and this one below it; the thing keeps the new topic and its new message.
+ * Returns where the message went, for an album that follows it.
+ */
+export async function postBelow(
+  context: Context,
+  item: Item,
+  text: string,
+  buttons: Keyboard = [],
+): Promise<Sent> {
+  const topic = item.topic ?? null;
+  if (topic === null) {
+    return context.telegram.post(text, buttons, null, item.messageId);
+  }
+  const message = await context.telegram.postInto(text, buttons, topic.thread);
+  if (message !== null) {
+    return { message, thread: topic.thread };
+  }
+  // The topic went, and the thing's message with it: the thing opens a new topic,
+  // as a new thing does, with its own message first.
+  item.messageId = await sendInNewTopic(
+    context,
+    item,
+    render(item, context.now(), context.t),
+    keyboard(item, context.t),
+  );
+  await context.store.put(item);
+  return context.telegram.post(
+    text,
+    buttons,
+    item.topic?.thread ?? null,
+    item.messageId,
+  );
 }
 
 /**

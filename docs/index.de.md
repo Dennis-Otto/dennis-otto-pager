@@ -19,6 +19,8 @@ Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt
 - [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository, die Fragen und Berichte deiner Agenten und der Zustand.
 - [Einrichten](setup.md): der Bot, der Worker, die GitHub-App, die Geheimnisse und der Webhook, Schritt für Schritt.
 - [Releases and Cloudflare](releases.md): wie ein Release live geht.
+- [Architecture](architecture.md): die Module des Workers, der Weg einer Anfrage durch sie und die Entscheidungen dahinter.
 - [Security design](security.md): die Sicherheit des Repositorys und seiner Releases.
+- [Roadmap](roadmap.md): was der Pager in den nächsten zwölf Monaten vorhat und was nicht.
 
 Telegram verschlüsselt Chats mit einem Bot nicht Ende-zu-Ende: Telegram kann die Nachrichten lesen, die Titel von Issues und Antwortentwürfe zeigen. Freier Text und Entwürfe laufen nur im privaten Steuer-Repository, mit Claude Code und dem eigenen Abo des Maintainers.

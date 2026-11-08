@@ -3,6 +3,8 @@
 [![CI](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Dennis-Otto/dennis-otto-pager/badge)](https://scorecard.dev/viewer/?uri=github.com/Dennis-Otto/dennis-otto-pager)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16429/badge)](https://www.bestpractices.dev/projects/16429)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/16429/baseline)](https://www.bestpractices.dev/projects/16429)
 [![REUSE](https://api.reuse.software/badge/github.com/Dennis-Otto/dennis-otto-pager)](https://api.reuse.software/info/github.com/Dennis-Otto/dennis-otto-pager)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-website-526cfe?logo=materialformkdocs&logoColor=white)](https://dennis-otto.github.io/dennis-otto-pager/)
@@ -71,7 +73,7 @@ Jede Änderung kommt über einen Pull Request, dessen Titel den [Conventional Co
 bash scripts/check.sh
 ```
 
-Die Tests laufen in workerd, der Laufzeit von Cloudflare, gegen ein simuliertes Telegram und GitHub, mit jeder Zeile und jedem Zweig abgedeckt. [CONTRIBUTING.md](CONTRIBUTING.md) erklärt die Einrichtung und die Regeln.
+Die Tests laufen in workerd, der Laufzeit von Cloudflare, gegen ein simuliertes Telegram und GitHub, mit jeder Zeile und jedem Zweig abgedeckt. [CONTRIBUTING.md](CONTRIBUTING.md) erklärt die Einrichtung und die Regeln, [die Architektur](docs/architecture.md) die Module des Workers und den Weg einer Anfrage durch sie, und [die Roadmap](docs/roadmap.de.md), was der Pager in den nächsten zwölf Monaten vorhat und was nicht.
 
 ## Releases
 

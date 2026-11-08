@@ -77,6 +77,8 @@
   "code_of_conduct_justification": "A code of conduct in the spirit of the Contributor Covenant 2.1, in the standard location, with private reporting: https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/CODE_OF_CONDUCT.md",
   "roles_responsibilities_status": "Met",
   "roles_responsibilities_justification": "GOVERNANCE.md defines the roles maintainer, contributor, reporter and bots with their responsibilities: https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/GOVERNANCE.md#roles-and-responsibilities",
+  "bus_factor_status": "Met",
+  "bus_factor_justification": "The bus factor is 2: the maintainer and the successor designated through GitHub's account successor setting: https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/GOVERNANCE.md#continuity",
   "documentation_current_status": "Met",
   "documentation_current_justification": "The documentation changes in the pull request that changes what it describes, as the checklist of the pull request template asks, and the website is built and checked on every change: https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/.github/pull_request_template.md",
   "sites_password_security_status": "Met",

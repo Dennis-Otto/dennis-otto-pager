@@ -32,7 +32,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | Secret scanning finds a secret, or finds it in public too | An entry of the security message of the repository, next to its code scanning, with the kind of the secret and its file, never the secret |
 | Someone reports a vulnerability privately, as `SECURITY.md` asks | Its severity, its link and the days by which `SECURITY.md` promises an answer, never what it says; one reminder on the day before, while still in triage |
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
-| A pull request of the maintainer or a bot changes how something looks, as its visual check finds | The pictures that look different, before and after, as one album in its topic, at most once per head |
+| A pull request of the maintainer or a bot changes how something looks, as its visual check finds | The pictures that look different, each changed pixel in red, before and after, as one album in its topic, at most once per head |
 | A token of yours expires in three weeks: that of Claude in the control repository, `GITHUB_USER_TOKEN` of ✅ **Send** or `PAGER_FIX_TOKEN` of 🛠 **Start fix**, or GitHub refuses `GITHUB_USER_TOKEN` | How to renew it; ✅ **Renewed** |
 
 A message shows what its thing says, so you rarely need to open GitHub: the start of an issue, a pull request, a discussion or a comment as a folded quote, and the notes of a release, with *⚠️ Breaking changes* above them when it breaks something, so you know what 🔀 **Merge** publishes.

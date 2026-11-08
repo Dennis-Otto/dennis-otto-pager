@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: Die Bilder einer sichtbaren Änderung
-    accDescr: Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht, und sein Visual Check rendert die Bilder neu und behält jedes, das anders aussieht, in einem Artefakt, vorher und nachher. Ist der Check grün, fragt der Pager GitHub nach dem Pull Request, mit einem Token seiner App. Einer von jemand anderem, aus einem Fork oder einer, der zu einem neueren Head weiterzog, endet dort, ebenso ein Head, dessen Bilder schon kamen. Sonst liest der Pager das Artefakt mit demselben Token, über die kurzlebige Adresse seines Speichers. Sieht jedes Bild aus wie committet, kommt nichts. Sehen welche anders aus, geht ihre Nachricht in das Thema seines Releases oder einer eigenen Sache, und das Album der größten Änderungen folgt, vorher und nachher, höchstens drei Bilder. Der Merge oder das Ende des Pull Requests hakt das Thema ab.
+    accDescr: Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht, und sein Visual Check rendert die Bilder neu und behält jedes, das anders aussieht, in einem Artefakt, vorher und nachher. Ist der Check grün, fragt der Pager GitHub nach dem Pull Request, mit einem Token seiner App. Einer von jemand anderem, aus einem Fork oder einer, der zu einem neueren Head weiterzog, endet dort, ebenso ein Head, dessen Bilder schon kamen. Sonst liest der Pager das Artefakt mit demselben Token, über die kurzlebige Adresse seines Speichers. Sieht jedes Bild aus wie committet, kommt nichts. Sehen welche anders aus, geht ihre Nachricht in das Thema seines Releases oder einer eigenen Sache, und das Album der größten Änderungen folgt, höchstens drei Bilder, jedes mit seinen geänderten Pixeln in Rot, wenn der Check sie gezeichnet hat, dann vorher und nachher. Der Merge oder das Ende des Pull Requests hakt das Thema ab.
 
     push["`Dennis oder ein Bot pusht auf einen Pull Request, der ändert, wie etwas aussieht`"]
     check["`Der Visual Check rendert die Bilder und behält jedes, das anders aussieht, vorher und nachher`"]
@@ -14,7 +14,7 @@ flowchart TB
     read["`Der Pager liest das Artefakt, über die kurzlebige Adresse seines Speichers`"]
     same["`Jedes Bild sieht aus wie committet: Nichts kommt`"]
     topic["`**🖼** Ihre Nachricht im Thema seines Releases oder in einem eigenen`"]
-    album["`**📸** Das Album: die größten Änderungen, vorher und nachher, höchstens drei`"]
+    album["`**📸** Das Album: die größten Änderungen, höchstens drei, jede mit ihren geänderten Pixeln in Rot, dann vorher und nachher`"]
     done["`**✅** Der Merge oder das Ende des Pull Requests hakt das Thema ab`"]
 
     push --> check

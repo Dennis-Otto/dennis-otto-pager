@@ -134,13 +134,15 @@ export type PicturesView = Pick<
   | "changed"
   | "count"
   | "shown"
+  | "differences"
   | "check"
 >;
 
 /**
  * The pictures of a pull request that look different at a head: each with how it
  * changed, as many as the message lists, whether the album below shows them, and a
- * link to the run of the check, whose artifacts have them all before and after.
+ * link to the run of the check, whose artifacts have them all before and after, and
+ * each changed pixel in red only when they hold the difference of one.
  */
 export function picturesText(view: PicturesView, t: Texts): string {
   const values = {
@@ -167,7 +169,10 @@ export function picturesText(view: PicturesView, t: Texts): string {
     view.shown > 0
       ? t("message.album", { shown: view.shown, count: view.count })
       : t("message.noAlbum"),
-    link(t("message.check"), view.check),
+    link(
+      t((view.differences ?? 0) > 0 ? "message.checkRed" : "message.check"),
+      view.check,
+    ),
   );
   return lines.join("\n");
 }

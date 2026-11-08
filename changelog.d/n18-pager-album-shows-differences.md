@@ -1,0 +1,3 @@
+### Bug fixes
+
+- The album of a visual change shows the changed pixels in red, as its message promised: each picture whose check drew its difference starts with it, *🔴 Changed pixels*, before and after follow, and a GIF, which can't be a photo, shows its difference alone instead of staying behind the link. The link to the run of the check promises *each changed pixel in red* only when its artifacts have the difference of a picture; otherwise it says *All of them before and after*. Which pictures have a difference depends on the visual check of each repository: most draw it for PNG files only today, and for WebP and GIF files too once they take the difference that the blueprint's `keep` draws. It needs no new permission and no new secret.

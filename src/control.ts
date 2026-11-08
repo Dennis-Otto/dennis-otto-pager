@@ -19,7 +19,7 @@ import { allowed, callbackData, type Labeled, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { health } from "./health.ts";
 import { type Context, draftOrWhyNot, show } from "./pager.ts";
-import { html, link } from "./render.ts";
+import { html, link, securityPage } from "./render.ts";
 import {
   answering,
   beforeJob,
@@ -329,8 +329,8 @@ function whereIs(item: Item, t: Texts): string {
       return link(item.repo, `https://github.com/${item.repo}/actions`);
     default:
       return link(
-        t("proposal.codeScanning", { repo: item.repo }),
-        `https://github.com/${item.repo}/security/code-scanning`,
+        t("proposal.security", { repo: item.repo }),
+        securityPage(item.repo),
       );
   }
 }

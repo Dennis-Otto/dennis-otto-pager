@@ -594,6 +594,57 @@ export class GitHub {
     return checks;
   }
 
+  /**
+   * The file in which secret scanning first found the secret of an alert, or none
+   * when it found it in something else, such as the text of an issue. It reads
+   * the places of the alert, which name no secret, never the alert itself, whose
+   * answer holds the secret.
+   */
+  async secretPath(
+    installation: number,
+    repo: string,
+    alert: number,
+  ): Promise<string | undefined> {
+    const token = await this.token(installation, repo, {
+      secret_scanning_alerts: "read",
+    });
+    const places = await this.json<
+      { type?: string; details?: { path?: string } }[]
+    >(
+      await this.call(
+        token,
+        "GET",
+        `/repos/${repo}/secret-scanning/alerts/${alert}/locations?per_page=1`,
+      ),
+    );
+    const first = places[0];
+    return first?.type === "commit" || first?.type === "wiki_commit"
+      ? first.details?.path
+      : undefined;
+  }
+
+  /**
+   * The state of a security advisory of a repository, such as triage: the one
+   * field that the pager reads of it, never its summary or its description.
+   */
+  async advisoryState(
+    installation: number,
+    repo: string,
+    ghsa: string,
+  ): Promise<string | undefined> {
+    const token = await this.token(installation, repo, {
+      repository_advisories: "read",
+    });
+    const advisory = await this.json<{ state?: string }>(
+      await this.call(
+        token,
+        "GET",
+        `/repos/${repo}/security-advisories/${ghsa}`,
+      ),
+    );
+    return advisory.state;
+  }
+
   /** Send an event to the workflows of a repository, such as the control repository. */
   async dispatch(
     installation: number,

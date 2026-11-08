@@ -5,6 +5,7 @@
  */
 import type { ReleaseNotes } from "./content.ts";
 import { sha256Hex } from "./crypto.ts";
+import type { Severity } from "./rules.ts";
 import type { Thread } from "./telegram.ts";
 
 /** One part of a bundle, such as a failed check on main or a code-scanning alert. */
@@ -133,7 +134,10 @@ export interface Alarm extends Base {
   entries: Entry[];
 }
 
-/** The code-scanning alerts of severity high or critical of a repository, bundled. */
+/**
+ * What the security of a repository needs, bundled: the code-scanning alerts of
+ * severity high or critical, and the open alerts of secret scanning.
+ */
 export interface Alert extends Base {
   kind: "alert";
   state: "open" | "fixing" | "resolved" | "ignored";
@@ -186,6 +190,29 @@ export interface Pictures extends Base {
   check: string;
 }
 
+/**
+ * A private vulnerability report of a repository, which SECURITY.md promises to
+ * acknowledge within 7 days and to assess within 14. It is under embargo until it
+ * is published: the pager keeps no word of what it says, only its id, its
+ * severity and its day, so no summary reaches Telegram, a log or the control
+ * repository.
+ */
+export interface Advisory extends Base {
+  kind: "advisory";
+  state: "open" | "published" | "done" | "ignored";
+  /** The id of the advisory, such as GHSA-4f6x-8m2c-jq7p. */
+  ghsa: string;
+  url: string;
+  severity: Severity | null;
+  /** When it was reported, in milliseconds since 1970, from which SECURITY.md counts its days. */
+  reported: number;
+  /**
+   * When the schedule looks whether it still waits in triage on GitHub, and
+   * reminds once if it does; none once it looked, or when it came too late for that.
+   */
+  remindAt?: number;
+}
+
 /** A reminder of the pager itself, such as the token of Claude that expires. */
 export interface Reminder extends Base {
   kind: "reminder";
@@ -232,6 +259,7 @@ export type Item =
   | Contribution
   | Alarm
   | Alert
+  | Advisory
   | Release
   | Pictures
   | Reminder
@@ -278,14 +306,22 @@ export async function itemId(key: string): Promise<string> {
 export const DELIVERY_ENTRY = "delivery:";
 
 /**
+ * The start of the key of an entry of the security message of a repository for an
+ * alert of secret scanning, whose numbers GitHub counts apart from code scanning.
+ */
+export const SECRET_ENTRY = "secret:";
+
+/**
  * The key of each kind of thing: one thing per issue, pull request or discussion,
- * whose numbers GitHub counts together, one bundle per repository, the
- * pictures of one pull request, and one question of an agent per id.
+ * whose numbers GitHub counts together, one bundle per repository, one thing per
+ * vulnerability report, the pictures of one pull request, and one question of an
+ * agent per id.
  */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
   alarm: (repo: string) => `a:${repo}`,
   alert: (repo: string) => `s:${repo}`,
+  advisory: (repo: string, ghsa: string) => `v:${repo}#${ghsa}`,
   release: (repo: string) => `r:${repo}`,
   pictures: (repo: string, number: number) => `p:${repo}#${number}`,
   reminder: (name: string) => `t:${name}`,
@@ -317,6 +353,8 @@ export interface Pending {
   due: string[];
   /** The things whose job of the control repository went before a time and didn't answer. */
   waiting: string[];
+  /** The vulnerability reports whose reminder is due. */
+  remind: string[];
 }
 
 /** The metadata of the record of a thing, which the list reads. */
@@ -325,6 +363,8 @@ interface Marks {
   until?: number;
   /** When its job went to the control repository. */
   job?: number;
+  /** When the reminder of a vulnerability report is due. */
+  remind?: number;
 }
 
 export class Store {
@@ -339,9 +379,10 @@ export class Store {
   }
 
   /**
-   * Keep a thing, with one write: the time of its "Later" and that of its job of
-   * the control repository go into the metadata of its record, which the list of
-   * pending() reads without a read of each record.
+   * Keep a thing, with one write: the time of its "Later", that of its job of the
+   * control repository and that of the reminder of a vulnerability report go into
+   * the metadata of its record, which the list of pending() reads without a read of
+   * each record.
    */
   async put(item: Item): Promise<void> {
     const options: KVNamespacePutOptions = {};
@@ -352,6 +393,9 @@ export class Store {
     if (item.jobStarted !== undefined) {
       marks.job = item.jobStarted;
     }
+    if (item.kind === "advisory" && item.remindAt !== undefined) {
+      marks.remind = item.remindAt;
+    }
     if (isClosed(item)) {
       options.expirationTtl = MONTH;
     } else if (Object.keys(marks).length > 0) {
@@ -361,8 +405,9 @@ export class Store {
   }
 
   /**
-   * The ids of the things whose "Later" is over at now, and of those whose job of
-   * the control repository went before jobsBefore, page by page of one list: the
+   * The ids of the things whose "Later" is over at now, of those whose job of the
+   * control repository went before jobsBefore, and of the vulnerability reports
+   * whose reminder is due at now, page by page of one list: the
    * free plan of KV allows a thousand lists a day, and the schedule runs 96 times.
    */
   async pending(
@@ -370,7 +415,7 @@ export class Store {
     jobsBefore: number,
     limit = 1000,
   ): Promise<Pending> {
-    const pending: Pending = { due: [], waiting: [] };
+    const pending: Pending = { due: [], waiting: [], remind: [] };
     let cursor: string | null = null;
     do {
       const listed: KVNamespaceListResult<Marks> = await this.kv.list({
@@ -380,12 +425,15 @@ export class Store {
       });
       for (const key of listed.keys) {
         const id = key.name.slice("item:".length);
-        const { until, job } = key.metadata ?? {};
+        const { until, job, remind } = key.metadata ?? {};
         if (until !== undefined && until <= now) {
           pending.due.push(id);
         }
         if (job !== undefined && job < jobsBefore) {
           pending.waiting.push(id);
+        }
+        if (remind !== undefined && remind <= now) {
+          pending.remind.push(id);
         }
       }
       cursor = listed.list_complete ? null : listed.cursor;

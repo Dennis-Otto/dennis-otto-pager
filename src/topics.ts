@@ -9,7 +9,7 @@
  */
 import { cut } from "./content.ts";
 import type { Context } from "./pager.ts";
-import { render } from "./render.ts";
+import { render, securityPage } from "./render.ts";
 import { type Item, isClosed, type Kind, type Topic } from "./store.ts";
 import {
   type Keyboard,
@@ -27,6 +27,7 @@ const COLORS: Readonly<Record<Kind, TopicColor>> = {
   contribution: TOPIC_COLORS.blue,
   alarm: TOPIC_COLORS.red,
   alert: TOPIC_COLORS.yellow,
+  advisory: TOPIC_COLORS.red,
   release: TOPIC_COLORS.green,
   pictures: TOPIC_COLORS.rose,
   reminder: TOPIC_COLORS.violet,
@@ -70,6 +71,8 @@ function what(item: Item, t: Texts): string {
       return t("topic.alarm", { repo });
     case "alert":
       return t("topic.alert", { repo });
+    case "advisory":
+      return t("topic.advisory", { repo });
     case "release":
       return t("topic.release", { repo, version: item.version });
     case "pictures":
@@ -240,6 +243,11 @@ export function about(item: Item, now: number, t: Texts): About {
       links.push(item.url);
       named.number = item.number;
       break;
+    case "advisory":
+      // Its link, and its message with its id: what it says is under
+      // embargo, and the pager doesn't know it.
+      links.push(item.url);
+      break;
     case "release":
       links.push(item.url);
       named.number = item.number;
@@ -250,7 +258,7 @@ export function about(item: Item, now: number, t: Texts): About {
       links.push(
         item.kind === "alarm"
           ? `https://github.com/${item.repo}/actions`
-          : `https://github.com/${item.repo}/security/code-scanning`,
+          : securityPage(item.repo),
         ...item.entries.map((entry) => entry.url),
       );
       break;

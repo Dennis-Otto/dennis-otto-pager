@@ -20,6 +20,7 @@ import {
   readArtifact,
 } from "./pictures.ts";
 import {
+  ACKNOWLEDGE_DAYS,
   html,
   link,
   type PicturesView,
@@ -36,6 +37,7 @@ import {
 } from "./rules.ts";
 import type { Settings } from "./settings.ts";
 import {
+  type Advisory,
   type Alarm,
   type Alert,
   answering,
@@ -90,6 +92,8 @@ export const MERGEABLE_TRIES = 3;
  * few quick comments notify once.
  */
 export const QUIET = 10 * 60_000;
+
+const DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Show a thing: edit its message, or send a new one when it has none, when it is
@@ -276,6 +280,93 @@ async function addEntry(
   }
   await show(context, known);
   return `${kind} updated`;
+}
+
+/**
+ * The entry of an alert of secret scanning in the security message of its
+ * repository: the kind of its secret and the file in which it was first found,
+ * never the secret. A place that GitHub doesn't show the app, such as before the
+ * app may read secret scanning, leaves the entry without its file.
+ */
+async function secretEntry(
+  context: Context,
+  signal: Extract<Signal, { type: "secret-open" }>,
+): Promise<Entry> {
+  let path: string | undefined;
+  try {
+    path = await context.github.secretPath(
+      signal.installation,
+      signal.repo,
+      signal.number,
+    );
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    console.warn(
+      `The place of secret alert ${signal.number} of ${signal.repo}: ${error.message}`,
+    );
+  }
+  const what = signal.what;
+  const label =
+    path === undefined
+      ? context.t(signal.leaked ? "entry.secretPublic" : "entry.secret", {
+          what,
+        })
+      : context.t(signal.leaked ? "entry.secretPublicAt" : "entry.secretAt", {
+          what,
+          path,
+        });
+  return { key: signal.key, label, url: signal.url };
+}
+
+/**
+ * A private vulnerability report: a thing of its own, once, which notifies. The
+ * schedule looks on the day before the acknowledgement is due whether it still
+ * waits in triage, unless it came too late for that.
+ */
+async function advisory(
+  context: Context,
+  signal: Extract<Signal, { type: "advisory" }>,
+): Promise<string> {
+  const id = await itemId(keys.advisory(signal.repo, signal.ghsa));
+  if ((await context.store.get(id)) !== null) {
+    return "advisory shown already";
+  }
+  const reported = signal.reported ?? context.now();
+  const remindAt = reported + (ACKNOWLEDGE_DAYS - 1) * DAY;
+  const item: Advisory = {
+    ...base(id, signal.repo, signal.installation),
+    kind: "advisory",
+    state: "open",
+    ghsa: signal.ghsa,
+    url: signal.url,
+    severity: signal.severity,
+    reported,
+    ...(remindAt > context.now() ? { remindAt } : {}),
+  };
+  await show(context, item);
+  return "advisory shown";
+}
+
+/** A published advisory ticks the report that it came from, if the pager showed it. */
+async function advisoryPublished(
+  context: Context,
+  signal: Extract<Signal, { type: "advisory-published" }>,
+): Promise<string> {
+  const id = await itemId(keys.advisory(signal.repo, signal.ghsa));
+  const known = (await context.store.get(id)) as Advisory | null;
+  if (known === null) {
+    return "an advisory that the pager never showed";
+  }
+  if (known.state === "published") {
+    return "advisory published already";
+  }
+  known.state = "published";
+  known.snoozedUntil = null;
+  delete known.remindAt;
+  await show(context, known);
+  return "advisory published";
 }
 
 /** Take an entry out of the bundle; the last one closes it. */
@@ -965,8 +1056,20 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
         label: context.t.phrase(signal.label),
         url: signal.url,
       });
+    case "secret-open":
+      return addEntry(
+        context,
+        "alert",
+        signal.repo,
+        signal.installation,
+        await secretEntry(context, signal),
+      );
     case "alert-closed":
       return removeEntry(context, "alert", signal.repo, signal.key);
+    case "advisory":
+      return advisory(context, signal);
+    case "advisory-published":
+      return advisoryPublished(context, signal);
     case "release-check":
       return releaseCheck(context, signal);
     case "release-updated":

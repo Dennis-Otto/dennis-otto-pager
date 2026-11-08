@@ -28,6 +28,8 @@ The pager writes only when something needs its maintainer, never to say that all
 | Someone other than the maintainer or a bot opens a discussion or comments on one | Its draft of a reply right away, which ✅ **Send** posts as the pager's app, in the thread of the comment that it answers; ✏️ **Edit** |
 | A required check fails on `main`, a release workflow fails, or the bot-health bot opens a `bot-failure` issue | 🔁 **Rerun**, which runs the failed jobs of the run again, for a short outage of GitHub; 🛠 **Start fix**, whose answer proposes 🔁 Rerun with one ✅ **Confirm** when the logs show such an outage |
 | A code-scanning alert of severity high or critical appears on `main` | 🛠 **Start fix** |
+| Secret scanning finds a secret, or finds it in public too | An entry of the security message of the repository, next to its code scanning, with the kind of the secret and its file, never the secret |
+| Someone reports a vulnerability privately, as `SECURITY.md` asks | Its severity, its link and the days by which `SECURITY.md` promises an answer, never what it says; one reminder on the day before, while still in triage |
 | A release pull request is green and up to date | 🔀 **Merge**, which publishes the release |
 | A pull request of the maintainer or a bot changes how something looks, as its visual check finds | The pictures that look different, before and after, as one album in its topic, at most once per head |
 | A token of yours expires in three weeks: that of Claude in the control repository, `GITHUB_USER_TOKEN` of ✅ **Send** or `PAGER_FIX_TOKEN` of 🛠 **Start fix**, or GitHub refuses `GITHUB_USER_TOKEN` | How to renew it; ✅ **Renewed** |

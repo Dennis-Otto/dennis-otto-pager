@@ -2,12 +2,14 @@
  * The schedule of the Worker, every 15 minutes: a thing that "Later" put aside
  * comes back as a new message when its time is up, a thing whose job of the
  * control repository didn't answer in time gets its buttons back, a text of the
- * maintainer whose answer didn't come in time gets its 😢, the reminder of each
- * token of the maintainer comes three weeks before it expires (src/tokens.ts), and
- * an event of GitHub that the pager failed to handle comes again
- * (src/deliveries.ts). A run that comes to its end says so in the storage of the
+ * maintainer whose answer didn't come in time gets its 😢, a vulnerability report
+ * that still waits in triage on the day before its acknowledgement is due comes
+ * again (src/advisories.ts), the reminder of each token of the maintainer comes
+ * three weeks before it expires (src/tokens.ts), and an event of GitHub that the
+ * pager failed to handle comes again (src/deliveries.ts). A run that comes to its end says so in the storage of the
  * Durable Object, for the check of the pager's health (src/health.ts).
  */
+import { remindAdvisories } from "./advisories.ts";
 import { failedEvents } from "./deliveries.ts";
 import { RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
@@ -107,6 +109,13 @@ export async function runSchedule(context: Context): Promise<string[]> {
     ...(await noAnswer(context, pending.waiting)),
   ];
   await giveUp(context);
+  // A report that came back from "Later" in this run is reminded of in the next.
+  shown.push(
+    ...(await remindAdvisories(
+      context,
+      pending.remind.filter((id) => !shown.includes(id)),
+    )),
+  );
   shown.push(...(await remindTokens(context)));
   shown.push(...(await failedEvents(context)));
   await context.local.put(RAN, context.now());

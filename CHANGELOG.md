@@ -9,13 +9,12 @@ requests when there is none.
 
 ## [0.5.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.4.0...v0.5.0) (2026-11-08)
 
-
 ### Features
 
-* a discussion from someone else comes as a thing with a reply draft ([#56](https://github.com/Dennis-Otto/dennis-otto-pager/issues/56)) ([8816c9a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/8816c9a89e285566ecfca2bab72b50a0d4be7e4c))
-* decisions that wait for Dennis come as buttons, and a run can send its report ([#66](https://github.com/Dennis-Otto/dennis-otto-pager/issues/66)) ([c1ab073](https://github.com/Dennis-Otto/dennis-otto-pager/commit/c1ab07305c3c70cd0b626e44ddac25aac1ee2b6a))
-* the control repository proposes a rerun when GitHub was down ([#60](https://github.com/Dennis-Otto/dennis-otto-pager/issues/60)) ([79c355a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/79c355ad0b726131f4b8a15d078a765bce693c7f))
-* the pager shows the before and after pictures of a visual change ([#63](https://github.com/Dennis-Otto/dennis-otto-pager/issues/63)) ([328c82a](https://github.com/Dennis-Otto/dennis-otto-pager/commit/328c82afdb5b0042d9c141be4c2295f0e062c106))
+- Your own agents, such as an orchestrator that works through the night on your PC with `gh`, can ask you a question through the pager: it comes in a topic of its own, *🤔 Decision: …*, with its two to four options as buttons, and your press saves the answer as `answers/<id>.json` on the branch `pager-answers` of the private control repository, where the agent reads it with `gh`. The answer shows in the message, and the topic gets ✅. A run can also send its report, which comes in a topic of its own, *🧾 Run: …*. The control repository forwards both, signed, and only those that its owner sent; the GitHub App needs no new permission.
+- A new discussion, or a comment on one, by someone other than you or a bot pages you as a thing with its own topic, and comes with a draft of a reply in your voice right away. ✅ Send posts the draft as the pager's app, in the thread of the comment that it answers, ✏️ Edit changes it, and ✖ Ignore leaves the discussion alone. A discussion that you started, and one whose answer was chosen, stay quiet. An app registered before needs the permission *Discussions: Read and write* and the events *Discussion* and *Discussion comment*.
+- A 🛠 Start fix that finds an outage of GitHub or of a download in the logs, such as a 504, a timeout or a connection to api.github.com that failed, answers in the alarm's topic with one ✅ Confirm button for 🔁 Rerun, which runs the failed jobs again, instead of telling you to rerun them on GitHub. The alarm keeps its message and gets its buttons back. A control repository that doesn't propose it yet still answers with text, as before.
+- A pull request of yours or of a bot that changes how something looks now shows its pictures in the chat: when its visual check passes and a picture looks different, the pager sends the largest changes before and after as one album, three at most, into the topic of the pull request, or of its release, with the list of what changed and a link to the run of the check. It comes at most once per head of the pull request and never for someone else's pull request; ✖ Ignore stops it, and the merge or the close of the pull request ticks its topic off. The app reads the pictures with the permission *Actions* that it has already, so nothing new needs to be set up.
 
 ## [0.4.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.3.1...v0.4.0) (2026-11-05)
 

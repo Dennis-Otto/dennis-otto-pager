@@ -1,3 +1,0 @@
-### Features
-
-- Your own agents, such as an orchestrator that works through the night on your PC with `gh`, can ask you a question through the pager: it comes in a topic of its own, *🤔 Decision: …*, with its two to four options as buttons, and your press saves the answer as `answers/<id>.json` on the branch `pager-answers` of the private control repository, where the agent reads it with `gh`. The answer shows in the message, and the topic gets ✅. A run can also send its report, which comes in a topic of its own, *🧾 Run: …*. The control repository forwards both, signed, and only those that its owner sent; the GitHub App needs no new permission.

@@ -4,16 +4,22 @@
 <meta charset="utf-8">
 <title>Dennis Otto Pager: social preview</title>
 <!-- scripts/social-preview.sh renders this page into the 1280×640 image that GitHub
-     shows for links to the repository. -->
+     shows for links to the repository. The chat on the right is the pager's own:
+     each text with data-message is what render() of src/render.ts writes for a thing,
+     and each row of its keyboard what keyboard() of src/buttons.ts offers, as
+     test/social-preview.test.ts checks, so a changed word of the pager changes it. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=block">
 <style>
+/* The emoji of the pager in color, as Telegram shows them, and every other character in Inter. */
+@font-face { font-family: "Emoji"; src: local("Noto Color Emoji"), local("NotoColorEmoji");
+  unicode-range: U+200D, U+2300-23FF, U+2600-27BF, U+2B00-2BFF, U+FE0F, U+1F000-1FAFF; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 1280px; height: 640px; overflow: hidden; }
 body {
   --accent: #f38020;
   position: relative;
-  font-family: "Inter", "Liberation Sans", "FreeSans", sans-serif;
+  font-family: "Emoji", "Inter", "Liberation Sans", "FreeSans", sans-serif;
   color: #f8fafc;
   background:
     radial-gradient(760px 560px at 78% 52%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 72%),
@@ -21,43 +27,87 @@ body {
 }
 .left { position: absolute; left: 72px; top: 0; bottom: 0; width: 540px; display: flex; flex-direction: column; justify-content: center; }
 .logo { width: 96px; height: 96px; margin-bottom: 36px; }
-.logo svg, .logo img { width: 100%; height: 100%; display: block; }
+.logo svg { width: 100%; height: 100%; display: block; }
 h1 { font-size: 64px; font-weight: 800; line-height: 1.04; letter-spacing: -0.025em; }
 .subtitle { margin-top: 12px; font-size: 38px; font-weight: 700; color: var(--accent); letter-spacing: -0.015em; }
-.text { margin-top: 36px; font-size: 25px; line-height: 1.45; color: #cbd5e1; }
 ul { margin-top: 40px; list-style: none; display: grid; gap: 16px; }
 li { font-size: 24px; color: #cbd5e1; display: flex; align-items: center; gap: 18px; }
 li::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 14px var(--accent); flex: none; }
-.panel { position: absolute; right: 64px; top: 50%; transform: translateY(-50%); width: 548px; }
-.card { background: #141a26; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 20px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 70px color-mix(in srgb, var(--accent) 16%, transparent); }
-.muted { color: #8b95a7; }
-.mono { font-family: "JetBrains Mono", "Liberation Mono", monospace; }
 
-.checks { padding: 26px 30px; }
-.repo { display: flex; align-items: center; justify-content: space-between; font-size: 18px; color: #e2e8f0; padding-bottom: 16px; margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-.branch { font-size: 14px; color: #8b95a7; border: 1px solid #334155; border-radius: 999px; padding: 2px 10px; }
-.check { display: flex; align-items: center; gap: 14px; font-size: 20px; line-height: 2.4; color: #cbd5e1; }
-.check svg { width: 22px; height: 22px; color: #4ade80; flex: none; }
-.check b { color: #f8fafc; font-weight: 600; }
-.monogram { width: 96px; height: 96px; border-radius: 22px; display: grid; place-items: center; font-size: 42px; font-weight: 800; color: #0a0f1d;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 55%, white), var(--accent)); }
-
+/* The chat of the pager in Telegram's dark theme. */
+.panel { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); width: 572px; }
+.chat { background: #0e1621; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 20px; overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 70px color-mix(in srgb, var(--accent) 16%, transparent); }
+.bar { display: flex; align-items: center; gap: 14px; padding: 14px 22px; background: #17212b; border-bottom: 1px solid rgba(0, 0, 0, 0.35); }
+.back { font-size: 30px; line-height: 1; color: #6d7f8f; margin-top: -4px; }
+.avatar { width: 42px; height: 42px; flex: none; }
+.avatar svg { width: 100%; height: 100%; display: block; }
+.name { font-size: 18px; font-weight: 600; color: #f5f5f5; }
+.status { font-size: 14px; color: #6d7f8f; margin-top: 1px; }
+.messages { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px 22px 22px;
+  background: radial-gradient(420px 260px at 85% 20%, rgba(106, 179, 243, 0.05), transparent 70%); }
+.message { width: 100%; }
+.bubble { position: relative; background: #182533; border-radius: 16px 16px 16px 6px; padding: 10px 14px 9px; font-size: 17px; line-height: 1.42; color: #f5f5f5; }
+.message.old { width: auto; opacity: 0.78; }
+.text { white-space: pre-wrap; }
+.text b { font-weight: 700; }
+.text a { color: #6ab3f3; text-decoration: none; }
+/* Room for the time on the last line, as Telegram leaves it. */
+.text::after { content: ""; display: inline-block; width: var(--meta); }
+.meta { position: absolute; right: 12px; bottom: 7px; font-size: 13px; color: #6d7f8f; }
+.keyboard { display: grid; gap: 6px; margin-top: 6px; }
+.row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.row span { display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 10px;
+  background: #1f3043; font-size: 16px; font-weight: 600; color: #f5f5f5; }
 </style>
 </head>
 <body>
 <div class="left">
-  <div class="logo"><div class="monogram">DO</div></div>
+  <div class="logo"><svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A speech bubble with a bell">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="#ea580c"/></linearGradient></defs>
+    <path d="M18 12h60a10 10 0 0 1 10 10v38a10 10 0 0 1-10 10H46L28 84V70H18A10 10 0 0 1 8 60V22a10 10 0 0 1 10-10z" fill="url(#g)"/>
+    <path d="M48 22a3 3 0 0 1 3 3v1.6c6.4 1.4 10.5 7 10.5 13.6v7.8l4 5.4a1.6 1.6 0 0 1-1.3 2.6H31.8a1.6 1.6 0 0 1-1.3-2.6l4-5.4v-7.8c0-6.6 4.1-12.2 10.5-13.6V25a3 3 0 0 1 3-3z" fill="#fff"/>
+    <path d="M42.5 59h11a5.5 5.5 0 0 1-11 0z" fill="#fff"/>
+  </svg></div>
   <h1>Dennis Otto Pager</h1>
-  <div class="subtitle">Cloudflare Worker</div>
-  <p class="text">A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.</p>
+  <div class="subtitle">for GitHub maintainers</div>
+  <ul>
+    <li>Writes only when something needs you</li>
+    <li>One message per thing, edited in place</li>
+    <li>Acts on GitHub with a button</li>
+  </ul>
 </div>
 <div class="panel">
-  <div class="card checks">
-    <div class="repo"><span class="mono">Dennis-Otto/dennis-otto-pager</span><span class="branch mono">main</span></div>
-    <div class="check"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.8 3.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3.2-3.2a1 1 0 1 1 1.4-1.4l2.5 2.5 6.3-6.3a1 1 0 0 1 1.4 0z"/></svg><span><b>Checks</b> on every change</span></div>
-    <div class="check"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.8 3.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3.2-3.2a1 1 0 1 1 1.4-1.4l2.5 2.5 6.3-6.3a1 1 0 0 1 1.4 0z"/></svg><span><b>CodeQL</b> · Scorecard · secret scan</span></div>
-    <div class="check"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.8 3.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3.2-3.2a1 1 0 1 1 1.4-1.4l2.5 2.5 6.3-6.3a1 1 0 0 1 1.4 0z"/></svg><span><b>Releases</b> with SBOM and provenance</span></div>
-    <div class="check"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.8 3.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3.2-3.2a1 1 0 1 1 1.4-1.4l2.5 2.5 6.3-6.3a1 1 0 0 1 1.4 0z"/></svg><span><b>Issue assistant</b> · Renovate</span></div>
+  <div class="chat">
+    <div class="bar">
+      <span class="back">‹</span>
+      <div class="avatar"><svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="48" cy="48" r="48" fill="url(#g)"/>
+        <path d="M48 20a3.4 3.4 0 0 1 3.4 3.4v1.8c7.2 1.6 11.8 7.9 11.8 15.3v8.8l4.5 6.1a1.8 1.8 0 0 1-1.5 2.9H29.8a1.8 1.8 0 0 1-1.5-2.9l4.5-6.1v-8.8c0-7.4 4.6-13.7 11.8-15.3v-1.8A3.4 3.4 0 0 1 48 20z" fill="#fff"/>
+        <path d="M41.8 62h12.4a6.2 6.2 0 0 1-12.4 0z" fill="#fff"/>
+      </svg></div>
+      <div><div class="name">Dennis Otto Pager</div><div class="status">bot</div></div>
+    </div>
+    <div class="messages">
+      <div class="message old">
+        <div class="bubble" style="--meta: 92px"><div class="text" data-message="alarm">🚨 <b>Dennis-Otto/homedarts-for-autodarts needs you</b>
+
+✅ Green again.</div><span class="meta">edited 07:58</span></div>
+      </div>
+      <div class="message">
+        <div class="bubble" style="--meta: 44px"><div class="text" data-message="release">📦 <b>Release 1.7.0</b> of <a>Dennis-Otto/paperless-sync</a>: <a>#312</a>
+
+<b>Features</b>
+• Tags renamed in Paperless follow in Nextcloud (<a>#305</a>)
+• A share link for every synced document (<a>#309</a>)
+
+Every check is green, and "Merge" publishes it.</div><span class="meta">08:02</span></div>
+        <div class="keyboard">
+          <div class="row" data-message="release"><span>🔀 Merge</span><span>⏰ Later</span></div>
+          <div class="row" data-message="release"><span>✖ Ignore</span></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 </body>

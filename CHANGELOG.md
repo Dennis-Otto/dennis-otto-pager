@@ -7,6 +7,18 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.8.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.7.0...v0.8.0) (2026-11-08)
+
+
+### Features
+
+* Dennis Otto Pager is now Repo Pager, a pager that anyone runs for their own repositories ([#110](https://github.com/Dennis-Otto/repo-pager/issues/110)) ([22ed7f4](https://github.com/Dennis-Otto/repo-pager/commit/22ed7f493cffd9cbaf2a40a4d4c87865868577bd))
+
+
+### Bug fixes
+
+* a message of a thing whose topic you deleted opens a new topic instead of the main chat ([#106](https://github.com/Dennis-Otto/repo-pager/issues/106)) ([85881db](https://github.com/Dennis-Otto/repo-pager/commit/85881db0e9b56cdea5b380477514a85596c7bf7b))
+
 ## [0.7.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.6.0...v0.7.0) (2026-11-08)
 
 ### Features

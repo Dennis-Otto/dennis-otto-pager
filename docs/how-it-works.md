@@ -152,7 +152,7 @@ The blueprint turns on private vulnerability reporting and secret scanning in ev
 
 ## The control repository
 
-The workflow of the maintainer's private control repository, which `CONTROL_REPOSITORY` of `wrangler.jsonc` names, such as `OWNER/repo-pager-control`, runs Claude Code with the maintainer's own subscription; its README describes its jobs, its safety and its set-up. The pager sends it a [repository dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), with a token of the app for that repository alone:
+The workflow of the maintainer's private control repository, which `CONTROL_REPOSITORY` of `wrangler.jsonc` names, such as `OWNER/repo-pager-control`, runs Claude Code with the maintainer's own subscription. Every control repository is a private copy of [the public template of the control repository](https://github.com/Dennis-Otto/repo-pager-control-template), whose README describes its jobs, its safety and its set-up, and takes the template's changes by a pull request of its workflow *Template* ([decision 0019](decisions/0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md)). The pager sends it a [repository dispatch](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event), with a token of the app for that repository alone:
 
 | Event type | Sent by | Client payload |
 | --- | --- | --- |

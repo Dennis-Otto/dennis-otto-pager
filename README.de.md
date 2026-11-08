@@ -70,7 +70,7 @@ Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entschei
 
 Repo Pager betreibt jeder selbst: Wer ihn nutzt, hat eine eigene Instanz, mit eigenem Bot, Worker, eigener GitHub-App und eigenem privatem Steuer-Repository. Es gibt keine gemeinsame App zum Installieren, damit deine Tokens und die Ereignisse deiner Repositorys deine bleiben, und jeder Pager bedient den einen Chat seines Maintainers; `wrangler.jsonc` hält die Werte einer Instanz, die deine Kopie für deine setzt.
 
-Der Pager läuft mit den kostenlosen Tarifen von Cloudflare und Telegram. [Einrichten](docs/setup.de.md) geht jeden Schritt in seiner Reihenfolge durch: deine Kopie dieses Repositorys, der Bot bei @BotFather, der Worker auf Cloudflare, die GitHub-App aus ihrem Manifest, die Geheimnisse und der Webhook von Telegram. Auf deinem Rechner läuft er unter <http://localhost:8787>, mit den Geheimnissen aus `.dev.vars` (siehe `.dev.vars.example`):
+Der Pager läuft mit den kostenlosen Tarifen von Cloudflare und Telegram. [Einrichten](docs/setup.de.md) geht jeden Schritt in seiner Reihenfolge durch: deine Kopie dieses Repositorys, der Bot bei @BotFather, der Worker auf Cloudflare, die GitHub-App aus ihrem Manifest, die Geheimnisse, der Webhook von Telegram und dein privates Steuer-Repository, das du aus [seiner öffentlichen Vorlage](https://github.com/Dennis-Otto/repo-pager-control-template) anlegst, deren README seine Jobs beschreibt. Auf deinem Rechner läuft er unter <http://localhost:8787>, mit den Geheimnissen aus `.dev.vars` (siehe `.dev.vars.example`):
 
 ```sh
 npm ci --ignore-scripts

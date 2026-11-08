@@ -70,7 +70,7 @@ The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de`
 
 Repo Pager is self-hosted: everyone who uses it runs an instance of their own, with their own bot, Worker, GitHub App and private control repository. There is no shared app to install, so that your tokens and the events of your repositories stay yours, and each pager serves the one chat of its maintainer; `wrangler.jsonc` holds the values of an instance, which your copy sets for yours.
 
-The pager runs on the free plans of Cloudflare and Telegram. [Set up](docs/setup.md) walks through each step in its order: your copy of this repository, the bot at @BotFather, the Worker on Cloudflare, the GitHub App from its manifest, the secrets and the webhook of Telegram. To run it on your machine, at <http://localhost:8787>, with the secrets of `.dev.vars` (see `.dev.vars.example`):
+The pager runs on the free plans of Cloudflare and Telegram. [Set up](docs/setup.md) walks through each step in its order: your copy of this repository, the bot at @BotFather, the Worker on Cloudflare, the GitHub App from its manifest, the secrets, the webhook of Telegram and your private control repository, which you make from [its public template](https://github.com/Dennis-Otto/repo-pager-control-template), whose README describes its jobs. To run it on your machine, at <http://localhost:8787>, with the secrets of `.dev.vars` (see `.dev.vars.example`):
 
 ```sh
 npm ci --ignore-scripts

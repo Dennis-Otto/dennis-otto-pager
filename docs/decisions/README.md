@@ -24,3 +24,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0016](0016-the-album-of-a-visual-change-shows-the-changed-pixels-first.md) | The album of a visual change shows the changed pixels first, and promises red only when it has them | accepted |
 | [0017](0017-a-topic-that-the-maintainer-deleted-opens-anew-with-the-next-message-of-its-thing.md) | A topic that the maintainer deleted opens anew with the next message of its thing | accepted |
 | [0018](0018-the-pager-is-repo-pager-which-everyone-runs-as-an-instance-of-their-own.md) | The pager is Repo Pager, which everyone runs as an instance of their own | accepted |
+| [0019](0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md) | The control repository comes from a public template, which every copy follows | accepted |

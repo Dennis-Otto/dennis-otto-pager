@@ -686,6 +686,19 @@ describe("each signal applied twice", () => {
           run_attempt: 1,
         }),
       )
+      .on("GET", `/repos/${REPO}/actions/runs/62`, () =>
+        json({
+          id: 62,
+          name: "Docs",
+          path: ".github/workflows/docs.yml",
+          event: "push",
+          status: "completed",
+          conclusion: "cancelled",
+          html_url: `https://github.com/${REPO}/actions/runs/62`,
+          head_branch: "main",
+          run_attempt: 1,
+        }),
+      )
       .on(
         "GET",
         /\/actions\/runs\/6\d\/attempts\/\d\/jobs\?per_page=100$/,
@@ -857,6 +870,23 @@ describe("each signal applied twice", () => {
           label: { key: "entry.bot", values: { title: "Docs fails" } },
           url: `https://github.com/${REPO}/issues/5`,
           run: 60,
+        },
+      },
+    ],
+    [
+      "health: a run that GitHub stopped at its time limit",
+      [],
+      {
+        ...at,
+        type: "health",
+        run: 62,
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:7",
+          label: { key: "entry.bot", values: { title: "Docs hangs" } },
+          url: `https://github.com/${REPO}/issues/7`,
+          run: 62,
         },
       },
     ],

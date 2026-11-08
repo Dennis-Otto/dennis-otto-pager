@@ -1053,7 +1053,7 @@ async function workflowPassed(context: Context, signal: Ran): Promise<string> {
  * An issue of the bot-health bot about a workflow that fails on the default
  * branch: the pager reads the run that it names and takes it as the end of that
  * run, so that a failure whose event came changes nothing, and one that the pager
- * missed pages now. Without a run that it can read, the issue is an entry of the
+ * missed pages now, also one that hung until its time limit. Without a run that it can read, the issue is an entry of the
  * alarm, as before the pager paged workflows.
  */
 async function health(
@@ -1078,7 +1078,14 @@ async function health(
   if (run === null) {
     return apply(context, { repo, installation, ...signal.fallback });
   }
-  const outcome = finishedRun(run, { repo, installation }, signal.branch);
+  // The bot names a cancelled run only when GitHub stopped a job of it at its
+  // time limit, as a job behind Harden-Runner can hang (bot_health.py): that is a
+  // run that timed out, though GitHub calls it cancelled.
+  const ended =
+    run.status === "completed" && run.conclusion === "cancelled"
+      ? { ...run, conclusion: "timed_out" }
+      : run;
+  const outcome = finishedRun(ended, { repo, installation }, signal.branch);
   return "signal" in outcome
     ? apply(context, outcome.signal)
     : `the run of the issue: ${outcome.ignored}`;

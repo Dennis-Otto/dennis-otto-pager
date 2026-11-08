@@ -553,6 +553,26 @@ describe("an issue of the bot-health bot", () => {
     ).toBeNull();
   });
 
+  it("pages a run that GitHub cancelled at its time limit, and counts it again at an edit", async () => {
+    const w = await world();
+    runIs(w, 60, {
+      status: "completed",
+      conclusion: "cancelled",
+      run_attempt: 2,
+    });
+    jobs(w, 60, 2, [["build", "cancelled"]]);
+    expect(await apply(w.context, issue(60))).toBe("workflow failing");
+    expect(await thing(w)).toMatchObject({ run: 60, attempt: 2, count: 1 });
+    runIs(w, 61, {
+      status: "completed",
+      conclusion: "cancelled",
+      run_attempt: 2,
+    });
+    jobs(w, 61, 2, [["build", "cancelled"]]);
+    expect(await apply(w.context, issue(61))).toBe("workflow updated");
+    expect(await thing(w)).toMatchObject({ run: 61, count: 2 });
+  });
+
   it("says why the run that it names means nothing", async () => {
     const w = await world();
     runIs(w, 60, { status: "in_progress", conclusion: null });

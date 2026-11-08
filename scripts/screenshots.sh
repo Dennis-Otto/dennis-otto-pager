@@ -70,7 +70,7 @@ site="$(cd "$work/site" && (pwd -W 2>/dev/null || pwd))"
 
 # The browser: the image of the social preview, which Renovate keeps current, with
 # Playwright installed by its hashes. Docker keeps the image until either changes.
-browser=dennis-otto-pager-screenshots
+browser=repo-pager-screenshots
 if ! log="$(docker build --quiet --tag "$browser" --file - .github 2>&1 <<DOCKERFILE
 FROM $(sed -n 's/^FROM //p' .github/social-preview/Dockerfile)
 COPY screenshots-browser-requirements.txt /tmp/

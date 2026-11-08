@@ -25,7 +25,7 @@ on:
     workflows: [Blueprint update, Chrome Web Store, Clean-up, Findings, Fuzzing, Issue lifecycle, Labels, Links, Mutation, OSV-Scanner, OpenSSF Scorecard, Property tests, Release, Release verification, SBOM, Screenshots, Settings, Update branches, Upstream, Workflow security]
     types: [completed]
   schedule:
-    - cron: "44 1 * * *"
+    - cron: "6 1 * * *"
   workflow_dispatch:
 
 permissions: {}

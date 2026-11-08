@@ -5,9 +5,18 @@
 // `npm run typecheck`, which writes their types anew. A secret goes to Cloudflare
 // with `npx wrangler secret put NAME`, never into this file or the repository:
 // docs/setup.md lists each secret of the pager.
+//
+// Repo Pager is self-hosted: everyone runs an instance of their own, and this file
+// is its configuration. The values here are those of the maintainer's own instance;
+// in your copy, set the name of your Worker, your account, your control repository
+// and your language, and drop the id of the namespace, as docs/setup.md describes.
 // https://developers.cloudflare.com/workers/wrangler/configuration/
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+  // The name of the maintainer's own Worker, which keeps the name it was created
+  // with, since its secrets and the state of its Durable Object belong to it, and
+  // Workers Builds deploys only the Worker of this name. Name yours as you like,
+  // such as "repo-pager".
   "name": "dennis-otto-pager",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -37,7 +46,7 @@
     "MAINTAINER_LOGIN": "Dennis-Otto",
     // The private repository whose workflow drafts the replies, starts the fixes and
     // reads the free text, as docs/how-it-works.md describes.
-    "CONTROL_REPOSITORY": "Dennis-Otto/dennis-otto-pager-control",
+    "CONTROL_REPOSITORY": "Dennis-Otto/repo-pager-control",
     // How many hours "Later" puts a thing aside.
     "LATER_HOURS": "4",
     // The day on which the token of Claude in the control repository expires; the

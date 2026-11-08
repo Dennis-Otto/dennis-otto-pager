@@ -5,10 +5,10 @@ config:
 ---
 flowchart TB
     accTitle: Der Neustart eines gescheiterten Laufs
-    accDescr: Eine Nachricht nennt einen Lauf von GitHub Actions, der auf main scheiterte: den eines Workflows oder einen Eintrag im Alarm, etwa ein Release. Dennis drückt Neu starten, und der Pager liest den Lauf. Solange er noch läuft oder wenn er bei einem neuen Versuch schon grün wurde, sagt der Knopf das, und nichts startet. Sonst laufen seine gescheiterten Jobs erneut, und die Nachricht sagt das. Scheitern sie wieder, zeigt die Nachricht den Fehlschlag, und Neu starten kann sie noch einmal starten. Werden sie grün, wird der Workflow grün, oder der Eintrag verschwindet, und der letzte macht den Alarm grün.
+    accDescr: Eine Nachricht nennt einen Lauf von GitHub Actions, der auf main scheiterte: den eines Workflows oder einen Eintrag im Alarm, etwa ein Release. Der Maintainer drückt Neu starten, und der Pager liest den Lauf. Solange er noch läuft oder wenn er bei einem neuen Versuch schon grün wurde, sagt der Knopf das, und nichts startet. Sonst laufen seine gescheiterten Jobs erneut, und die Nachricht sagt das. Scheitern sie wieder, zeigt die Nachricht den Fehlschlag, und Neu starten kann sie noch einmal starten. Werden sie grün, wird der Workflow grün, oder der Eintrag verschwindet, und der letzte macht den Alarm grün.
 
     alarm["`**🚨** Eine Nachricht nennt einen Lauf, der auf main scheiterte: ein Workflow oder ein Eintrag im Alarm`"]
-    press["Dennis drückt 🔁 Neu starten"]
+    press["Der Maintainer drückt 🔁 Neu starten"]
     read["Der Pager liest den Lauf"]
     nothing["`**ℹ️** Er läuft noch oder wurde bei einem neuen Versuch grün: Der Knopf sagt das, und nichts startet`"]
     again["`**🔁** Seine gescheiterten Jobs laufen erneut, und die Nachricht sagt das`"]

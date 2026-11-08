@@ -3,7 +3,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Ask anything about setting up or using Dennis Otto Pager. Please read the [README](https://github.com/Dennis-Otto/dennis-otto-pager#readme) first. English and German are both welcome. A bug belongs in a [bug report](https://github.com/Dennis-Otto/dennis-otto-pager/issues/new?template=bug_report.yml), a vulnerability [privately](https://github.com/Dennis-Otto/dennis-otto-pager/security/policy).
+        Ask anything about setting up or using Repo Pager. Please read the [README](https://github.com/Dennis-Otto/repo-pager#readme) first. English and German are both welcome. A bug belongs in a [bug report](https://github.com/Dennis-Otto/repo-pager/issues/new?template=bug_report.yml), a vulnerability [privately](https://github.com/Dennis-Otto/repo-pager/security/policy).
   - type: textarea
     id: question
     attributes:

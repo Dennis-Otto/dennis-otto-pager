@@ -12,12 +12,12 @@
 # With these tools, scripts/check.sh builds the website too, as the check docs does.
 # https://squidfunk.github.io/mkdocs-material/
 INHERIT: .github/mkdocs-blueprint.yml
-site_name: "Dennis Otto Pager"
+site_name: "Repo Pager"
 site_description: "A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button."
 # The website of the owner itself lives at the root of its address.
-site_url: https://dennis-otto.github.io/dennis-otto-pager/
-repo_url: https://github.com/Dennis-Otto/dennis-otto-pager
-repo_name: Dennis-Otto/dennis-otto-pager
+site_url: https://dennis-otto.github.io/repo-pager/
+repo_url: https://github.com/Dennis-Otto/repo-pager
+repo_name: Dennis-Otto/repo-pager
 copyright: "© 2026 Dennis Otto"
 
 # A website in more than one language: the pages of another language sit next to

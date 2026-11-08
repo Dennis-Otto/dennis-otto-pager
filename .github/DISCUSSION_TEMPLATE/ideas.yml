@@ -3,7 +3,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Share an idea for Dennis Otto Pager. A worked-out proposal can also become a [feature request](https://github.com/Dennis-Otto/dennis-otto-pager/issues/new?template=feature_request.yml).
+        Share an idea for Repo Pager. A worked-out proposal can also become a [feature request](https://github.com/Dennis-Otto/repo-pager/issues/new?template=feature_request.yml).
   - type: textarea
     id: idea
     attributes:

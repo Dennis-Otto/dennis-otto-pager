@@ -5,15 +5,15 @@ config:
 ---
 flowchart TB
     accTitle: How the pager works
-    accDescr: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.
+    accDescr: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs the maintainer; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with the maintainer's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.
 
     github["`**GitHub** sends the events of the app, signed`"]
-    rules{"`**The rules** of the Worker: does it need Dennis?`"}
+    rules{"`**The rules** of the Worker: does it need the maintainer?`"}
     quiet["`No: it ends here, without a message`"]
     message["`**One message** in Telegram, edited in place as the thing changes`"]
-    dennis["Dennis presses a button or writes a text"]
+    dennis["The maintainer presses a button or writes a text"]
     action["`**An action of the allowlist** on GitHub, such as merging a green release`"]
-    control["`**The private control repository** drafts a reply, starts a fix or reads the free text, with Claude Code and Dennis's subscription`"]
+    control["`**The private control repository** drafts a reply, starts a fix or reads the free text, with Claude Code and the maintainer's subscription`"]
 
     github --> rules
     rules --> quiet

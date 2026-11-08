@@ -1,10 +1,10 @@
 {
-  "name": "dennis-otto-pager",
-  "url": "https://github.com/Dennis-Otto/dennis-otto-pager",
-  "description": "Pages Dennis on Telegram when something in his repositories needs him, and acts on it with a button.",
+  "name": "Repo Pager",
+  "url": "https://github.com/Dennis-Otto/repo-pager",
+  "description": "Pages its maintainer on Telegram when something in their GitHub repositories needs them, and acts on it with a button.",
   "public": false,
   "hook_attributes": {
-    "url": "https://dennis-otto-pager.example.workers.dev/github",
+    "url": "https://repo-pager.example.workers.dev/github",
     "active": true
   },
   "redirect_url": "http://127.0.0.1/done",

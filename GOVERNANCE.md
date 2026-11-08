@@ -1,6 +1,6 @@
 # Governance
 
-Dennis Otto Pager is maintained by Dennis Otto.
+Repo Pager is maintained by Dennis Otto.
 
 ## Maintainers and access
 

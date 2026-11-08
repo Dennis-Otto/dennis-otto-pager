@@ -1,4 +1,4 @@
-# Dennis Otto Pager
+# Repo Pager
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
@@ -14,10 +14,10 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort des Steuer-Repositorys vorschlägt, etwa ein Merge, nach dem du gefragt hast, oder 🔁 Neu starten, wenn ein Fix einen Ausfall von GitHub fand, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
 
-Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für diesen Pager, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
+Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für den eigenen Pager des Maintainers, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
 
 - [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository, die Fragen und Berichte deiner Agenten und der Zustand.
-- [Einrichten](setup.md): der Bot, der Worker, die GitHub-App, die Geheimnisse und der Webhook, Schritt für Schritt.
+- [Einrichten](setup.md): deine eigene Instanz, da es keine gemeinsame App gibt, mit deiner Kopie, dem Bot, dem Worker, der GitHub-App, den Geheimnissen und dem Webhook, Schritt für Schritt.
 - [Releases and Cloudflare](releases.md): wie ein Release live geht.
 - [Architecture](architecture.md): die Module des Workers, der Weg einer Anfrage durch sie und die Entscheidungen dahinter.
 - [Security design](security.md): die Sicherheit des Repositorys und seiner Releases.

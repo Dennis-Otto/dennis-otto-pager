@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: When an event of GitHub fails
-    accDescr: GitHub delivers an event to the pager, and handling it fails, such as in an outage of Telegram, so the pager answers 500, or no answer comes in time. GitHub never delivers it again by itself. Every 15 minutes, the schedule reads the deliveries of the app's webhook of the last three hours, and has GitHub deliver the event again, up to three attempts in all and ten events per run. An attempt that passes ends it, and since each signal changes nothing when it comes twice, a redelivery is safe. When the third attempt fails as well, the alarm of the control repository gets one entry, An event of GitHub fails, linked to the recent deliveries on the app's Advanced page. Dennis can deliver it again there, and an attempt that passes takes the entry out.
+    accDescr: GitHub delivers an event to the pager, and handling it fails, such as in an outage of Telegram, so the pager answers 500, or no answer comes in time. GitHub never delivers it again by itself. Every 15 minutes, the schedule reads the deliveries of the app's webhook of the last three hours, and has GitHub deliver the event again, up to three attempts in all and ten events per run. An attempt that passes ends it, and since each signal changes nothing when it comes twice, a redelivery is safe. When the third attempt fails as well, the alarm of the control repository gets one entry, An event of GitHub fails, linked to the recent deliveries on the app's Advanced page. The maintainer can deliver it again there, and an attempt that passes takes the entry out.
 
     event["GitHub delivers an event to the pager"]
     failed["`**❌** Handling it fails: the pager answers 500, or no answer comes in time`"]
@@ -13,7 +13,7 @@ flowchart TB
     again["`**🔁** GitHub delivers it again: three attempts in all, ten events per run`"]
     passed["`**✅** An attempt passes; the same signal twice changes nothing`"]
     alarm["`**🚨** The third attempt fails: one entry in the alarm of the control repository, linked to the app's Advanced page`"]
-    redeliver["Dennis delivers it again on the Advanced page"]
+    redeliver["The maintainer delivers it again on the Advanced page"]
 
     event --> failed --> schedule --> again
     again -- "it passes" --> passed

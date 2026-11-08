@@ -1,6 +1,6 @@
 # Instructions for coding agents
 
-Dennis Otto Pager: A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.
+Repo Pager: A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.
 
 These are the rules for coding agents, such as Claude Code, Codex, GitHub Copilot and Cursor, that change this repository; people find the same rules in [CONTRIBUTING.md](CONTRIBUTING.md). The blueprint keeps this file current, so change it in the blueprint, not here. The notes of this project, such as where its parts are, are in [.github/agents.project.md](.github/agents.project.md): read them as well.
 
@@ -51,7 +51,7 @@ Turn on the hook of the repository once with `git config core.hooksPath .githook
 
 ## The files of this project and those of the blueprint
 
-Dennis Otto Pager is made from [Repo Blueprint](https://github.com/Dennis-Otto/repo-blueprint), and the blueprint bot brings every release of the blueprint as a pull request that runs `copier update`.
+Repo Pager is made from [Repo Blueprint](https://github.com/Dennis-Otto/repo-blueprint), and the blueprint bot brings every release of the blueprint as a pull request that runs `copier update`.
 
 - **The files of the blueprint** are all that the blueprint renders, other than those listed below: the workflows in `.github/workflows/`, the settings tool `.github/blueprint.py` with `.github/blueprint/` and `.github/repository.toml`, the other files in `.github/`, `.devcontainer/`, `.githooks/`, `scripts/check.sh`, `scripts/diagrams.sh`, the community files such as `CONTRIBUTING.md`, `SECURITY.md` and `LICENSE`, the configurations in the root such as `.editorconfig` and `.gitignore`, this file and `CLAUDE.md`. Change them in the blueprint, in its `template/` or in the file of the blueprint that the template includes, never here: a change here conflicts with the next update, and the other repositories miss it. The answers in `.copier-answers.yml` change only with `copier update --data name=value`. A file that says in its first lines that the project changes it here, such as `.vale.ini`, is the only exception. When in doubt, look for the file in `template/` of the blueprint, at the release that `_commit` in `.copier-answers.yml` names.
 - **A pull request that changes a file of the blueprint** gets a notice from the check *lint* and in the report of the PR coach, with the label `blueprint-file`; `.github/blueprint/owned.txt` names each such file. With the repository variable `BLUEPRINT_OWNERSHIP` set to `fail`, the check fails on it.

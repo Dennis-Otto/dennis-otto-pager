@@ -5,16 +5,16 @@ config:
 ---
 flowchart TB
     accTitle: Die Kommentare eines Beitrags
-    accDescr: Jemand anderes als Dennis oder ein Bot kommentiert ein Issue oder einen Pull Request von jemand anderem. Ein Kommentar zu einem von Dennis oder einem Bot, derselbe Kommentar noch einmal und eine ignorierte Sache enden hier. Eine offene Sache nennt den Kommentar in ihrer Nachricht, an Ort und Stelle bearbeitet, und eine Nachricht darunter in ihrem Thema benachrichtigt, einmal für einige schnelle Kommentare; ein Entwurf, um den Dennis gebeten hat, wird für den Kommentar neu geschrieben, während ein Text, den er selbst geschrieben hat, der Entwurf bleibt. Eine Sache, deren Antwort gesendet ist oder um die sich GitHub gekümmert hat, öffnet wieder in ihrem Thema mit Antwort entwerfen, und ein Issue, das der Pager nie gezeigt hat, kommt als neue Sache. Wenn Dennis auf GitHub selbst kommentiert oder das Issue oder der Pull Request geschlossen wird, ist die Sache erledigt: Ihre Knöpfe gehen, und ihr Thema bekommt einen Haken.
+    accDescr: Jemand anderes als der Maintainer oder ein Bot kommentiert ein Issue oder einen Pull Request von jemand anderem. Ein Kommentar zu einem des Maintainers oder eines Bots, derselbe Kommentar noch einmal und eine ignorierte Sache enden hier. Eine offene Sache nennt den Kommentar in ihrer Nachricht, an Ort und Stelle bearbeitet, und eine Nachricht darunter in ihrem Thema benachrichtigt, einmal für einige schnelle Kommentare; ein Entwurf, um den der Maintainer gebeten hat, wird für den Kommentar neu geschrieben, während ein Text, den er selbst geschrieben hat, der Entwurf bleibt. Eine Sache, deren Antwort gesendet ist oder um die sich GitHub gekümmert hat, öffnet wieder in ihrem Thema mit Antwort entwerfen, und ein Issue, das der Pager nie gezeigt hat, kommt als neue Sache. Wenn der Maintainer auf GitHub selbst kommentiert oder das Issue oder der Pull Request geschlossen wird, ist die Sache erledigt: Ihre Knöpfe gehen, und ihr Thema bekommt einen Haken.
 
     asked["`**💬** Jemand anderes kommentiert ein Issue oder einen Pull Request von jemand anderem`"]
-    quiet["`Ein Issue von Dennis oder einem Bot, derselbe Kommentar noch einmal, oder eine ignorierte Sache: Nichts passiert`"]
+    quiet["`Ein Issue des Maintainers oder eines Bots, derselbe Kommentar noch einmal, oder eine ignorierte Sache: Nichts passiert`"]
     open["Die Nachricht der offenen Sache nennt den Kommentar, an Ort und Stelle bearbeitet, und eine Nachricht in ihrem Thema benachrichtigt, einmal für einige schnelle Kommentare"]
-    draft["`**✍️** Ein Entwurf, um den Dennis gebeten hat, wird für den Kommentar neu geschrieben, während sein eigener Text der Entwurf bleibt`"]
+    draft["`**✍️** Ein Entwurf, um den der Maintainer gebeten hat, wird für den Kommentar neu geschrieben, während sein eigener Text der Entwurf bleibt`"]
     again["`**🙋** Die Sache öffnet wieder in ihrem Thema mit ✍️ Antwort entwerfen, oder kommt als neue`"]
-    ended["`**✅** Dennis kommentiert auf GitHub, oder das Issue oder der Pull Request schließt: Die Sache ist erledigt, ohne Knöpfe`"]
+    ended["`**✅** Der Maintainer kommentiert auf GitHub, oder das Issue oder der Pull Request schließt: Die Sache ist erledigt, ohne Knöpfe`"]
 
-    asked -- "von Dennis, von einem Bot, oder schon gesehen" --> quiet
+    asked -- "vom Maintainer, von einem Bot, oder schon gesehen" --> quiet
     asked -- "ihre Sache ist offen" --> open
     asked -- "ihre Antwort ging, GitHub hat sich gekümmert, oder der Pager hat sie nie gezeigt" --> again
     open -- "ein Entwurf wurde angefragt" --> draft

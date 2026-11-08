@@ -1,6 +1,6 @@
 # Releases and Cloudflare
 
-**Dennis Otto Pager** runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/). Cloudflare builds it from this repository with [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/), and only a release goes live: no key of Cloudflare is stored in GitHub.
+**Repo Pager** runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/). Cloudflare builds it from this repository with [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/), and only a release goes live: no key of Cloudflare is stored in GitHub.
 
 ## How a change goes live
 
@@ -11,7 +11,7 @@
 
 A prerelease, such as `chore: release 2.0.0-beta.1`, becomes a version without traffic as well, tagged `v2.0.0-beta.1`: try it, or roll it out gradually under *Deployments*, before the release deploys.
 
-The release workflow tags the same commit as `vX.Y.Z` and publishes the release on GitHub, with its changelog, its SBOMs and the signed provenance of its build, as [SECURITY.md](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/SECURITY.md#verify-a-release) shows. So the Worker that runs is always the code of the latest release, and the dashboard of Cloudflare names its version by the tag of that release. `scripts/deploy-worker.sh`, which `npm run deploy` runs, decides between the two: it deploys only a commit of `main` whose subject names the release of the version in `package.json`, and uploads every other one.
+The release workflow tags the same commit as `vX.Y.Z` and publishes the release on GitHub, with its changelog, its SBOMs and the signed provenance of its build, as [SECURITY.md](https://github.com/Dennis-Otto/repo-pager/blob/main/SECURITY.md#verify-a-release) shows. So the Worker that runs is always the code of the latest release, and the dashboard of Cloudflare names its version by the tag of that release. `scripts/deploy-worker.sh`, which `npm run deploy` runs, decides between the two: it deploys only a commit of `main` whose subject names the release of the version in `package.json`, and uploads every other one.
 
 ## Set up Cloudflare once
 
@@ -25,8 +25,8 @@ You need an account of Cloudflare; the free plan runs a Worker. These steps take
     npx wrangler deploy
     ```
 
-    The Worker gets the name `dennis-otto-pager` of `wrangler.jsonc`, which Workers Builds needs as well.
-2. **Connect the repository:** in the dashboard of Cloudflare, open *Workers & Pages*, the Worker `dennis-otto-pager`, *Settings* and *Builds*, and choose *Connect*. Install the app *Cloudflare Workers and Pages* on GitHub for this repository only, and choose the repository `Dennis-Otto/dennis-otto-pager`.
+    The Worker gets the name of `wrangler.jsonc`, which Workers Builds needs as well: the one that you chose for your copy, as [Set up](setup.md) describes, such as `repo-pager`. The maintainer's own Worker keeps the name it was created with, `dennis-otto-pager`, since its secrets and its state belong to it.
+2. **Connect the repository:** in the dashboard of Cloudflare, open *Workers & Pages*, your Worker, *Settings* and *Builds*, and choose *Connect*. Install the app *Cloudflare Workers and Pages* on GitHub for this repository only, and choose your copy of the repository.
 3. **Set the build** as follows:
 
     | Setting | Value |
@@ -60,7 +60,8 @@ Then fix the cause in a pull request; the next release deploys it.
 
 ## When a build fails
 
-- **The name doesn't match:** Workers Builds builds only the Worker whose name `wrangler.jsonc` names. Rename the one or the other.
+- **The name doesn't match:** Workers Builds builds only the Worker whose name `wrangler.jsonc` names. Change the name in `wrangler.jsonc` back to that of the Worker: a Worker of a new name would be a new Worker, without the secrets and the state of the old one.
+- **No build after the repository was renamed or moved:** the dashboard lists no build of the merges since. Open *Workers & Pages*, the Worker, *Settings* and *Builds*, disconnect the repository and connect it again under its new name, with the settings of step 3; the version that runs keeps serving meanwhile.
 - **Another Node:** the build takes the Node of `.nvmrc`; if its log shows another one, set the build variable `NODE_VERSION` to the version of `.nvmrc` under *Settings* and *Builds*.
 - **A release that didn't deploy:** the log of its build says why `npm run deploy` only uploaded it, such as a `package.json` with another version than the title of the release, or a branch of another name than `main`. *Retry build* builds the same commit again, once a setting of Cloudflare was the cause; `npx wrangler deploy` from a checkout of its tag deploys it by hand.
 - **A warning about `SKIP_DEPENDENCY_INSTALL`:** the build variable of step 3 is missing, and Cloudflare's own install ran the install scripts of the packages. Set it to `1`.

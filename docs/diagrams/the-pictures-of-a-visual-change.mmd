@@ -5,9 +5,9 @@ config:
 ---
 flowchart TB
     accTitle: The pictures of a visual change
-    accDescr: Dennis or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, at most three pictures, each with its changed pixels in red when the check drew them, then before and after. The merge or the end of the pull request ticks the topic off.
+    accDescr: The maintainer or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, at most three pictures, each with its changed pixels in red when the check drew them, then before and after. The merge or the end of the pull request ticks the topic off.
 
-    push["`Dennis or a bot pushes to a pull request that changes how something looks`"]
+    push["`The maintainer or a bot pushes to a pull request that changes how something looks`"]
     check["`The visual check renders the pictures and keeps each one that looks different, before and after`"]
     ask["The pager asks GitHub for the pull request, with a token of its app"]
     stop["`Someone else's, from a fork, a newer head, or a head whose pictures went: nothing comes`"]
@@ -20,7 +20,7 @@ flowchart TB
     push --> check
     check -- "passed" --> ask
     ask -- "not the pull request's pictures to show" --> stop
-    ask -- "of Dennis or a bot, at its head" --> read
+    ask -- "of the maintainer or a bot, at its head" --> read
     read -- "nothing changed" --> same
     read -- "pictures look different" --> topic --> album --> done
 

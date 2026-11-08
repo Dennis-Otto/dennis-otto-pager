@@ -6,12 +6,24 @@ import text from "../github-app.json?raw";
 import { classify } from "../src/rules.ts";
 
 const manifest = JSON.parse(text) as {
+  name: string;
+  description: string;
   public: boolean;
   default_permissions: Record<string, string>;
   default_events: string[];
 };
 
 describe("the manifest of the GitHub App", () => {
+  it("names the product, which each user registers as an app of their own", () => {
+    // GitHub shows the name on the page of the manifest, where the user changes it
+    // to one of their own: an app's name is unique on GitHub, at most 34 characters.
+    expect(manifest.name).toBe("Repo Pager");
+    expect(manifest.name.length).toBeLessThanOrEqual(34);
+    // The description speaks of whoever runs the pager, not of one person.
+    expect(manifest.description).toMatch(/^Pages its maintainer /);
+    expect(manifest.description).not.toMatch(/dennis/i);
+  });
+
   it("is private and asks only for what the pager uses", () => {
     expect(manifest.public).toBe(false);
     expect(manifest.default_permissions).toEqual({

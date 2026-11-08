@@ -35,7 +35,7 @@ import {
 import { artifact } from "./zips.ts";
 
 const CONTROL = "Dennis-Otto/control";
-const ADVANCED = "https://github.com/settings/apps/dennis-otto-pager/advanced";
+const ADVANCED = "https://github.com/settings/apps/repo-pager/advanced";
 const MINUTE = 60_000;
 const ATTEMPTS = /\/app\/hook\/deliveries\/(\d+)\/attempts$/;
 
@@ -95,7 +95,7 @@ function listing(w: World, pages: Delivery[][]): World {
     .on("POST", ATTEMPTS, () => json({}, 202))
     .on("GET", /^https:\/\/api\.github\.com\/app$/, () =>
       json({
-        slug: "dennis-otto-pager",
+        slug: "repo-pager",
         owner: { login: "Dennis-Otto", type: "User" },
       }),
     );

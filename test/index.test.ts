@@ -399,7 +399,7 @@ describe("the schedule", () => {
     await waitOnExecutionContext(running);
     expect(net.telegram("sendMessage")[0]?.body.text).toContain(
       say("reminder.expired", {
-        repo: "Dennis-Otto/dennis-otto-pager-control",
+        repo: "Dennis-Otto/repo-pager-control",
         date: say.date("2026-11-01"),
       }),
     );

@@ -1,5 +1,5 @@
 /**
- * Dennis Otto Pager: a Telegram bot on a Cloudflare Worker that tells its maintainer
+ * Repo Pager: a Telegram bot on a Cloudflare Worker that tells its maintainer
  * only what needs them in their GitHub repositories, and acts on it with a button.
  *
  * The handlers of the Worker: the webhook of Telegram at /telegram, that of the

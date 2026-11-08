@@ -1,8 +1,8 @@
 # Roadmap
 
-[← README](https://github.com/Dennis-Otto/dennis-otto-pager) · [How it works](how-it-works.md) · [Architecture](architecture.md) · [Security design](security.md)
+[← README](https://github.com/Dennis-Otto/repo-pager) · [How it works](how-it-works.md) · [Architecture](architecture.md) · [Security design](security.md)
 
-What the pager intends to do in the next twelve months, until November 2027, and what it will not do. It is a direction, not a promise: what its maintainer misses in practice sets the order. Ideas are welcome as [feature requests](https://github.com/Dennis-Otto/dennis-otto-pager/issues/new?template=feature_request.yml) or in the [discussions](https://github.com/Dennis-Otto/dennis-otto-pager/discussions).
+What the pager intends to do in the next twelve months, until November 2027, and what it will not do. It is a direction, not a promise: what its maintainer misses in practice sets the order. Ideas are welcome as [feature requests](https://github.com/Dennis-Otto/repo-pager/issues/new?template=feature_request.yml) or in the [discussions](https://github.com/Dennis-Otto/repo-pager/discussions).
 
 ## The next twelve months
 
@@ -12,7 +12,7 @@ The pager does what it was built for: it tells its maintainer only what needs th
 - **Fewer steps for what repeats.** A next step that the answers of the control repository keep proposing can become a button of the allowlist of its own, as 🔁 **Rerun** did. A button still acts only while its thing offers it, and Claude still only proposes ([decision 0002](decisions/0002-buttons-of-an-allowlist-act-and-claude-only-proposes.md)).
 - **Changes of Telegram, GitHub and Cloudflare.** New versions of the Bot API of Telegram, of the webhooks and APIs of GitHub and of the runtime of Cloudflare, with its compatibility date, are taken up once the tests in workerd pass with them.
 - **The free plans.** The pager stays within the free plans of Cloudflare and Telegram: one write of Workers KV for each change of a thing, and one run of the schedule every 15 minutes.
-- **Fixes and security** come before anything new; [SECURITY.md](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/SECURITY.md) has the times. The update bots and the [repository blueprint](https://github.com/Dennis-Otto/repo-blueprint) keep the tools, the workflows and the checks current.
+- **Fixes and security** come before anything new; [SECURITY.md](https://github.com/Dennis-Otto/repo-pager/blob/main/SECURITY.md) has the times. The update bots and the [repository blueprint](https://github.com/Dennis-Otto/repo-blueprint) keep the tools, the workflows and the checks current.
 
 ## Ideas
 
@@ -24,7 +24,7 @@ Not planned for a date yet; a discussion is the place to say that one matters to
 
 ## Done
 
-The larger pieces of work of the releases so far; the [changelog](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/CHANGELOG.md) has every change.
+The larger pieces of work of the releases so far; the [changelog](https://github.com/Dennis-Otto/repo-pager/blob/main/CHANGELOG.md) has every change.
 
 - **One message per thing, with buttons** (0.1.0): a contribution from outside, a check or a release that fails on `main`, a code-scanning alert, a green release pull request and the token of Claude before it expires, each acted on with a button of the allowlist.
 - **Drafts, fixes and free text in the private control repository** (0.1.0), with Claude Code and the maintainer's own subscription, and the line under each answer that names its model, its effort and its tokens (0.2.0).

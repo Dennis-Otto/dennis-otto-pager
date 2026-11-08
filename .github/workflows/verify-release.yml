@@ -18,7 +18,7 @@ on:
         type: string
         required: false
   schedule:
-    - cron: "14 5 * * 3"
+    - cron: "35 5 * * 6"
   # The release workflow publishes its releases with the token of its job, whose
   # events start no workflow: a published release starts this one only when someone
   # else published it, outside the release workflow. That run takes the workflow of

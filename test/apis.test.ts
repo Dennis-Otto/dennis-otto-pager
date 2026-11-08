@@ -496,7 +496,7 @@ describe("the GitHub App", () => {
     ).token(9, "Dennis-Otto/demo", { metadata: "read" });
     expect(headers[0]).toMatchObject({
       accept: "application/vnd.github+json",
-      "user-agent": "dennis-otto-pager",
+      "user-agent": "repo-pager",
       "x-github-api-version": "2022-11-28",
       "content-type": "application/json",
     });

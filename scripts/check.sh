@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The checks of Dennis Otto Pager, the same ones its CI runs. Run them before every
+# The checks of Repo Pager, the same ones its CI runs. Run them before every
 # push:  bash scripts/check.sh
 # The tools come from:  npm ci --ignore-scripts
 #

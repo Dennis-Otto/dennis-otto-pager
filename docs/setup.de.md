@@ -1,8 +1,36 @@
 # Einrichten
 
-Der Pager braucht einen Bot von Telegram, den Worker auf Cloudflare, eine GitHub-App und ein paar Geheimnisse. Diese Schritte dauern etwa eine halbe Stunde, mit den kostenlosen Tarifen von Cloudflare und Telegram, und nichts davon liegt in GitHub. Geh sie in dieser Reihenfolge durch: Jeder Schritt braucht den davor.
+Repo Pager betreibst du selbst: Du hast eine eigene Instanz, mit deinem eigenen Bot von Telegram, deinem eigenen Worker auf Cloudflare, deiner eigenen GitHub-App, ein paar Geheimnissen und deinem eigenen privaten Steuer-Repository. Diese Schritte dauern etwa eine halbe Stunde, mit den kostenlosen Tarifen von Cloudflare und Telegram, und nichts davon liegt in GitHub. Geh sie in dieser Reihenfolge durch: Jeder Schritt braucht den davor.
 
-Führe die Befehle in Git Bash oder einer anderen Unix-Shell aus, in einem Checkout dieses Repositorys, nach `npm ci --ignore-scripts`. Lies ein Geheimnis mit `read -rs` ein, damit es nicht in der Historie der Shell landet.
+Führe die Befehle in Git Bash oder einer anderen Unix-Shell aus, in einem Checkout deiner Kopie dieses Repositorys, nach `npm ci --ignore-scripts`. Lies ein Geheimnis mit `read -rs` ein, damit es nicht in der Historie der Shell landet.
+
+## Warum es keine gemeinsame App gibt
+
+Es gibt keine App von Repo Pager zum Installieren und keinen Pager, der mehrere Leute bedient, und das mit Absicht:
+
+- **Deine Tokens und deine Ereignisse bleiben deine.** Eine gemeinsame App bekäme die Ereignisse der Repositorys aller Nutzer, auch der privaten, und hielte die Tokens, die in ihrem Namen handeln. Deine eigene App schickt die Ereignisse deiner Repositorys nur an deinen Worker, und ihre Geheimnisse liegen in deinem Konto bei Cloudflare.
+- **Ein Pager bedient einen Chat.** Der Worker bedient nur den Chat, den `TELEGRAM_CHAT_ID` nennt, und handelt für ein Konto, `MAINTAINER_LOGIN`; sein Zustand ist der eines Maintainers.
+- **Dein Abo antwortet.** Die Entwürfe, die Fixes und der freie Text laufen mit Claude Code und deinem eigenen Abo, in deinem eigenen privaten Steuer-Repository, nie mit dem Schlüssel eines gemeinsamen Dienstes.
+
+## Deine Kopie
+
+Leg eine Kopie dieses Repositorys an: einen Fork oder ein eigenes Repository. `wrangler.jsonc` ist die Konfiguration einer Instanz, und ihre Werte sind die der eigenen Instanz des Maintainers; setz dort deine und committe sie, vor Schritt 2:
+
+| In `wrangler.jsonc` | Dein Wert |
+| --- | --- |
+| `name` | Der Name deines Workers, etwa `repo-pager`, den seine Adresse trägt |
+| `kv_namespaces` | Ohne `id`: Die dort nennt den Namensraum der Instanz des Maintainers, und dein erstes Deployment legt deinen eigenen an und schreibt seine Id dorthin |
+| `MAINTAINER_LOGIN` | Dein Konto auf GitHub |
+| `CONTROL_REPOSITORY` | Dein privates Steuer-Repository, das du unten anlegst und in Schritt 7 einrichtest, etwa `octocat/repo-pager-control` |
+| `LANGUAGE` | `de` für Deutsch, `en` oder leer für Englisch |
+| `CLAUDE_TOKEN_EXPIRES` | Der Tag, an dem dein Token von Claude abläuft, oder leer |
+
+Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, leer und privat, denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 fügt seinen Workflow hinzu:
+
+```sh
+CONTROL=octocat/repo-pager-control   # dein Konto und der Name deines Steuer-Repositorys
+gh repo create "$CONTROL" --private
+```
 
 ## 1. Der Bot von Telegram
 
@@ -28,7 +56,13 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-Das erste Deployment legt auch den Namensraum von Workers KV an, der den Zustand des Pagers hält, und das Durable Object, das seine Änderungen nacheinander ausführt, und nennt die Adresse des Workers, etwa `https://dennis-otto-pager.ACCOUNT.workers.dev`. Bis Schritt 3 erledigt ist, beantwortet der Worker jeden Webhook mit `503`.
+Das erste Deployment legt auch den Namensraum von Workers KV an, der den Zustand des Pagers hält, und schreibt seine Id in `wrangler.jsonc`: Committe sie, damit jedes spätere Deployment auf diesem Namensraum bleibt. Es legt auch das Durable Object an, das die Änderungen nacheinander ausführt, und nennt die Adresse des Workers, etwa `https://repo-pager.ACCOUNT.workers.dev`, die die Schritte danach aus einer Variablen der Shell nehmen:
+
+```sh
+WORKER=https://repo-pager.ACCOUNT.workers.dev   # die Adresse, die das Deployment nannte
+```
+
+Bis Schritt 3 erledigt ist, beantwortet der Worker jeden Webhook mit `503`.
 
 ## 3. Die Geheimnisse des Workers
 
@@ -52,7 +86,7 @@ WEBHOOK_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomByte
 printf %s "$WEBHOOK_SECRET" | npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 CONTROL_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")
 printf %s "$CONTROL_SECRET" | npx wrangler secret put CONTROL_SECRET
-printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/dennis-otto-pager-control
+printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R "$CONTROL"
 ```
 
 **`GITHUB_USER_TOKEN`** handelt nur für zwei Knöpfe in deinem Namen: ✅ **Senden**, das eine Antwort auf ein Issue oder einen Pull Request postet, die du freigegeben hast, und 🤖 **Assistent nochmal**, das den Issue-Assistenten über seine Ein-Kommentar-Regel hinaus startet; der Issue-Assistent fragt GitHub nach der Rolle der Person, die ihn gestartet hat, und eine App hat keine. Leg ein [fein granuliertes Token](https://github.com/settings/personal-access-tokens/new) für dein Konto und deine Repositorys an, mit diesen Rechten und keinen anderen:
@@ -74,10 +108,10 @@ Ohne es arbeitet der Pager auch, und diese zwei Knöpfe sagen, was fehlt. Ein fe
 Die App schickt die Ereignisse deiner Repositorys an den Worker und merged ein Release und startet die gescheiterten Jobs eines Laufs erneut, mit ihren eigenen, eingeschränkten Tokens. `github-app.json` ist ihr Manifest, mit den geringsten Rechten, die der Pager braucht. Registriere sie mit der Adresse deines Workers:
 
 ```sh
-node scripts/register-app.mjs https://dennis-otto-pager.ACCOUNT.workers.dev
+node scripts/register-app.mjs "$WORKER"
 ```
 
-Öffne die Adresse, die es ausgibt, in dem Browser, der bei GitHub angemeldet ist, und bestätige die App. Das Skript legt ihre App-ID, ihren privaten Schlüssel und das Geheimnis ihres Webhooks in die Geheimnisse des Workers, ohne Datei, und nennt die Seite, die sie installiert. **Installiere die App** auf den Repositorys, die der Pager beobachtet, **und auf `Dennis-Otto/dennis-otto-pager-control`**, wohin er die Entwürfe, die Fixes und den freien Text schickt.
+Öffne die Adresse, die es ausgibt, in dem Browser, der bei GitHub angemeldet ist, und bestätige die App. GitHub zeigt ihren Namen, *Repo Pager*, in einem Feld über dem Knopf: Der Name einer App ist auf GitHub einmalig, also gib deiner dort einen eigenen, mit höchstens 34 Zeichen, etwa *Repo Pager of octocat*. Das Skript legt ihre App-ID, ihren privaten Schlüssel und das Geheimnis ihres Webhooks in die Geheimnisse des Workers, ohne Datei, und nennt die Seite, die sie installiert. **Installiere die App** auf den Repositorys, die der Pager beobachtet, **und auf deinem Steuer-Repository**, wohin er die Entwürfe, die Fixes und den freien Text schickt.
 
 Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 
@@ -108,7 +142,7 @@ Sag Telegram, wohin es die Updates schicken soll, mit dem Geheimnis aus Schritt 
 
 ```sh
 curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
-  -d url=https://dennis-otto-pager.ACCOUNT.workers.dev/telegram \
+  -d url="$WORKER/telegram" \
   -d secret_token="$WEBHOOK_SECRET" \
   -d 'allowed_updates=["message","callback_query"]' \
   -d max_connections=1
@@ -125,11 +159,11 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 ## 7. Das Steuer-Repository
 
-Das private Repository `Dennis-Otto/dennis-otto-pager-control` entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`; seine README nennt jeden Schritt. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Fix starten** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
+Dein privates Steuer-Repository, das `CONTROL_REPOSITORY` nennt, entwirft die Antworten, startet die Fixes und beantwortet den freien Text, mit Claude Code und `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`. [So arbeitet er](how-it-works.md#das-steuer-repository) beschreibt den Vertrag zwischen beiden: die Ereignisse, die der Pager ihm schickt, und die signierten Antworten, die der Pager annimmt. Der Workflow des eigenen Steuer-Repositorys des Maintainers ist privat, also antwortet ein eigener Workflow nach diesem Vertrag. Neben dem Token von Claude und `PAGER_CONTROL_SECRET` aus Schritt 3 braucht es die Adresse des Workers und für 🛠 **Fix starten** einen fein granulierten Token von dir für die beobachteten Repositorys, mit *Contents*, *Pull requests* und *Workflows* zum Lesen und Schreiben, der den Pull Request eines Fixes eröffnet:
 
 ```sh
-gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https://dennis-otto-pager.ACCOUNT.workers.dev
-gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
+gh variable set PAGER_URL -R "$CONTROL" --body "$WORKER"
+gh secret set PAGER_FIX_TOKEN -R "$CONTROL"
 ```
 
 Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass sie an das Steuer-Repository ging, und seine Antwort kommt in ein, zwei Minuten und macht ein 👍 daraus. Ein 😢 sagt, dass keine Antwort zustande kam: Der Job schlug fehl oder antwortete nicht binnen einer Stunde, und der Lauf des Workflows im Actions-Tab des Steuer-Repositorys sagt, warum. Bis das Steuer-Repository eingerichtet ist, schicken seine Knöpfe ihre Ereignisse, und die Zusammenfassung seines Laufs zeigt die Antwort statt des Chats.
@@ -137,11 +171,11 @@ Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass
 ## Später
 
 - **Deine Tokens laufen ab,** und der Pager erinnert dich drei Wochen vor jedem, in einem eigenen Thema, mit dem Weg, es zu erneuern; ✅ **Erneuert** schließt die Erinnerung:
-  - **Das Token von Claude** im Steuer-Repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control` und ändere dann den Tag in einem Pull Request.
+  - **Das Token von Claude** im Steuer-Repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"` und ändere dann den Tag in einem Pull Request.
   - **`GITHUB_USER_TOKEN`** des Workers: GitHub nennt seinen Tag in den Antworten seiner API, die der Pager einmal am Tag liest. Erzeug es auf der Seite deiner [feingranularen Tokens](https://github.com/settings/personal-access-tokens) neu, mit einem neuen Tag, und setz es mit `npx wrangler secret put GITHUB_USER_TOKEN`; nach einem neuen Token fragt der Pager GitHub sofort. Lehnt GitHub das Token ab, weil es abgelaufen ist oder widerrufen wurde, sagt die Erinnerung das, und ✅ **Senden** und 🤖 **Assistent nochmal** auch.
-  - **`PAGER_FIX_TOKEN`** des Steuer-Repositorys: Seine tägliche Prüfung *Health* liest den Tag bei GitHub und schickt ihn mit. Erzeug es genauso neu und setz es mit `gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control`.
+  - **`PAGER_FIX_TOKEN`** des Steuer-Repositorys: Seine tägliche Prüfung *Health* liest den Tag bei GitHub und schickt ihn mit. Erzeug es genauso neu und setz es mit `gh secret set PAGER_FIX_TOKEN -R "$CONTROL"`.
 - **Der Zustand des Pagers:** Der Workflow *Health* des Steuer-Repositorys fragt den Pager einmal am Tag, wie es ihm geht, wie [So arbeitet er](how-it-works.md#wenn-der-pager-kaputtgeht) beschreibt, was etwa eine Minute seiner Actions-Minuten kostet. Sein Lauf scheitert, wenn der Zeitplan steht, Telegram den Bot ablehnt oder sein Webhook am letzten Tag einen Fehler gemeldet hat, GitHub die App ablehnt oder ein Token innerhalb einer Woche abläuft; GitHub benachrichtigt dich dann von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist. Starte ihn von Hand im Actions-Tab, um den Pager nach einer Änderung zu prüfen.
 - **Ein Geheimnis ist durchgesickert:** Setz ein neues mit `npx wrangler secret put NAME`; für die App erzeuge in ihren Einstellungen einen neuen privaten Schlüssel und setz `GITHUB_APP_PRIVATE_KEY`; für den Bot `/revoke` bei @BotFather, dann `TELEGRAM_BOT_TOKEN` und Schritt 5 noch einmal.
 - **Wie lange „Später“ wartet**, steht in `LATER_HOURS` in `wrangler.jsonc`.
-- **Die Mails von GitHub Actions** können aus sein, sobald der Pager jeden [Workflow meldet, der auf `main` scheitert](how-it-works.md#ein-workflow-der-auf-main-scheitert): In den Einstellungen deines Kontos auf GitHub, unter *Notifications*, *System*, *Actions*, nimm den Haken bei *Email* heraus, aber lass *Web and Mobile* an und schau in deine Benachrichtigungen auf github.com oder in der GitHub-App: Der Pager kann ein Scheitern seiner selbst nicht melden, also erreicht dich der gescheiterte Lauf von *Health* des Steuer-Repositorys nur noch so, sobald *Email* aus ist. Willst du ihn lieber weiter als Mail, lass *Email* an und filtere stattdessen deine Mails: Behalte die Mails von Actions aus `Dennis-Otto/dennis-otto-pager-control` und verwirf die anderen. Ein Lauf eines Pull Requests zeigt sich weiter im Pull Request.
+- **Die Mails von GitHub Actions** können aus sein, sobald der Pager jeden [Workflow meldet, der auf `main` scheitert](how-it-works.md#ein-workflow-der-auf-main-scheitert): In den Einstellungen deines Kontos auf GitHub, unter *Notifications*, *System*, *Actions*, nimm den Haken bei *Email* heraus, aber lass *Web and Mobile* an und schau in deine Benachrichtigungen auf github.com oder in der GitHub-App: Der Pager kann ein Scheitern seiner selbst nicht melden, also erreicht dich der gescheiterte Lauf von *Health* des Steuer-Repositorys nur noch so, sobald *Email* aus ist. Willst du ihn lieber weiter als Mail, lass *Email* an und filtere stattdessen deine Mails: Behalte die Mails von Actions aus deinem Steuer-Repository und verwirf die anderen. Ein Lauf eines Pull Requests zeigt sich weiter im Pull Request.
 - **Die Sprache** des Pagers steht in `LANGUAGE` in `wrangler.jsonc`: `de` für Deutsch, `en` oder leer für Englisch. Sie bestimmt jeden Text, den der Pager schickt, und der Worker gibt sie jedem Job an das Steuer-Repository mit, dessen Antworten ihr folgen. Eine Nachricht, die der Pager schon gezeigt hat, nimmt die neuen Worte, sobald sich ihre Sache ändert. Nach einer Änderung stell den Worker neu bereit, wie [Releases and Cloudflare](releases.md) beschreibt.

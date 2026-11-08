@@ -1,8 +1,8 @@
 # Roadmap
 
-[← README](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/README.de.md) · [So arbeitet er](how-it-works.md) · [Architecture](architecture.md) · [Security design](security.md)
+[← README](https://github.com/Dennis-Otto/repo-pager/blob/main/README.de.md) · [So arbeitet er](how-it-works.md) · [Architecture](architecture.md) · [Security design](security.md)
 
-Was der Pager in den nächsten zwölf Monaten vorhat, bis November 2027, und was er nicht tun wird. Das ist eine Richtung, kein Versprechen: Was seinem Maintainer im Alltag fehlt, bestimmt die Reihenfolge. Ideen sind als [Feature Requests](https://github.com/Dennis-Otto/dennis-otto-pager/issues/new?template=feature_request.yml) oder in den [Diskussionen](https://github.com/Dennis-Otto/dennis-otto-pager/discussions) willkommen.
+Was der Pager in den nächsten zwölf Monaten vorhat, bis November 2027, und was er nicht tun wird. Das ist eine Richtung, kein Versprechen: Was seinem Maintainer im Alltag fehlt, bestimmt die Reihenfolge. Ideen sind als [Feature Requests](https://github.com/Dennis-Otto/repo-pager/issues/new?template=feature_request.yml) oder in den [Diskussionen](https://github.com/Dennis-Otto/repo-pager/discussions) willkommen.
 
 ## Die nächsten zwölf Monate
 
@@ -12,7 +12,7 @@ Der Pager tut, wofür er gebaut ist: Er meldet seinem Maintainer nur, was ihn br
 - **Weniger Schritte für das, was sich wiederholt.** Ein nächster Schritt, den die Antworten des Steuer-Repositorys immer wieder vorschlagen, kann ein eigener Knopf der Positivliste werden, wie 🔁 **Neu starten** einer wurde. Ein Knopf handelt weiterhin nur, solange seine Sache ihn anbietet, und Claude schlägt weiterhin nur vor ([Entscheidung 0002](decisions/0002-buttons-of-an-allowlist-act-and-claude-only-proposes.md)).
 - **Änderungen von Telegram, GitHub und Cloudflare.** Neue Versionen der Bot API von Telegram, der Webhooks und APIs von GitHub und der Laufzeit von Cloudflare, mit ihrem Kompatibilitätsdatum, übernimmt der Pager, sobald die Tests in workerd mit ihnen bestehen.
 - **Die kostenlosen Tarife.** Der Pager bleibt in den kostenlosen Tarifen von Cloudflare und Telegram: ein Schreibvorgang in Workers KV je Änderung einer Sache und ein Lauf des Zeitplans alle 15 Minuten.
-- **Fehlerbehebungen und Sicherheit** gehen allem Neuen vor; [SECURITY.md](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/SECURITY.md) nennt die Fristen. Die Update-Bots und der [Repository-Blueprint](https://github.com/Dennis-Otto/repo-blueprint) halten die Werkzeuge, die Workflows und die Prüfungen aktuell.
+- **Fehlerbehebungen und Sicherheit** gehen allem Neuen vor; [SECURITY.md](https://github.com/Dennis-Otto/repo-pager/blob/main/SECURITY.md) nennt die Fristen. Die Update-Bots und der [Repository-Blueprint](https://github.com/Dennis-Otto/repo-blueprint) halten die Werkzeuge, die Workflows und die Prüfungen aktuell.
 
 ## Ideen
 
@@ -24,7 +24,7 @@ Noch ohne Termin; eine Diskussion ist der Ort, um zu sagen, dass dir eine wichti
 
 ## Erledigt
 
-Die größeren Arbeiten der bisherigen Releases; der [Changelog](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/CHANGELOG.md) nennt jede Änderung.
+Die größeren Arbeiten der bisherigen Releases; der [Changelog](https://github.com/Dennis-Otto/repo-pager/blob/main/CHANGELOG.md) nennt jede Änderung.
 
 - **Eine Nachricht je Sache, mit Knöpfen** (0.1.0): ein Beitrag von außen, eine Prüfung oder ein Release, die auf `main` fehlschlagen, eine Warnung des Code Scannings, ein grüner Release-Pull-Request und das Token von Claude, bevor es abläuft, jeweils mit einem Knopf der Positivliste erledigt.
 - **Entwürfe, Fixes und freier Text im privaten Steuer-Repository** (0.1.0), mit Claude Code und dem eigenen Abo des Maintainers, und die Zeile unter jeder Antwort, die ihr Modell, ihren Aufwand und ihre Tokens nennt (0.2.0).

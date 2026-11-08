@@ -5,9 +5,9 @@ config:
 ---
 flowchart TB
     accTitle: The reaction on a text
-    accDescr: Dennis writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.
+    accDescr: The maintainer writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.
 
-    dennis["Dennis writes a text to the bot"]
+    dennis["The maintainer writes a text to the bot"]
     taken["`**👀** The pager sends it to the control repository, which runs Claude`"]
     answered["`**👍** The answer or a proposal came, with its footer, such as Opus 5.5 · high · 48,213 tokens`"]
     failed["`**😢** No answer: the job failed, or none came within an hour`"]

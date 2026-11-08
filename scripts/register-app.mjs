@@ -5,7 +5,7 @@
 // secrets of the Worker with `wrangler secret put`, without a file or an output
 // that holds them. docs/setup.md shows the step in its order.
 //
-//   node scripts/register-app.mjs https://dennis-otto-pager.ACCOUNT.workers.dev
+//   node scripts/register-app.mjs https://repo-pager.ACCOUNT.workers.dev
 //
 // It needs `npx wrangler login` before, as the first deployment does.
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ import { createServer } from "node:http";
 const worker = process.argv[2]?.replace(/\/+$/, "") ?? "";
 if (!/^https:\/\/[a-z0-9.-]+$/i.test(worker)) {
   console.error(
-    "Name the address of the Worker, such as https://dennis-otto-pager.ACCOUNT.workers.dev",
+    "Name the address of the Worker, such as https://repo-pager.ACCOUNT.workers.dev",
   );
   process.exit(2);
 }
@@ -61,7 +61,7 @@ async function convert(code) {
       method: "POST",
       headers: {
         accept: "application/vnd.github+json",
-        "user-agent": "dennis-otto-pager",
+        "user-agent": "repo-pager",
       },
     },
   );

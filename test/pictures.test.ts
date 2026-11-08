@@ -254,6 +254,9 @@ describe("the report of a visual check", () => {
         },
         // A check that writes the difference of a PNG by its path, without its name.
         { path: "docs/e.png", status: "changed", share: 0.3 },
+        // Its end in capitals is a PNG all the same, as the checks see it.
+        { path: "docs/E.PNG", status: "changed", share: 0.3 },
+        { path: "docs/e.xpng", status: "changed", share: 0.3 },
         { path: "docs/f.png", status: "changed", share: null },
         { path: "docs/g.webp", status: "changed", share: 0.3 },
         {
@@ -276,6 +279,8 @@ describe("the report of a visual check", () => {
       ["en/c.webp", "en/c.difference.png"],
       ["docs/d.png", "diff/docs/d.png"],
       ["docs/e.png", "diff/docs/e.png"],
+      ["docs/E.PNG", "diff/docs/E.PNG"],
+      ["docs/e.xpng", null],
       ["docs/f.png", null],
       ["docs/g.webp", null],
       ["docs/h.png", null],
@@ -690,7 +695,7 @@ describe("the text of the pictures", () => {
         "• <code>d.png</code>: deleted",
         "• <code>e.png</code>: changed, < 0.01 % of its pixels",
         "• <code>f.png</code>: changed, 100 % of its pixels",
-        "📸 Before and after below: 2 of 6.",
+        "📸 The album below: 2 of 6.",
         `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
       ].join("\n"),
     );
@@ -896,7 +901,7 @@ describe("the pictures of a pull request", () => {
     const [message] = w.net.telegram("sendMessage");
     expect(message?.body.message_thread_id).toBe(900);
     expect(message?.body.text).toContain("<b>4 pictures look different</b>");
-    expect(message?.body.text).toContain("📸 Before and after below: 3 of 4.");
+    expect(message?.body.text).toContain("📸 The album below: 3 of 4.");
     // The artifact holds no difference, so the link promises no red.
     expect(message?.body.text).toContain(
       `<a href="${CHECK}">All of them before and after</a>`,

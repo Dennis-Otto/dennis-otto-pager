@@ -86,7 +86,7 @@ const en = {
     "🖼 <b>{count} pictures look different</b> in {repo} at {sha}: {link}",
   "message.picturesSame":
     "🖼 <b>Every picture looks as committed again</b> in {repo} at {sha}: {link}",
-  "message.album": "📸 Before and after below: {shown} of {count}.",
+  "message.album": "📸 The album below: {shown} of {count}.",
   "message.noAlbum":
     "📸 No album: none of them is a PNG or WebP that Telegram shows as a photo.",
   "message.check": "All of them before and after",
@@ -375,7 +375,7 @@ const de: Catalog = {
     "🖼 <b>{count} Bilder sehen anders aus</b> in {repo} bei {sha}: {link}",
   "message.picturesSame":
     "🖼 <b>Jedes Bild sieht wieder so aus wie committet</b> in {repo} bei {sha}: {link}",
-  "message.album": "📸 Vorher und nachher unten: {shown} von {count}.",
+  "message.album": "📸 Das Album unten: {shown} von {count}.",
   "message.noAlbum":
     "📸 Kein Album: Keines davon ist ein PNG oder WebP, das Telegram als Foto zeigt.",
   "message.check": "Alle vorher und nachher",

@@ -10,7 +10,7 @@ The album of a visual change ([decision 0007](0007-the-pictures-of-a-visual-chan
 - The album never held a picture of the difference: it sent the sides of each picture and nothing else.
 - The visual checks of the fleet drew a difference only for a PNG, at `diff/<path>`, and paperless-unified-search has no PNG among its pictures, so its artifacts never held a red pixel. homedarts-for-autodarts draws one for PNG and WebP as well, and names it as `difference` in its report.
 
-The blueprint's `keep` draws the difference of every picture whose size and frames stayed, for WebP and GIF as well, as a PNG at `diff/<path>`, `.png` added unless the path ends in it, names it as `diff` in its entry, and marks a small change so that it stays visible scaled down to the width of a phone. The checks of the repositories take it over in packages of their own.
+With a coming release of the blueprint, its `keep` draws the difference of every picture whose size and frames stayed, for WebP and GIF as well, as a PNG at `diff/<path>`, `.png` added unless the path ends in it, names it as `diff` in its entry, and marks a small change so that it stays visible scaled down to the width of a phone. The checks of the repositories take it over in packages of their own.
 
 ## Options
 

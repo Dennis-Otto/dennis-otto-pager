@@ -103,7 +103,7 @@ function differenceOf(
   if (named !== undefined) {
     return named;
   }
-  return share !== null && path.endsWith(".png") ? `diff/${path}` : null;
+  return share !== null && /\.png$/i.test(path) ? `diff/${path}` : null;
 }
 
 /**

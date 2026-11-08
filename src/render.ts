@@ -18,6 +18,7 @@ import {
   MAX_QUESTION,
   type Pictures,
   type Release,
+  type Workflow,
 } from "./store.ts";
 import type { Texts } from "./texts.ts";
 
@@ -183,6 +184,7 @@ const STATES = [
   "merging",
   "merged",
   "done",
+  "rerunning",
 ] as const;
 
 type Named = (typeof STATES)[number];
@@ -327,6 +329,34 @@ function advisoryText(item: Advisory, t: Texts): string {
 }
 
 /**
+ * A workflow that fails on the default branch: the jobs that failed last, each
+ * linked to its log, or the run where GitHub didn't list them, and how often and
+ * when it failed since it last passed.
+ */
+function workflowText(item: Workflow, t: Texts): string {
+  const head = t("message.workflow", {
+    name: html(item.name, 100),
+    branch: html(item.branch, 100),
+    repo: repoLink(item.repo),
+  });
+  const failed =
+    item.jobs.length === 0
+      ? link(t("message.run"), item.url)
+      : t("message.jobs", {
+          jobs: item.jobs.map((job) => link(job.name, job.url)).join(", "),
+        });
+  const when =
+    item.count > 1
+      ? t("message.failedTimes", {
+          count: item.count,
+          since: t.time(item.since),
+          time: t.time(item.last),
+        })
+      : t("message.failedOnce", { time: t.time(item.last) });
+  return [head, failed, when].join("\n");
+}
+
+/**
  * What a thing is. A contribution quotes the start of what it says in the room
  * that the rest of its message leaves, so that the whole stays within MAX_MESSAGE.
  */
@@ -358,6 +388,8 @@ function body(item: Item, t: Texts, room: number): string {
           t,
         ),
       });
+    case "workflow":
+      return workflowText(item, t);
     case "alert":
       return t("message.alert", {
         repo: html(item.repo),

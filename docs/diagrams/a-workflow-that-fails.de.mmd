@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Ein Workflow, der auf main scheitert
+    accDescr: Ein Lauf eines Workflows scheitert auf main, bei einem Push, einem Zeitplan, einem Bot oder einem Start von Hand. Ein Neustart, der auch scheiterte, zeigt sich sofort. Ein erster Versuch wartet zehn Minuten ungesehen, denn der Bot der Checks startet die Tests und ein Release neu. Wird sein Neustart grün, zeigt sich nichts. Sonst kommt eine Nachricht für den Workflow, die benachrichtigt: die gescheiterten Jobs, jeder mit seinem Log verlinkt, mit Neu starten und Ignorieren. Jeder Lauf, der wieder scheitert, ändert sie an Ort und Stelle, mit wie oft und wann. Ein Lauf, der die gescheiterten Jobs besteht, macht sie grün, und der nächste Fehlschlag öffnet eine neue Nachricht in ihrem Thema.
+
+    failed["`**🔴** Ein Lauf eines Workflows scheitert auf main`"]
+    first{"Sein erster Versuch?"}
+    wait["`**⏳** Er wartet 10 Minuten ungesehen auf einen Neustart`"]
+    quiet["`**✅** Der Neustart wird grün: Nichts zeigt sich`"]
+    message["`**📨** Eine Nachricht für den Workflow, die benachrichtigt: die gescheiterten Jobs, 🔁 Neu starten, ✖ Ignorieren`"]
+    again["`**✏️** Ein Lauf scheitert wieder: Die Nachricht zählt ihn, mit seiner Zeit, an Ort und Stelle`"]
+    green["`**✅** Ein Lauf besteht die gescheiterten Jobs: wieder grün`"]
+
+    failed --> first
+    first -- "ja" --> wait
+    first -- "nein: ein Neustart, der auch scheiterte" --> message
+    wait -- "der Neustart wird grün" --> quiet
+    wait -- "kein Neustart, oder er scheitert" --> message
+    message --> again
+    again --> green
+    message --> green
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class first,wait,message,again bot
+    class quiet,green done
+    class failed warn

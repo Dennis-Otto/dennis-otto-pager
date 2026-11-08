@@ -106,6 +106,17 @@ export function allowed(item: Item): Action[] {
       // A report under embargo: what it says stays on GitHub, where it is dealt
       // with, so neither 🛠 Start fix nor a draft of Claude sees it.
       return item.state === "open" ? ["later", "ignore"] : [];
+    case "workflow":
+      // 🔁 Rerun runs the failed jobs of its newest run again, which costs no
+      // run of Claude; one that runs again waits for its end.
+      switch (item.state) {
+        case "failing":
+          return ["rerun", "ignore"];
+        case "rerunning":
+          return ["ignore"];
+        default:
+          return [];
+      }
     case "release":
       return item.state === "ready" ? ["merge", "later", "ignore"] : [];
     case "pictures":

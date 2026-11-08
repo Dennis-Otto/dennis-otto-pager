@@ -106,6 +106,8 @@ export interface Payload {
     head_branch?: string | null;
     head_sha?: string;
     run_attempt?: unknown;
+    /** The repository whose code the run ran: another one for a pull request of a fork. */
+    head_repository?: { full_name?: string } | null;
     /** The pull requests of the repository itself whose head the run ran on; none of a fork. */
     pull_requests?: { number?: number; head?: { sha?: string } }[];
   };
@@ -166,7 +168,8 @@ export interface Payload {
   };
 }
 
-interface Where {
+/** The repository of an event and the installation of the app on it. */
+export interface Where {
   repo: string;
   installation: number;
 }
@@ -243,8 +246,29 @@ export type Signal = Where &
         failed: boolean;
         branch: string;
         url: string;
-        /** The run of GitHub Actions of the check, if it is one. */
+      }
+    | {
+        type: "workflow";
+        /** The file of the workflow, such as .github/workflows/docs.yml, which keys its thing. */
+        path: string;
+        name: string;
+        /** The default branch, which the run ran on. */
+        branch: string;
+        failed: boolean;
+        run: number;
+        /** The attempt of the run that ended, from 1 on. */
+        attempt: number;
+        /** The address of that attempt. */
+        url: string;
+      }
+    | {
+        type: "health";
+        /** The run that the issue of the bot-health bot names, which the pager reads; none when it names none. */
         run?: number;
+        /** The default branch, which the bot looks at. */
+        branch: string;
+        /** What the issue becomes when its run can't be read: an entry of the alarm, as before. */
+        fallback: { type: "failing" | "still-failing" } & Failure;
       }
     | { type: "release-check"; numbers: number[] }
     | { type: "release-updated"; number: number; sha: string }
@@ -478,19 +502,34 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
   const issue = payload.issue;
   const number = issue?.number ?? 0;
   if (labels(payload).includes(BOT_FAILURE) && isBot(issue?.user)) {
+    const run = healthRun(issue?.body);
     const failure: Failure = {
       key: `issue:${number}`,
       label: { key: "entry.bot", values: { title: issue?.title ?? "" } },
       url: issue?.html_url ?? "",
-      ...withRun(healthRun(issue?.body)),
+      ...withRun(run),
     };
-    if (payload.action === "opened" || payload.action === "reopened") {
-      return { signal: { ...at, type: "failing", ...failure } };
-    }
     // Each new failure of its bot edits the open issue, with the run that failed
-    // now: its entry follows, and a rerun that failed again shows as failed.
-    if (payload.action === "edited" && issue?.state === "open") {
-      return { signal: { ...at, type: "still-failing", ...failure } };
+    // now. The pager reads that run and takes it as the event of its workflow,
+    // whose thing knows it already when its event came: the issue pages only for
+    // a failure that the pager missed, and only as an entry of the alarm when the
+    // run can't be read.
+    let type: "failing" | "still-failing" | null = null;
+    if (payload.action === "opened" || payload.action === "reopened") {
+      type = "failing";
+    } else if (payload.action === "edited" && issue?.state === "open") {
+      type = "still-failing";
+    }
+    if (type !== null) {
+      return {
+        signal: {
+          ...at,
+          type: "health",
+          ...withRun(run),
+          branch: payload.repository?.default_branch ?? "",
+          fallback: { type, ...failure },
+        },
+      };
     }
     if (payload.action === "closed") {
       return { signal: { ...at, type: "recovered", key: `issue:${number}` } };
@@ -742,15 +781,23 @@ function checkRun(payload: Payload, at: Where): Outcome {
   if (!FAILED.has(conclusion) && !PASSED.has(conclusion)) {
     return { ignored: `a check run that ended ${conclusion}` };
   }
+  const name = run?.name ?? "";
+  // A job of GitHub Actions is a part of its workflow run, which pages as a thing
+  // of its own, once a rerun can't help any more. Its pass still takes out an
+  // entry of the alarm that the pager kept for it before it paged workflows.
+  if (checkRunOf(run?.html_url ?? "") !== undefined) {
+    return FAILED.has(conclusion)
+      ? { ignored: "a job of a workflow, whose run pages" }
+      : { signal: { ...at, type: "recovered", key: `check:${name}` } };
+  }
   return {
     signal: {
       ...at,
       type: "check",
-      name: run?.name ?? "",
+      name,
       failed: FAILED.has(conclusion),
       branch,
       url: run?.html_url ?? "",
-      ...withRun(checkRunOf(run?.html_url ?? "")),
     },
   };
 }
@@ -791,10 +838,10 @@ function attemptUrl(run: Payload["workflow_run"]): string {
  * head: its artifact may hold pictures that look different. Whose pull request it
  * is, and whether a picture changed, the pager asks GitHub then.
  */
-function visualCheck(run: Payload["workflow_run"], at: Where): Outcome {
-  if (run?.event !== "pull_request") {
-    return { ignored: "a visual check outside a pull request" };
-  }
+function visualCheck(
+  run: NonNullable<Payload["workflow_run"]>,
+  at: Where,
+): Outcome {
   if (run.conclusion !== "success") {
     return { ignored: `a visual check that ended ${run.conclusion}` };
   }
@@ -817,17 +864,87 @@ function visualCheck(run: Payload["workflow_run"], at: Where): Outcome {
   };
 }
 
+/** The events of the runs of a pull request, whose checks show on the pull request itself. */
+const PULL_EVENTS: ReadonlySet<string> = new Set([
+  "pull_request",
+  "pull_request_target",
+]);
+
+/**
+ * A run of any workflow but those of a release that failed or passed on the
+ * default branch of the repository itself, such as one of a push, of a schedule,
+ * of a bot or started by hand: a failure is a thing of its workflow, which the
+ * pager shows once a rerun can't help any more, and a pass may end it. A run of a
+ * pull request, of another branch or of a fork, and one that was cancelled or
+ * skipped, mean nothing.
+ */
+function mainRun(
+  run: Payload["workflow_run"],
+  at: Where,
+  branch: string,
+): Outcome {
+  if (PULL_EVENTS.has(run?.event ?? "")) {
+    return { ignored: "a workflow run of a pull request" };
+  }
+  if (branch === "" || run?.head_branch !== branch) {
+    return { ignored: "a workflow run of another branch" };
+  }
+  if ((run.head_repository?.full_name ?? at.repo) !== at.repo) {
+    return { ignored: "a workflow run of a fork" };
+  }
+  const conclusion = run.conclusion ?? "";
+  const failed = FAILED.has(conclusion);
+  if (!failed && conclusion !== "success") {
+    return { ignored: `a workflow run that ended ${conclusion}` };
+  }
+  const id = runId(run.id);
+  const path = run.path ?? "";
+  if (id === undefined || path === "") {
+    return { ignored: "a workflow run that names no run or no workflow" };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "workflow",
+      path,
+      name: run.name || path,
+      branch,
+      failed,
+      run: id,
+      attempt: runId(run.run_attempt) ?? 1,
+      url: attemptUrl(run),
+    },
+  };
+}
+
 function workflowRun(payload: Payload, at: Where): Outcome {
-  const run = payload.workflow_run;
-  const path = run?.path ?? "";
   if (payload.action !== "completed") {
     return { ignored: `a workflow run ${payload.action}` };
   }
-  if (path === VISUAL_WORKFLOW) {
+  return finishedRun(
+    payload.workflow_run,
+    at,
+    payload.repository?.default_branch ?? "",
+  );
+}
+
+/**
+ * What a run of GitHub Actions that ended means, on a repository with this
+ * default branch: as the event of its end says, and as the pager reads the run
+ * that an issue of the bot-health bot names.
+ */
+export function finishedRun(
+  run: Payload["workflow_run"],
+  at: Where,
+  branch: string,
+): Outcome {
+  const path = run?.path ?? "";
+  // A visual check outside a pull request is a workflow like any other.
+  if (path === VISUAL_WORKFLOW && run?.event === "pull_request") {
     return visualCheck(run, at);
   }
-  if (!RELEASE_WORKFLOWS.has(path) || run?.event === "pull_request") {
-    return { ignored: "a workflow run of no release" };
+  if (!RELEASE_WORKFLOWS.has(path) || PULL_EVENTS.has(run?.event ?? "")) {
+    return mainRun(run, at, branch);
   }
   const conclusion = run?.conclusion ?? "";
   const key = `workflow:${path}`;

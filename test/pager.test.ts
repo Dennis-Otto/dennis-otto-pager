@@ -6,6 +6,7 @@ import { MAX_EXCERPT, NOTES_MARK } from "../src/content.ts";
 import { apply, QUIET, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
 import {
+  type Alarm,
   type Contribution,
   type Item,
   itemId,
@@ -912,7 +913,7 @@ describe("the alarm of a repository", () => {
     expect(await stored(w, keys.alarm(REPO))).toMatchObject({
       entries: [{ key: "issue:5", run: 32 }],
     });
-    // A check of GitHub Actions names its run as well.
+    // A check of another app names no run.
     w.net.on("GET", /\/rules\/branches\/main$/, () =>
       json([
         {
@@ -927,12 +928,11 @@ describe("the alarm of a repository", () => {
       name: "lint",
       failed: true,
       branch: "main",
-      url: `https://github.com/${REPO}/actions/runs/50/job/1`,
-      run: 50,
+      url: `https://github.com/${REPO}/runs/1`,
     });
-    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
-      entries: [{ run: 32 }, { key: "check:lint", run: 50 }],
-    });
+    const entries = ((await stored(w, keys.alarm(REPO))) as Alarm).entries;
+    expect(entries).toMatchObject([{ run: 32 }, { key: "check:lint" }]);
+    expect(entries[1]?.run).toBeUndefined();
     // The last entry goes: the alarm is closed, and an edit opens nothing.
     for (const key of ["issue:5", "check:lint"]) {
       await apply(w.context, { ...at, type: "recovered", key });

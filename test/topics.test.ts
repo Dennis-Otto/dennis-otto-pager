@@ -191,13 +191,13 @@ describe("a topic per thing", () => {
     const expected = {
       en: [
         "🚨 demo needs you",
-        "🛡 Code scanning in demo",
+        "🛡 Security in demo",
         "📦 demo 1.2.3",
         "🔔 Token of Claude",
       ],
       de: [
         "🚨 demo braucht dich",
-        "🛡 Code Scanning in demo",
+        "🛡 Sicherheit in demo",
         "📦 demo 1.2.3",
         "🔔 Claude-Token",
       ],
@@ -744,9 +744,7 @@ describe("what a text in a topic tells about its thing", () => {
     }));
     const told = about({ ...alert, entries }, START, t);
     expect(told.links).toHaveLength(MAX_LINKS);
-    expect(told.links[0]).toBe(
-      `https://github.com/${REPO}/security/code-scanning`,
-    );
+    expect(told.links[0]).toBe(`https://github.com/${REPO}/security`);
     const long = about(
       issue({ state: "draft", draft: "x".repeat(3000), draftVersion: 1 }),
       START,

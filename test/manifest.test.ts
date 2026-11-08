@@ -29,6 +29,11 @@ describe("the manifest of the GitHub App", () => {
       issues: "read",
       metadata: "read",
       pull_requests: "read",
+      // The private vulnerability reports, and the state of one in triage,
+      // which the reminder on the day before its acknowledgement reads.
+      repository_advisories: "read",
+      // The alerts of secret scanning, and the file of each.
+      secret_scanning_alerts: "read",
       // The events of code scanning.
       security_events: "read",
     });
@@ -44,6 +49,6 @@ describe("the manifest of the GitHub App", () => {
       );
       expect(outcome).not.toEqual({ ignored: `the event ${event}` });
     }
-    expect(manifest.default_events).toHaveLength(10);
+    expect(manifest.default_events).toHaveLength(12);
   });
 });

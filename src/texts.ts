@@ -60,7 +60,11 @@ const en = {
   "message.otherDraft":
     "🤖 <b>Another draft came</b> for {thing}, but your own text stays the reply. Only for you to read:\n<blockquote>{draft}</blockquote>",
   "message.alarm": "🚨 <b>{repo} needs you</b>\n{entries}",
-  "message.alert": "🛡 <b>Code scanning in {repo}</b>\n{entries}",
+  "message.alert": "🛡 <b>Security in {repo}</b>\n{entries}",
+  "message.advisory":
+    "🔐 <b>Vulnerability report in {repo}</b>\n{link} · severity: {severity}",
+  "message.advisoryDue":
+    "📅 Acknowledge it by {acknowledge} and assess it by {assess}, as SECURITY.md promises. What it says stays on GitHub until it is published.",
   "message.more": "… and {count} more",
   "message.rerunning": "🔁 running again…",
   "message.release": "📦 <b>Release {version}</b> of {repo}: {link}",
@@ -101,6 +105,10 @@ const en = {
   "entry.delivery": "An event of GitHub fails: {event}",
   "entry.alert": "{severity}: {what}",
   "entry.alertAt": "{severity}: {what} in {path}",
+  "entry.secret": "🔑 {what}",
+  "entry.secretAt": "🔑 {what} in {path}",
+  "entry.secretPublic": "🔑 {what}, leaked in public too",
+  "entry.secretPublicAt": "🔑 {what} in {path}, leaked in public too",
 
   "blocker.closed": "it isn't open",
   "blocker.branch": "it isn't a release pull request",
@@ -154,6 +162,8 @@ const en = {
     "💬 You replied on GitHub, so the pager sends nothing.",
   "note.answerChosen": "✅ An answer was marked on GitHub.",
   "note.closedOnGitHub": "Closed on GitHub.",
+  "note.advisoryDue":
+    "⏰ Still in triage on GitHub: acknowledge it by {date}, as SECURITY.md promises.",
   "note.discussionDeleted": "Deleted on GitHub.",
   "note.ownDraft":
     "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
@@ -191,19 +201,26 @@ const en = {
   "effort.xhigh": "extra high",
   "effort.max": "max",
 
-  "proposal.codeScanning": "code scanning of {repo}",
+  "severity.critical": "critical",
+  "severity.high": "high",
+  "severity.medium": "medium",
+  "severity.low": "low",
+  "severity.none": "not rated yet",
+
+  "proposal.security": "the security of {repo}",
   "proposal.notShown":
     "No button: the pager shows no {kind} of {repo} for {label}.",
   "proposal.notOffered": "No button: {thing} doesn't offer {label} now.",
   "kind.contribution": "contribution",
   "kind.alarm": "alarm",
-  "kind.alert": "alert",
+  "kind.alert": "security message",
   "kind.release": "release",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} needs you",
-  "topic.alert": "🛡 Code scanning in {repo}",
+  "topic.alert": "🛡 Security in {repo}",
+  "topic.advisory": "🔐 Vulnerability report in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Token of Claude",
   "topic.reminderUser": "🔔 GitHub token of the pager",
@@ -315,7 +332,11 @@ const de: Catalog = {
   "message.otherDraft":
     "🤖 <b>Ein weiterer Entwurf kam</b> für {thing}, aber dein eigener Text bleibt die Antwort. Nur zum Lesen:\n<blockquote>{draft}</blockquote>",
   "message.alarm": "🚨 <b>{repo} braucht dich</b>\n{entries}",
-  "message.alert": "🛡 <b>Code Scanning in {repo}</b>\n{entries}",
+  "message.alert": "🛡 <b>Sicherheit in {repo}</b>\n{entries}",
+  "message.advisory":
+    "🔐 <b>Sicherheitslücke gemeldet in {repo}</b>\n{link} · Schweregrad: {severity}",
+  "message.advisoryDue":
+    "📅 Bestätige sie bis {acknowledge} und bewerte sie bis {assess}, wie SECURITY.md verspricht. Was sie sagt, bleibt auf GitHub, bis sie veröffentlicht ist.",
   "message.more": "… und {count} weitere",
   "message.rerunning": "🔁 läuft erneut …",
   "message.release": "📦 <b>Release {version}</b> von {repo}: {link}",
@@ -356,6 +377,10 @@ const de: Catalog = {
   "entry.delivery": "Ein Ereignis von GitHub scheitert: {event}",
   "entry.alert": "{severity}: {what}",
   "entry.alertAt": "{severity}: {what} in {path}",
+  "entry.secret": "🔑 {what}",
+  "entry.secretAt": "🔑 {what} in {path}",
+  "entry.secretPublic": "🔑 {what}, auch öffentlich geleakt",
+  "entry.secretPublicAt": "🔑 {what} in {path}, auch öffentlich geleakt",
 
   "blocker.closed": "er ist nicht offen",
   "blocker.branch": "er ist kein Release-Pull-Request",
@@ -410,6 +435,8 @@ const de: Catalog = {
     "💬 Du hast auf GitHub geantwortet, also sendet der Pager nichts.",
   "note.answerChosen": "✅ Auf GitHub wurde eine Antwort markiert.",
   "note.closedOnGitHub": "Auf GitHub geschlossen.",
+  "note.advisoryDue":
+    "⏰ Auf GitHub noch in der Triage: Bestätige sie bis {date}, wie SECURITY.md verspricht.",
   "note.discussionDeleted": "Auf GitHub gelöscht.",
   "note.ownDraft":
     "✏️ Ein neuer Kommentar kam, und dein eigener Text bleibt der Entwurf: Sende ihn, oder bearbeite ihn für den neuen Kommentar.",
@@ -447,19 +474,26 @@ const de: Catalog = {
   "effort.xhigh": "Extra Hoch",
   "effort.max": "Max",
 
-  "proposal.codeScanning": "Code Scanning von {repo}",
+  "severity.critical": "kritisch",
+  "severity.high": "hoch",
+  "severity.medium": "mittel",
+  "severity.low": "niedrig",
+  "severity.none": "noch nicht eingestuft",
+
+  "proposal.security": "die Sicherheit von {repo}",
   "proposal.notShown":
     "Kein Knopf: Für {label} zeigt der Pager in {repo} nichts ({kind}).",
   "proposal.notOffered": "Kein Knopf: {thing} bietet {label} gerade nicht an.",
   "kind.contribution": "Beitrag",
   "kind.alarm": "Alarm",
-  "kind.alert": "Code Scanning",
+  "kind.alert": "Sicherheitsmeldung",
   "kind.release": "Release",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} braucht dich",
-  "topic.alert": "🛡 Code Scanning in {repo}",
+  "topic.alert": "🛡 Sicherheit in {repo}",
+  "topic.advisory": "🔐 Sicherheitslücke gemeldet in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Claude-Token",
   "topic.reminderUser": "🔔 GitHub-Token des Pagers",

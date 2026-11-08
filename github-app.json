@@ -16,6 +16,8 @@
     "issues": "read",
     "metadata": "read",
     "pull_requests": "read",
+    "repository_advisories": "read",
+    "secret_scanning_alerts": "read",
     "security_events": "read"
   },
   "default_events": [
@@ -28,6 +30,8 @@
     "issues",
     "pull_request",
     "release",
+    "repository_advisory",
+    "secret_scanning_alert",
     "workflow_run"
   ]
 }

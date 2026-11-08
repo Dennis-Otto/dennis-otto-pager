@@ -7,6 +7,14 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.6.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.5.0...v0.6.0) (2026-11-08)
+
+### Features
+
+- When none of the buttons of a question of your agent fits, write your answer in its topic: it reaches the agent in your own words, in the same file as a button, the message shows it, and your text gets 👍.
+- An agent can take back a question that it no longer needs, with `node scripts/ask.mjs withdraw` of the control repository: the buttons go, and the message says that the agent took it back, with its reason.
+- A discussion that is dealt with on GitHub itself is done in the pager too: when you reply there, someone marks an answer, or the discussion is closed or deleted, its message loses its buttons, says why, and its topic gets ✅, so ✅ Send can't post a second answer. A text that you wrote with ✏️ Edit stays your draft: a draft of the control repository that comes later only shows in the topic to read, and a new comment keeps your text instead of asking for a new draft.
+
 ## [0.5.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.4.0...v0.5.0) (2026-11-08)
 
 ### Features

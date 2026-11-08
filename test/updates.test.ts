@@ -630,6 +630,7 @@ describe("buttons", () => {
         draft: "Thank you, fixed in 1.2.3.",
         draftVersion: 3,
         state: "draft",
+        ownDraft: true,
         messageId: 101,
       });
       expect(await w.context.store.pendingEdit()).toBeNull();
@@ -644,6 +645,39 @@ describe("buttons", () => {
       expect(shown.reply_markup.inline_keyboard[0][0].callback_data).toBe(
         `send:${ID}:3`,
       );
+    });
+
+    it("keeps a text that comes while a newer comment is drafted, as the maintainer's own", async () => {
+      const w = await world();
+      const asked = contribution({
+        ...drafted,
+        discussion: { node: "D_1", comment: "DC_7" },
+      });
+      await pressing(w, asked, `edit:${ID}`);
+      // A new comment came after the press, and its draft is being written.
+      await w.context.store.put({
+        ...asked,
+        state: "drafting",
+        draft: null,
+        jobStarted: 5,
+        discussion: { node: "D_1", comment: "DC_8", redraft: true },
+      });
+      expect(
+        await handleUpdate(
+          w.context,
+          message("My own words.", { reply_to_message: { message_id: 100 } }),
+        ),
+      ).toBe("draft edited");
+      const kept = await w.context.store.get(ID);
+      expect(kept).toMatchObject({
+        state: "draft",
+        draft: "My own words.",
+        ownDraft: true,
+        discussion: { node: "D_1", comment: "DC_8" },
+      });
+      // The pager waits for no job any more: its draft no longer replaces this one.
+      expect(kept).not.toHaveProperty("jobStarted");
+      expect(kept).not.toHaveProperty("discussion.redraft");
     });
 
     it("refuses an edit that is too long, or of a draft that is gone", async () => {

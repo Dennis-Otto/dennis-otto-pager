@@ -52,6 +52,8 @@ const en = {
     '<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>{draft}</blockquote>',
   "message.reply":
     '<b>Draft of a reply</b>, which "Send" posts in the discussion as the app of the pager, as it stands here:\n<blockquote>{draft}</blockquote>',
+  "message.otherDraft":
+    "🤖 <b>Another draft came</b> for {thing}, but your own text stays the reply. Only for you to read:\n<blockquote>{draft}</blockquote>",
   "message.alarm": "🚨 <b>{repo} needs you</b>\n{entries}",
   "message.alert": "🛡 <b>Code scanning in {repo}</b>\n{entries}",
   "message.more": "… and {count} more",
@@ -134,6 +136,13 @@ const en = {
   "note.assistant": "🤖 The issue assistant answers again.",
   "note.sent": "Posted in your name.",
   "note.replied": "Posted in the discussion as the app of the pager.",
+  "note.repliedOnGitHub":
+    "💬 You replied on GitHub, so the pager sends nothing.",
+  "note.answerChosen": "✅ An answer was marked on GitHub.",
+  "note.discussionClosed": "Closed on GitHub.",
+  "note.discussionDeleted": "Deleted on GitHub.",
+  "note.ownDraft":
+    "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
   "note.merged": "🔀 Merged.",
   "note.closed": "Closed without a merge.",
   "note.albumFailed": "Telegram refused the pictures: {detail}",
@@ -267,6 +276,8 @@ const de: Catalog = {
     "<b>Entwurf einer Antwort</b>, den „Senden“ genau so in deinem Namen postet:\n<blockquote>{draft}</blockquote>",
   "message.reply":
     "<b>Entwurf einer Antwort</b>, den „Senden“ genau so als App des Pagers in der Diskussion postet:\n<blockquote>{draft}</blockquote>",
+  "message.otherDraft":
+    "🤖 <b>Ein weiterer Entwurf kam</b> für {thing}, aber dein eigener Text bleibt die Antwort. Nur zum Lesen:\n<blockquote>{draft}</blockquote>",
   "message.alarm": "🚨 <b>{repo} braucht dich</b>\n{entries}",
   "message.alert": "🛡 <b>Code Scanning in {repo}</b>\n{entries}",
   "message.more": "… und {count} weitere",
@@ -350,6 +361,13 @@ const de: Catalog = {
   "note.assistant": "🤖 Der Issue-Assistent antwortet noch einmal.",
   "note.sent": "In deinem Namen gepostet.",
   "note.replied": "In der Diskussion als App des Pagers gepostet.",
+  "note.repliedOnGitHub":
+    "💬 Du hast auf GitHub geantwortet, also sendet der Pager nichts.",
+  "note.answerChosen": "✅ Auf GitHub wurde eine Antwort markiert.",
+  "note.discussionClosed": "Auf GitHub geschlossen.",
+  "note.discussionDeleted": "Auf GitHub gelöscht.",
+  "note.ownDraft":
+    "✏️ Ein neuer Kommentar kam, und dein eigener Text bleibt der Entwurf: Sende ihn, oder bearbeite ihn für den neuen Kommentar.",
   "note.merged": "🔀 Gemergt.",
   "note.closed": "Ohne Merge geschlossen.",
   "note.albumFailed": "Telegram hat die Bilder abgelehnt: {detail}",

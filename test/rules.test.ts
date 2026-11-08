@@ -233,17 +233,6 @@ describe("discussions from outside", () => {
         ME,
       ),
     ).toEqual({ ignored: "written by the maintainer" });
-    expect(
-      classify(
-        "discussion_comment",
-        event({
-          action: "created",
-          discussion,
-          comment: { ...comment, user: { login: ME } },
-        }),
-        ME,
-      ),
-    ).toEqual({ ignored: "written by the maintainer" });
     // Its own reply, which comes back as a comment of the app.
     expect(
       classify(
@@ -283,10 +272,68 @@ describe("discussions from outside", () => {
     ).toEqual({ ignored: "a discussion with an answer" });
   });
 
+  it("ends the wait for a reply once GitHub dealt with a discussion", () => {
+    const done = (reason: string) => ({
+      signal: { ...at, type: "discussion-done", number: 31, reason },
+    });
+    // The maintainer replied on GitHub itself, to the discussion or in a thread.
+    expect(
+      classify(
+        "discussion_comment",
+        event({
+          action: "created",
+          discussion,
+          comment: { ...comment, user: { login: "dennis-otto" } },
+        }),
+        ME,
+      ),
+    ).toEqual(done("replied"));
+    for (const action of ["answered", "closed", "deleted"]) {
+      expect(classify("discussion", event({ action, discussion }), ME)).toEqual(
+        done(action),
+      );
+      // A discussion of the maintainer made no thing, so its end means nothing.
+      expect(
+        classify(
+          "discussion",
+          event({ action, discussion: { ...discussion, user: { login: ME } } }),
+          ME,
+        ),
+      ).toEqual({ ignored: "a discussion of the maintainer" });
+    }
+    expect(
+      classify(
+        "discussion_comment",
+        event({
+          action: "created",
+          discussion: { ...discussion, user: { login: ME } },
+          comment: { ...comment, user: { login: ME } },
+        }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a discussion of the maintainer" });
+    // A comment that was deleted is no end of its discussion.
+    expect(
+      classify(
+        "discussion_comment",
+        event({ action: "deleted", discussion, comment }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a discussion comment deleted" });
+    expect(
+      classify("discussion", event({ action: "answered", discussion: {} }), ME),
+    ).toEqual({
+      signal: { ...at, type: "discussion-done", number: 0, reason: "answered" },
+    });
+  });
+
   it("stays quiet for every other change of a discussion or a comment", () => {
     expect(
-      classify("discussion", event({ action: "answered", discussion }), ME),
-    ).toEqual({ ignored: "a discussion answered" });
+      classify("discussion", event({ action: "unanswered", discussion }), ME),
+    ).toEqual({ ignored: "a discussion unanswered" });
+    expect(classify("discussion", event({ discussion }), ME)).toEqual({
+      ignored: "a discussion undefined",
+    });
     expect(
       classify(
         "discussion_comment",

@@ -10,6 +10,7 @@ import {
   type Decision,
   type Entry,
   type Item,
+  isClosed,
   MAX_OPTION,
   MAX_QUESTION,
   type Pictures,
@@ -172,11 +173,8 @@ function body(item: Item, t: Texts): string {
         author: html(item.author, 100),
         link: link(`#${item.number} ${item.title}`, item.url),
       });
-      if (
-        item.draft === null ||
-        item.state === "sent" ||
-        item.state === "ignored"
-      ) {
+      // A closed thing shows no draft: it went, it was ignored, or GitHub dealt with it.
+      if (item.draft === null || isClosed(item)) {
         return head;
       }
       // The reply in a discussion goes as the app, any other in the maintainer's name.

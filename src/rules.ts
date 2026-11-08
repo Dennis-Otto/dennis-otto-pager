@@ -5,10 +5,11 @@
  *
  * Everything that an issue, a pull request or a discussion says is data: these
  * rules read the kind of an event, its author, its branch and its state, and pass
- * titles on only to be shown, escaped. What they hand on to be read, such as the label of an entry
+ * titles and the start of a text on only to be shown, escaped. What they hand on to be read, such as the label of an entry
  * or why a release may not merge, is a phrase of src/texts.ts without a language:
  * the pager words it in the language of its settings.
  */
+import { excerpt } from "./content.ts";
 import type { Phrase } from "./texts.ts";
 
 /** The conclusions of a check or a workflow that count as a failure. */
@@ -61,6 +62,7 @@ export interface Payload {
   pull_request?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     user?: Account;
     merged?: boolean;
@@ -104,6 +106,7 @@ export interface Payload {
   discussion?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     /** The id of the discussion in the GraphQL API of GitHub, which a reply names. */
     node_id?: string;
@@ -117,6 +120,7 @@ export interface Payload {
     id?: number;
     node_id?: string;
     html_url?: string;
+    body?: string | null;
     user?: Account;
   };
 }
@@ -134,17 +138,28 @@ interface Failure {
   run?: number;
 }
 
+/** The start of what an issue, a pull request, a discussion or a comment says, if anything. */
+interface Said {
+  excerpt?: string;
+}
+
+/** The start of the text of a body, as a field of a signal: none when the body says nothing. */
+function said(body: string | null | undefined): Said {
+  const start = excerpt(body);
+  return start === undefined ? {} : { excerpt: start };
+}
+
 export type Signal = Where &
   (
-    | {
+    | ({
         type: "contribution";
         number: number;
         pull: boolean;
         title: string;
         url: string;
         author: string;
-      }
-    | {
+      } & Said)
+    | ({
         type: "discussion";
         number: number;
         title: string;
@@ -155,14 +170,14 @@ export type Signal = Where &
         node: string;
         /** The id of the comment that the reply answers; none for the discussion itself. */
         comment?: string;
-      }
+      } & Said)
     | {
         type: "discussion-done";
         number: number;
         /** Why it needs no reply of the pager any more, as GitHub saw it. */
         reason: DiscussionEnd;
       }
-    | {
+    | ({
         type: "comment";
         number: number;
         pull: boolean;
@@ -172,7 +187,7 @@ export type Signal = Where &
         author: string;
         /** The id of the comment in the REST API of GitHub. */
         comment: number;
-      }
+      } & Said)
     | {
         type: "contribution-done";
         number: number;
@@ -469,6 +484,7 @@ function contribution(
       title: thing?.title ?? "",
       url: thing?.html_url ?? "",
       author: author?.login ?? "",
+      ...said(thing?.body),
     },
   };
 }
@@ -489,6 +505,11 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
     }
     if (payload.action === "closed" && pull?.merged === true) {
       return { signal: { ...at, type: "release-merged", number } };
+    }
+    // A new title or new notes, such as notes changed by hand before the merge:
+    // the pager reads the pull request again, as when its checks finish.
+    if (payload.action === "edited") {
+      return { signal: { ...at, type: "release-check", numbers: [number] } };
     }
     return { ignored: `a release pull request ${payload.action}` };
   }
@@ -565,6 +586,7 @@ function discussion(
       author: author?.login ?? "",
       node: found?.node_id ?? "",
       ...(reply === undefined ? {} : { comment: reply }),
+      ...said(comment === null ? found?.body : comment?.body),
     },
   };
 }
@@ -611,6 +633,7 @@ function issueComment(
       url: comment?.html_url ?? "",
       author: comment?.user?.login ?? "",
       comment: id,
+      ...said(comment?.body),
     },
   };
 }

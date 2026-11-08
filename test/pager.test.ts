@@ -2,9 +2,16 @@
 // thing changes, bundles per repository, and the steps of a release.
 import { describe, expect, it } from "vitest";
 
+import { MAX_EXCERPT, NOTES_MARK } from "../src/content.ts";
 import { apply, QUIET, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
-import { type Contribution, type Item, itemId, keys } from "../src/store.ts";
+import {
+  type Contribution,
+  type Item,
+  itemId,
+  keys,
+  type Release,
+} from "../src/store.ts";
 import {
   json,
   REPO,
@@ -33,6 +40,11 @@ function failing(
   };
 }
 
+/** The bytes of UTF-8 that a record takes in Workers KV. */
+function bytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
 async function stored(w: World, key: string): Promise<Item | null> {
   return w.context.store.get(await itemId(key));
 }
@@ -59,6 +71,29 @@ describe("contributions", () => {
       messageId: 100,
       draftVersion: 0,
     });
+  });
+
+  it("keep the start of what they say, and quote it", async () => {
+    const w = await world();
+    await apply(w.context, { ...signal, excerpt: "It crashes <here>" });
+    expect(await stored(w, keys.contribution(REPO, 12))).toMatchObject({
+      excerpt: "It crashes <here>",
+    });
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "<blockquote expandable>It crashes &lt;here&gt;</blockquote>",
+    );
+  });
+
+  it("keep their record small in Workers KV, with the longest quote", async () => {
+    const w = await world();
+    // Three bytes of UTF-8 for each character: the largest quote that fits.
+    await apply(w.context, { ...signal, excerpt: "€".repeat(MAX_EXCERPT) });
+    const thing = (await stored(
+      w,
+      keys.contribution(REPO, 12),
+    )) as Contribution;
+    const { excerpt: _excerpt, ...before } = thing;
+    expect(bytes(thing) - bytes(before)).toBeLessThan(1600);
   });
 });
 
@@ -94,6 +129,16 @@ describe("discussions", () => {
 
   const thing = async (w: World) =>
     (await stored(w, keys.contribution(REPO, 31))) as Contribution;
+
+  it("quote the discussion, and then the comment that the reply answers", async () => {
+    const w = await chat();
+    await apply(w.context, { ...opened, excerpt: "How do I start?" });
+    expect((await thing(w)).excerpt).toBe("How do I start?");
+    await apply(w.context, { ...commented, excerpt: "Me too" });
+    expect((await thing(w)).excerpt).toBe("Me too");
+    await apply(w.context, { ...commented, comment: "DC_8" });
+    expect(await thing(w)).not.toHaveProperty("excerpt");
+  });
 
   it("ask for their draft at once, in a topic of their own", async () => {
     const w = await chat();
@@ -452,6 +497,25 @@ describe("comments on issues and pull requests", () => {
       reply_markup: { inline_keyboard: [] },
     });
     expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+  });
+
+  it("quote the newest comment, which the reply answers", async () => {
+    const w = await chat();
+    await apply(w.context, { ...opened, excerpt: "The issue" });
+    await apply(w.context, { ...commented(99), excerpt: "The comment" });
+    expect((await thing(w)).excerpt).toBe("The comment");
+    expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
+      "<blockquote expandable>The comment</blockquote>",
+    );
+    // A comment that says nothing quotes nothing, not an older text.
+    await apply(w.context, commented(100));
+    expect(await thing(w)).not.toHaveProperty("excerpt");
+    // One on a thing whose reply went comes with its own.
+    const done = await thing(w);
+    done.state = "sent";
+    await w.context.store.put(done);
+    await apply(w.context, { ...commented(101), excerpt: "Again" });
+    expect((await thing(w)).excerpt).toBe("Again");
   });
 
   it("notify once for a few quick comments, and again once it was quiet for a while", async () => {
@@ -1066,6 +1130,57 @@ describe("a release", () => {
     // A published release with the same version stays published.
     serve(w);
     expect(await apply(w.context, check)).toBe("#30 shown already");
+  });
+
+  it("shows the notes of the release, and reads them again when they change", async () => {
+    const w = await world();
+    const body = (item: string) =>
+      `The next release.\n\n${NOTES_MARK}\n---\n\n## [1.2.3](https://github.com/Dennis-Otto/demo/compare/v1.2.2...v1.2.3) (2026-11-08)\n\n### Features\n\n* ${item} ([#28](https://github.com/Dennis-Otto/demo/issues/28)) ([abc1234](https://github.com/Dennis-Otto/demo/commit/abc1234))\n\n---\nThis PR was generated with Release Please.`;
+    serve(w, { ...pull, body: body("a <b>new</b> button") });
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      notes: {
+        lines: [{ heading: "Features" }, { item: "a <b>new</b> button #28" }],
+        more: 0,
+        breaking: false,
+      },
+    });
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      '<b>Features</b>\n• a &lt;b&gt;new&lt;/b&gt; button <a href="https://github.com/Dennis-Otto/demo/issues/28">#28</a>\n\nEvery check is green',
+    );
+    // The same head with the same notes, such as after a marker of the release bot.
+    serve(w, {
+      ...pull,
+      body: `${body("a <b>new</b> button")}\n\n<!-- rebuild -->`,
+    });
+    expect(await apply(w.context, check)).toBe("#30 shown already");
+    // Notes changed by hand: the message shows them, in place.
+    serve(w, { ...pull, body: body("a better button") });
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(w.net.telegram("editMessageText").at(-1)?.body.text).toContain(
+      "• a better button",
+    );
+    // A body without notes leaves none in the record.
+    serve(w, { ...pull, body: "No notes here." });
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    expect(await stored(w, keys.release(REPO))).not.toHaveProperty("notes");
+  });
+
+  it("keeps its record small in Workers KV, with the longest notes", async () => {
+    const w = await world();
+    // Three bytes of UTF-8 for each character: the largest notes that fit.
+    const many = Array.from(
+      { length: 200 },
+      (_, n) =>
+        `* ${"€".repeat(400)} ([#${n}](https://github.com/Dennis-Otto/demo/issues/${n})) ([abc1234](https://github.com/Dennis-Otto/demo/commit/abc1234))`,
+    ).join("\n");
+    serve(w, { ...pull, body: `${NOTES_MARK}\n---\n### Features\n${many}` });
+    await apply(w.context, check);
+    const release = (await stored(w, keys.release(REPO))) as Release;
+    const { notes: _notes, ...before } = release;
+    expect(bytes(before)).toBeLessThan(600);
+    expect(bytes(release) - bytes(before)).toBeLessThan(4000);
   });
 
   it("stays quiet about a release that was ignored, and pages for the next one", async () => {

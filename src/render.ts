@@ -4,6 +4,7 @@
  * escaped, and every link has to point to GitHub, so a title can't add markup or a
  * link of its own.
  */
+import { cut, MAX_EXCERPT, type ReleaseNotes } from "./content.ts";
 import {
   type Changed,
   type Contribution,
@@ -15,13 +16,13 @@ import {
   MAX_OPTION,
   MAX_QUESTION,
   type Pictures,
+  type Release,
 } from "./store.ts";
 import type { Texts } from "./texts.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
 export function html(text: string, max = 300): string {
-  const cut = text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  return cut
+  return cut(text, max)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -38,6 +39,24 @@ export function link(text: string, url: string): string {
 
 function repoLink(repo: string): string {
   return link(repo, `https://github.com/${repo}`);
+}
+
+/** The most characters of a message, as Telegram counts them once it read the HTML. */
+export const MAX_MESSAGE = 4096;
+
+/** The most characters of the note below a message. */
+const MAX_NOTE = 500;
+
+/** The fewest characters of the start of a text that are worth a quote; with less room, the message shows none. */
+const MIN_EXCERPT = 100;
+
+/**
+ * How many characters Telegram counts in a text of its HTML: a tag counts none, and
+ * an entity one, since html() leaves no other < or & in a text.
+ */
+export function visible(text: string): number {
+  return text.replace(/<[^>]*>/g, "").replace(/&(?:amp|lt|gt|quot);/g, "&")
+    .length;
 }
 
 /** The most entries that a bundle lists, and the most characters they take. */
@@ -175,7 +194,84 @@ function contributionHead(
   return item.pull ? "message.pull" : "message.issue";
 }
 
-function body(item: Item, t: Texts): string {
+/**
+ * The start of what a contribution says, as a quote that Telegram shows folded,
+ * in at most room characters, or null when it says nothing or no room is left.
+ */
+function quote(item: Contribution, room: number): string | null {
+  const max = Math.min(MAX_EXCERPT, room);
+  if (item.excerpt === undefined || max < MIN_EXCERPT) {
+    return null;
+  }
+  return `<blockquote expandable>${html(item.excerpt, max)}</blockquote>`;
+}
+
+/**
+ * A line of the notes of a release, escaped, with each number of a pull request
+ * or an issue, such as #56, linked to it in the repository of the release.
+ */
+function linked(text: string, repo: string): string {
+  return html(text).replace(
+    /(^|[\s(])#(\d{1,7})\b/g,
+    (_, before: string, number: string) =>
+      `${before}${link(`#${number}`, `https://github.com/${repo}/issues/${number}`)}`,
+  );
+}
+
+/**
+ * The notes of a release: each heading in bold, each item after a bullet, and a
+ * link to the pull request for those that the message leaves out; null when the
+ * notes have no line.
+ */
+function notesText(
+  item: Release,
+  notes: ReleaseNotes,
+  t: Texts,
+): string | null {
+  const lines = notes.lines.map((line) => {
+    if ("heading" in line) {
+      return `<b>${html(line.heading)}</b>`;
+    }
+    return "item" in line
+      ? `• ${linked(line.item, item.repo)}`
+      : linked(line.text, item.repo);
+  });
+  if (notes.more > 0) {
+    lines.push(link(t("message.more", { count: notes.more }), item.url));
+  }
+  return lines.length === 0 ? null : lines.join("\n");
+}
+
+/** A release: its version, its breaking changes, its notes and what "Merge" does. */
+function releaseText(item: Release, t: Texts): string {
+  const head = [
+    t("message.release", {
+      version: html(item.version, 50),
+      repo: repoLink(item.repo),
+      link: link(`#${item.number}`, item.url),
+    }),
+  ];
+  if (item.notes?.breaking === true) {
+    head.push(t("message.breaking"));
+  }
+  const notes =
+    item.notes === undefined ? null : notesText(item, item.notes, t);
+  const end =
+    item.state === "ready"
+      ? t("message.ready")
+      : item.state === "published"
+        ? t("message.published")
+        : null;
+  return [head.join("\n"), notes, end]
+    .filter((part) => part !== null)
+    .join(notes === null ? "\n" : "\n\n");
+}
+
+/**
+ * What a thing is. A contribution quotes the start of what it says in the room
+ * that the rest of its message leaves, so that the whole stays within MAX_MESSAGE.
+ */
+function body(item: Item, t: Texts, room: number): string {
   switch (item.kind) {
     case "contribution": {
       const head = t(contributionHead(item), {
@@ -183,14 +279,16 @@ function body(item: Item, t: Texts): string {
         author: html(item.author, 100),
         link: link(`#${item.number} ${item.title}`, item.url),
       });
+      const said = quote(item, room - 1);
+      const top = said === null ? head : `${head}\n${said}`;
       // A closed thing shows no draft: it went, it was ignored, or GitHub dealt with it.
       if (item.draft === null || isClosed(item)) {
-        return head;
+        return top;
       }
       // The reply in a discussion goes as the app, any other in the maintainer's name.
       const draft =
         item.discussion === undefined ? "message.draft" : "message.reply";
-      return `${head}\n\n${t(draft, { draft: html(item.draft, 3500) })}`;
+      return `${top}\n\n${t(draft, { draft: html(item.draft, 3500) })}`;
     }
     case "alarm":
       return t("message.alarm", {
@@ -210,20 +308,8 @@ function body(item: Item, t: Texts): string {
           t,
         ),
       });
-    case "release": {
-      const head = t("message.release", {
-        version: html(item.version, 50),
-        repo: repoLink(item.repo),
-        link: link(`#${item.number}`, item.url),
-      });
-      if (item.state === "ready") {
-        return `${head}\n${t("message.ready")}`;
-      }
-      if (item.state === "published") {
-        return `${head}\n${t("message.published")}`;
-      }
-      return head;
-    }
+    case "release":
+      return releaseText(item, t);
     case "pictures":
       return picturesText(item, t);
     case "reminder":
@@ -261,18 +347,28 @@ function decisionText(item: Decision, t: Texts): string {
   return end === null ? head : `${head}\n\n${end}`;
 }
 
-/** The whole text of a thing's message: what it is, its state and its last note. */
+/**
+ * The whole text of a thing's message: what it is, its state, its last note and
+ * when "Later" brings it back. Telegram refuses a message longer than MAX_MESSAGE,
+ * and with it every later change of the message, so the note takes the room that
+ * the rest leaves, and the start of what a contribution says the room after that.
+ */
 export function render(item: Item, now: number, t: Texts): string {
-  const lines = [body(item, t)];
-  if (named(item.state)) {
-    lines.push(t(`state.${item.state}`));
-  }
-  if (item.note !== null) {
-    lines.push(`<i>${html(item.note, 500)}</i>`);
-  }
+  const state = named(item.state) ? t(`state.${item.state}`) : null;
+  let back: string | null = null;
   if (item.snoozedUntil !== null && item.snoozedUntil > now) {
     const hours = Math.max(1, Math.round((item.snoozedUntil - now) / 3600000));
-    lines.push(t("message.back", { hours }));
+    back = t("message.back", { hours });
   }
-  return lines.join("\n");
+  const compose = (room: number, note: string | null) =>
+    [body(item, t, room), state, note, back]
+      .filter((line) => line !== null)
+      .join("\n");
+  let room = MAX_MESSAGE - visible(compose(0, null));
+  let note: string | null = null;
+  if (item.note !== null) {
+    note = `<i>${html(item.note, Math.min(MAX_NOTE, room - 1))}</i>`;
+    room -= visible(note) + 1;
+  }
+  return compose(room, note);
 }

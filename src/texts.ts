@@ -64,6 +64,8 @@ const en = {
   "message.more": "… and {count} more",
   "message.rerunning": "🔁 running again…",
   "message.release": "📦 <b>Release {version}</b> of {repo}: {link}",
+  "message.breaking":
+    "⚠️ <b>Breaking changes</b>: read the notes before you merge.",
   "message.ready": 'Every check is green, and "Merge" publishes it.',
   "message.published": "✅ Published.",
   "message.back": "⏰ Back in {hours} h.",
@@ -301,6 +303,8 @@ const de: Catalog = {
   "message.more": "… und {count} weitere",
   "message.rerunning": "🔁 läuft erneut …",
   "message.release": "📦 <b>Release {version}</b> von {repo}: {link}",
+  "message.breaking":
+    "⚠️ <b>Inkompatible Änderungen</b>: lies die Versionshinweise, bevor du mergst.",
   "message.ready": "Alle Checks sind grün, und „Mergen“ veröffentlicht es.",
   "message.published": "✅ Veröffentlicht.",
   "message.back": "⏰ Zurück in {hours} Std.",

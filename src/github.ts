@@ -114,6 +114,8 @@ export interface PullRequest {
   number: number;
   state?: string;
   title?: string;
+  /** The description, which holds the notes of a release pull request. */
+  body?: string | null;
   draft?: boolean;
   mergeable_state?: string;
   html_url?: string;

@@ -1,0 +1,3 @@
+### Features
+
+- A message shows what its thing says, so you rarely need to open GitHub. A new issue, pull request, discussion or comment quotes the first 500 characters of its text as a folded quote, without the hidden hints of its form. A release shows its notes from its pull request: the headings in bold, each item with its pull request linked, 15 lines at most and *… and N more* for the rest, and *⚠️ Breaking changes* above them when the notes name breaking changes or the major version goes up, so you know what 🔀 Merge publishes. Notes changed on the pull request show in the message too.

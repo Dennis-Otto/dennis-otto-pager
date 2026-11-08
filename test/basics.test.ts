@@ -10,6 +10,7 @@ import {
   label,
   parsePress,
 } from "../src/buttons.ts";
+import { MAX_EXCERPT } from "../src/content.ts";
 import {
   base64url,
   fromHex,
@@ -19,10 +20,18 @@ import {
   toHex,
   verifySignature,
 } from "../src/crypto.ts";
-import { html, link, MAX_ENTRIES, render } from "../src/render.ts";
+import {
+  html,
+  link,
+  MAX_ENTRIES,
+  MAX_MESSAGE,
+  render,
+  visible,
+} from "../src/render.ts";
 import { type PagerEnv, readSettings } from "../src/settings.ts";
 import type { Contribution, Item } from "../src/store.ts";
 import { texts } from "../src/texts.ts";
+import { MAX_DRAFT } from "../src/updates.ts";
 import { base, START } from "./helpers.ts";
 
 const ID = "i0123456789abcde";
@@ -352,6 +361,143 @@ describe("the text of a message", () => {
     expect(drafted).toContain(
       '"Send" posts in the discussion as the app of the pager, as it stands here:\n<blockquote>Read the README.</blockquote>',
     );
+  });
+
+  it("quotes the start of what a contribution says, escaped and folded", () => {
+    const said = contribution({
+      excerpt:
+        '</blockquote><a href="https://evil.example/">x</a> <b>&amp;</b> <tg-spoiler>',
+    });
+    const text = render(said, START, en);
+    expect(text).toContain(
+      '<a href="https://github.com/Dennis-Otto/demo/issues/12">#12 Title</a>\n<blockquote expandable>&lt;/blockquote&gt;&lt;a href=&quot;https://evil.example/&quot;&gt;x&lt;/a&gt; &lt;b&gt;&amp;amp;&lt;/b&gt; &lt;tg-spoiler&gt;</blockquote>',
+    );
+    expect(text.match(/<blockquote/g)).toHaveLength(1);
+    // The quote comes before the draft, which stays whole.
+    const drafted = render(
+      { ...said, excerpt: "It breaks", state: "draft", draft: "Thanks" },
+      START,
+      en,
+    );
+    expect(drafted).toMatch(
+      /<blockquote expandable>It breaks<\/blockquote>\n\n<b>Draft of a reply<\/b>.*\n<blockquote>Thanks<\/blockquote>$/,
+    );
+    // A closed thing still says what it was about.
+    expect(render({ ...said, state: "sent" }, START, en)).toContain(
+      "<blockquote expandable>",
+    );
+    expect(render(contribution(), START, en)).not.toContain("blockquote");
+  });
+
+  it("counts the characters as Telegram does, without tags and with an entity as one", () => {
+    expect(
+      visible('<a href="https://github.com/">a &amp; b</a> &lt;&gt;&quot;'),
+    ).toBe(9);
+    fc.assert(
+      fc.property(
+        fc.string(),
+        (text) => visible(html(text, 10_000)) === text.length,
+      ),
+    );
+  });
+
+  it("keeps every contribution within the limit of Telegram, its draft whole", () => {
+    const longest = contribution({
+      repo: `${"o".repeat(39)}/${"r".repeat(100)}`,
+      author: "a".repeat(39),
+      title: "t".repeat(1000),
+      number: 99999,
+      comment: { id: 1, noticed: START },
+      pull: true,
+      excerpt: "e".repeat(MAX_EXCERPT),
+      state: "draft",
+      draft: "d".repeat(MAX_DRAFT),
+      note: "n".repeat(1000),
+      snoozedUntil: START + 3600000,
+    });
+    for (const language of ["en", "de"] as const) {
+      const text = render(longest, START, texts(language));
+      expect(visible(text)).toBeLessThanOrEqual(MAX_MESSAGE);
+      expect(text).toContain("d".repeat(MAX_DRAFT));
+    }
+    // With room, the quote and the note show whole.
+    const roomy = render(
+      { ...longest, draft: "Thanks", note: "n".repeat(500) },
+      START,
+      en,
+    );
+    expect(roomy).toContain(
+      `<blockquote expandable>${"e".repeat(MAX_EXCERPT)}</blockquote>`,
+    );
+    expect(roomy).toContain(`<i>${"n".repeat(500)}</i>`);
+    // With less room, the quote gets shorter, and with too little it goes.
+    const tight = render({ ...longest, note: null }, START, en);
+    expect(visible(tight)).toBeLessThanOrEqual(MAX_MESSAGE);
+    expect(tight).toMatch(/<blockquote expandable>e+…<\/blockquote>/);
+    const full = render(
+      { ...longest, note: "n".repeat(500), title: "t".repeat(1000) },
+      START,
+      en,
+    );
+    expect(full).not.toContain("<blockquote expandable>");
+    expect(visible(full)).toBeLessThanOrEqual(MAX_MESSAGE);
+  });
+
+  it("shows the notes of a release, with its breaking changes and the rest linked", () => {
+    const release: Item = {
+      ...base(ID),
+      kind: "release",
+      state: "ready",
+      number: 30,
+      version: "2.0.0",
+      sha: "abc",
+      url: "https://github.com/Dennis-Otto/demo/pull/30",
+      notes: {
+        lines: [
+          { heading: "⚠ BREAKING CHANGES" },
+          { item: "the old <flag> is gone #56, see (#57) and x#58" },
+          { heading: "Features" },
+          { item: "new &#12; things" },
+          { text: "A paragraph, #59" },
+        ],
+        more: 3,
+        breaking: true,
+      },
+    };
+    expect(render(release, START, en)).toBe(
+      [
+        '📦 <b>Release 2.0.0</b> of <a href="https://github.com/Dennis-Otto/demo">Dennis-Otto/demo</a>: <a href="https://github.com/Dennis-Otto/demo/pull/30">#30</a>',
+        "⚠️ <b>Breaking changes</b>: read the notes before you merge.",
+        "",
+        "<b>⚠ BREAKING CHANGES</b>",
+        '• the old &lt;flag&gt; is gone <a href="https://github.com/Dennis-Otto/demo/issues/56">#56</a>, see (<a href="https://github.com/Dennis-Otto/demo/issues/57">#57</a>) and x#58',
+        "<b>Features</b>",
+        "• new &amp;#12; things",
+        'A paragraph, <a href="https://github.com/Dennis-Otto/demo/issues/59">#59</a>',
+        '<a href="https://github.com/Dennis-Otto/demo/pull/30">… and 3 more</a>',
+        "",
+        'Every check is green, and "Merge" publishes it.',
+      ].join("\n"),
+    );
+    expect(render({ ...release, state: "merging" }, START, en)).toMatch(
+      /… and 3 more<\/a>\n🔀 Merging…$/,
+    );
+    // Notes without a line, and none at all, show the release as before.
+    const bare = render(
+      { ...release, notes: { lines: [], more: 0, breaking: false } },
+      START,
+      en,
+    );
+    expect(bare).toMatch(/#30<\/a>\nEvery check is green/);
+    const { notes: _notes, ...without } = release;
+    expect(render(without as Item, START, en)).toBe(bare);
+    expect(
+      render(
+        { ...release, notes: { lines: [], more: 2, breaking: false } },
+        START,
+        en,
+      ),
+    ).toMatch(/#30<\/a>\n\n<a href="[^"]+">… and 2 more<\/a>\n\nEvery check/);
   });
 
   it("keeps a bundle of many entries below the limit of Telegram", () => {

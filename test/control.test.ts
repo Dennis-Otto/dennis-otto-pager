@@ -229,6 +229,41 @@ describe("the draft of an older comment of a discussion", () => {
   });
 });
 
+describe("the draft of an older message of an issue", () => {
+  it("is dropped, and the draft for the newest comment is asked for", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    await w.context.store.put({
+      ...contribution,
+      url: "https://github.com/Dennis-Otto/demo/issues/12#issuecomment-99",
+      comment: { id: 99, noticed: 1, redraft: true },
+    });
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers the issue" }),
+    ).toEqual({ status: 200, text: "dropped" });
+    expect(w.net.github("/dispatches")[0]?.body.client_payload).toEqual({
+      item: ID,
+      repo: "Dennis-Otto/demo",
+      number: 12,
+      pull: false,
+      issueComment: 99,
+      language: "en",
+    });
+    const item = (await w.context.store.get(ID)) as Contribution;
+    expect(item).toMatchObject({
+      state: "drafting",
+      draft: null,
+      jobStarted: START,
+      comment: { id: 99, noticed: 1 },
+    });
+    expect(item.comment).not.toHaveProperty("redraft");
+  });
+});
+
 describe("a draft that the maintainer wrote himself", () => {
   const own: Contribution = {
     ...contribution,

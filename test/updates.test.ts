@@ -680,6 +680,36 @@ describe("buttons", () => {
       expect(kept).not.toHaveProperty("discussion.redraft");
     });
 
+    it("keeps a text that comes while a newer comment of an issue is drafted, as the maintainer's own", async () => {
+      const w = await world();
+      const asked = contribution({
+        ...drafted,
+        comment: { id: 99, noticed: 1 },
+      });
+      await pressing(w, asked, `edit:${ID}`);
+      await w.context.store.put({
+        ...asked,
+        state: "drafting",
+        draft: null,
+        jobStarted: 5,
+        comment: { id: 100, noticed: 1, redraft: true },
+      });
+      expect(
+        await handleUpdate(
+          w.context,
+          message("My own words.", { reply_to_message: { message_id: 100 } }),
+        ),
+      ).toBe("draft edited");
+      const kept = await w.context.store.get(ID);
+      expect(kept).toMatchObject({
+        state: "draft",
+        ownDraft: true,
+        comment: { id: 100, noticed: 1 },
+      });
+      expect(kept).not.toHaveProperty("jobStarted");
+      expect(kept).not.toHaveProperty("comment.redraft");
+    });
+
     it("refuses an edit that is too long, or of a draft that is gone", async () => {
       const w = await world();
       await pressing(w, drafted, `edit:${ID}`);

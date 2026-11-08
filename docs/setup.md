@@ -88,13 +88,15 @@ The app is private, so only your account can install it. Its permissions:
 | Code scanning alerts | Read | An alert of severity high or critical |
 | Contents | Read and write | 🔀 Merge of a release; the events to the control repository |
 | Discussions | Read and write | A new discussion or a comment on one; ✅ Send of a reply in a discussion, as the app |
-| Issues | Read | A new issue; a `bot-failure` issue |
+| Issues | Read | A new issue, a comment on one or on a pull request, and its end; a `bot-failure` issue |
 | Metadata | Read | Required by GitHub; the required checks of `main` |
 | Pull requests | Read | A new pull request; the state of a release pull request; who opened a pull request whose pictures changed, and its head |
 
 An app that you registered before 🔁 **Rerun** came has *Actions: Read*: raise it to *Read and write* in the settings of the app, under *Permissions & events*, and accept the new permission for each installation, as GitHub asks you in a mail. Until then, the button says that GitHub refused it.
 
 An app that you registered before discussions came has neither *Discussions* nor its events: give it *Discussions: Read and write* in the settings of the app, under *Permissions & events*, subscribe it to the events *Discussion* and *Discussion comment*, and accept the new permission for each installation. Until then, no discussion reaches the pager.
+
+An app that you registered before the comments on issues and pull requests came lacks their event: subscribe it to *Issue comment* in the settings of the app, under *Permissions & events*. Its permissions *Issues* and *Pull requests* cover it, so no installation needs to accept anything. Until then, no comment on an issue or a pull request reaches the pager, and a thing still closes with its issue or pull request.
 
 ## 5. The webhook of Telegram
 

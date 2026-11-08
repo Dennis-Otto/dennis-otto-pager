@@ -14,3 +14,4 @@ userinfobot
 workerd
 tdlib
 deployen
+hubot

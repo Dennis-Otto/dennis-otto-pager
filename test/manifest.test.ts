@@ -25,6 +25,7 @@ describe("the manifest of the GitHub App", () => {
       contents: "write",
       // The events of discussions, and ✅ Send of a reply in one, as the app.
       discussions: "write",
+      // The events of issues and of their comments.
       issues: "read",
       metadata: "read",
       pull_requests: "read",
@@ -43,6 +44,6 @@ describe("the manifest of the GitHub App", () => {
       );
       expect(outcome).not.toEqual({ ignored: `the event ${event}` });
     }
-    expect(manifest.default_events).toHaveLength(9);
+    expect(manifest.default_events).toHaveLength(10);
   });
 });

@@ -18,6 +18,7 @@ import { verifySignature } from "./crypto.ts";
 import { type Context, draftOrWhyNot, show } from "./pager.ts";
 import { html, link } from "./render.ts";
 import {
+  answering,
   beforeJob,
   type Decision,
   type Item,
@@ -557,13 +558,13 @@ export async function handleControl(
     }
     return new Response("kept");
   }
-  if (item.kind === "contribution" && item.discussion?.redraft === true) {
+  if (item.kind === "contribution" && answering(item)?.redraft === true) {
     // A newer comment came while this job ran: its draft, or its failure,
-    // belongs to an older comment, so it is dropped, and the draft for the
+    // belongs to an older message, so it is dropped, and the draft for the
     // newest is asked for.
     const failed = await draftOrWhyNot(context, item);
     if (failed !== null) {
-      delete item.discussion.redraft;
+      delete answering(item)?.redraft;
       item.state = "new";
     }
     item.note = failed;

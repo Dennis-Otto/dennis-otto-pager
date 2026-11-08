@@ -2,8 +2,9 @@
  * The pager: what a signal of the rules does to the things that the maintainer
  * sees. One message per thing, in a topic of its own, edited in place as its state
  * changes; a new message, which notifies, only for a new thing, a bundle that
- * opens again, which keeps its topic, a new comment on a discussion, the answer
- * of a draft or a fix, and the pictures of a visual change.
+ * opens again, which keeps its topic, a new comment on a discussion, a comment
+ * that opens a thing again, the answer of a draft or a fix, and the pictures of a
+ * visual change.
  */
 import { keyboard } from "./buttons.ts";
 import { type GitHub, GitHubError } from "./github.ts";
@@ -16,8 +17,15 @@ import {
   MAX_LISTED,
   readArtifact,
 } from "./pictures.ts";
-import { html, type PicturesView, picturesText, render } from "./render.ts";
 import {
+  html,
+  link,
+  type PicturesView,
+  picturesText,
+  render,
+} from "./render.ts";
+import {
+  type ContributionEnd,
   type DiscussionEnd,
   picturesBlocker,
   releaseBlocker,
@@ -28,9 +36,11 @@ import type { Settings } from "./settings.ts";
 import {
   type Alarm,
   type Alert,
+  answering,
   type Contribution,
   type Discussion,
   type Entry,
+  type IssueComment,
   type Item,
   isClosed,
   itemId,
@@ -67,6 +77,13 @@ const english = texts("en");
 
 /** How often to ask again while GitHub still works out whether a pull request can merge. */
 export const MERGEABLE_TRIES = 3;
+
+/**
+ * How long after a comment on an issue or a pull request notified the maintainer
+ * the comments that follow only edit the message of its thing, in milliseconds: a
+ * few quick comments notify once.
+ */
+export const QUIET = 10 * 60_000;
 
 /**
  * Show a thing: edit its message, or send a new one when it has none, when it is
@@ -127,13 +144,15 @@ export async function askForDraft(
   context: Context,
   item: Contribution,
 ): Promise<string | null> {
-  const discussion = item.discussion;
+  const { discussion, comment } = item;
   const failed = await toControl(context, "pager-draft", {
     item: item.id,
     repo: item.repo,
     number: item.number,
     pull: item.pull,
-    // A discussion names the comment that the reply answers, if it answers one.
+    // A discussion names the comment that the reply answers, if it answers one,
+    // by its id in GraphQL; an issue or a pull request by its id in REST, as
+    // issueComment, which a control repository from before it ignores.
     ...(discussion === undefined
       ? {}
       : {
@@ -142,12 +161,13 @@ export async function askForDraft(
             ? {}
             : { comment: discussion.comment }),
         }),
+    ...(comment === undefined ? {} : { issueComment: comment.id }),
   });
   if (failed === null) {
     item.state = "drafting";
     item.jobStarted = context.now();
     // The job just asked for answers the newest comment.
-    delete discussion?.redraft;
+    delete answering(item)?.redraft;
   }
   return failed;
 }
@@ -339,36 +359,176 @@ async function discussion(
 const ENDS = {
   replied: "note.repliedOnGitHub",
   answered: "note.answerChosen",
-  closed: "note.discussionClosed",
+  closed: "note.closedOnGitHub",
   deleted: "note.discussionDeleted",
 } as const satisfies Record<DiscussionEnd, string>;
 
+/** The note of each end of an issue or a pull request on GitHub, which says why its thing is done. */
+const CLOSED = {
+  replied: "note.repliedOnGitHub",
+  closed: "note.closedOnGitHub",
+  merged: "note.merged",
+} as const satisfies Record<ContributionEnd, string>;
+
+/** The open thing of an issue, a pull request or a discussion, if the pager shows one. */
+async function openContribution(
+  context: Context,
+  repo: string,
+  number: number,
+): Promise<Contribution | null> {
+  const known = await context.store.get(
+    await itemId(keys.contribution(repo, number)),
+  );
+  return known?.kind === "contribution" && !isClosed(known) ? known : null;
+}
+
 /**
- * A discussion that GitHub dealt with, such as with a reply of the maintainer
- * there: its open thing is done, as pictures are once their pull request closed.
- * Its buttons go, its topic gets ✅, and its message says why, in place. A job
- * that still drafts for it finds it done, and its draft isn't shown.
+ * A contribution that GitHub dealt with, such as with a reply of the maintainer
+ * there, is done, as pictures are once their pull request closed: its buttons go,
+ * its topic gets ✅, and its message says why, in place, which notifies nobody,
+ * since the maintainer was there or GitHub told him. A job that still drafts for
+ * it finds it done, and its draft isn't shown.
  */
+async function finish(
+  context: Context,
+  known: Contribution,
+  note: (typeof ENDS)[DiscussionEnd] | (typeof CLOSED)[ContributionEnd],
+): Promise<void> {
+  known.state = "done";
+  known.note = context.t(note);
+  delete known.jobStarted;
+  delete answering(known)?.redraft;
+  await show(context, known);
+}
+
+/** A discussion that GitHub dealt with: its open thing is done. */
 async function discussionDone(
   context: Context,
   signal: Extract<Signal, { type: "discussion-done" }>,
 ): Promise<string> {
-  const known = await context.store.get(
-    await itemId(keys.contribution(signal.repo, signal.number)),
-  );
-  if (
-    known?.kind !== "contribution" ||
-    known.discussion === undefined ||
-    isClosed(known)
-  ) {
+  const known = await openContribution(context, signal.repo, signal.number);
+  if (known?.discussion === undefined) {
     return "no open discussion shown";
   }
-  known.state = "done";
-  known.note = context.t(ENDS[signal.reason]);
-  delete known.jobStarted;
-  delete known.discussion.redraft;
-  await show(context, known);
+  await finish(context, known, ENDS[signal.reason]);
   return `discussion done: ${signal.reason}`;
+}
+
+/**
+ * An issue or a pull request of someone else that GitHub dealt with, by a comment
+ * of the maintainer there, its closing or its merge: its open thing is done.
+ */
+async function contributionDone(
+  context: Context,
+  signal: Extract<Signal, { type: "contribution-done" }>,
+): Promise<string> {
+  const known = await openContribution(context, signal.repo, signal.number);
+  if (known === null || known.discussion !== undefined) {
+    return "no open contribution shown";
+  }
+  await finish(context, known, CLOSED[signal.reason]);
+  return `contribution done: ${signal.reason}`;
+}
+
+/**
+ * What a new comment does to the draft of an open thing, and what it says of it:
+ * a job that still drafts drafts again for the comment once its draft for the
+ * older message came, a draft of the control repository is asked for again, and
+ * one that the maintainer wrote himself stays, for him to change with ✏️ Edit.
+ */
+async function redraft(context: Context, known: Contribution): Promise<string> {
+  switch (known.state) {
+    case "drafting":
+      // The control repository runs one job per thing at a time; the hour that
+      // the schedule waits counts from now, for both jobs.
+      (known.comment as IssueComment).redraft = true;
+      known.jobStarted = context.now();
+      return ", its draft waits for the older one";
+    case "draft": {
+      // The version counts on: no button of the older draft sends the next one.
+      known.draftVersion += 1;
+      if (known.ownDraft === true) {
+        known.note = context.t("note.ownDraft");
+        return ", with the maintainer's own draft";
+      }
+      known.draft = null;
+      known.state = "new";
+      // Without its job, the thing offers ✍️ Draft a reply, and its note says why.
+      known.note = await draftOrWhyNot(context, known);
+      return known.note === null ? ", drafted again" : ", without a draft";
+    }
+    default:
+      return "";
+  }
+}
+
+/**
+ * A comment of someone else on an issue or a pull request of someone else: the
+ * newest message, which the reply answers. A thing that is still open keeps its
+ * message, edited in place to name the comment, which notifies nobody, so a
+ * message below it in its topic notifies, once for a few quick comments. A thing
+ * whose reply went, or that GitHub dealt with, opens again in its topic with
+ * ✍️ Draft a reply, where its old message stays as history, and one that the
+ * pager never showed, or whose record expired, is a new thing. An ignored thing
+ * stays ignored, and the same comment twice, or an older one, changes nothing.
+ */
+async function comment(
+  context: Context,
+  signal: Extract<Signal, { type: "comment" }>,
+): Promise<string> {
+  const id = await itemId(keys.contribution(signal.repo, signal.number));
+  const known = (await context.store.get(id)) as Contribution | null;
+  if (known?.state === "ignored") {
+    return "comment ignored";
+  }
+  // GitHub promises no order of its deliveries, and a redelivery can bring an
+  // older comment back; the ids of comments only grow.
+  if (known?.comment !== undefined && signal.comment <= known.comment.id) {
+    return "comment shown already";
+  }
+  const now = context.now();
+  if (known === null || isClosed(known)) {
+    await show(context, {
+      ...base(id, signal.repo, signal.installation),
+      kind: "contribution",
+      state: "new",
+      number: signal.number,
+      pull: signal.pull,
+      title: signal.title,
+      url: signal.url,
+      author: signal.author,
+      draft: null,
+      // Counts on, so that no button of an older draft sends the next one.
+      draftVersion: known?.draftVersion ?? 0,
+      comment: { id: signal.comment, noticed: now },
+      topic: known?.topic ?? null,
+    });
+    return known === null ? "comment shown" : "comment shown anew";
+  }
+  const last = known.comment?.noticed;
+  const quiet = last !== undefined && now - last < QUIET;
+  known.title = signal.title;
+  known.url = signal.url;
+  known.author = signal.author;
+  known.comment = { id: signal.comment, noticed: quiet ? last : now };
+  known.note = null;
+  // The comment needs the maintainer now, not once "Later" brings it back.
+  known.snoozedUntil = null;
+  const outcome = await redraft(context, known);
+  await show(context, known);
+  if (quiet) {
+    return `comment shown in place${outcome}, quietly`;
+  }
+  await context.telegram.send(
+    context.t("message.newComment", {
+      author: html(signal.author, 100),
+      link: link(`#${signal.number} ${signal.title}`, signal.url),
+    }),
+    [],
+    known.topic?.thread ?? null,
+    known.messageId,
+  );
+  return `comment shown in place${outcome}`;
 }
 
 async function releaseItem(
@@ -715,6 +875,10 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       return discussion(context, signal);
     case "discussion-done":
       return discussionDone(context, signal);
+    case "comment":
+      return comment(context, signal);
+    case "contribution-done":
+      return contributionDone(context, signal);
     case "failing":
     case "still-failing":
       return addEntry(

@@ -211,6 +211,35 @@ describe("the webhook of GitHub", () => {
     );
   });
 
+  it("follows the comments of a contribution, and takes the same delivery twice once", async () => {
+    await call(await fromGitHub("issues", opened));
+    const commented = {
+      action: "created",
+      installation: { id: 9 },
+      repository,
+      issue: opened.issue,
+      comment: {
+        id: 99,
+        html_url: "https://github.com/x#issuecomment-99",
+        user: { login: "hubot" },
+      },
+    };
+    const first = await call(await fromGitHub("issue_comment", commented));
+    expect(await first.text()).toBe("comment shown in place");
+    // GitHub delivers an event again when its answer was lost.
+    const again = await call(await fromGitHub("issue_comment", commented));
+    expect(await again.text()).toBe("comment shown already");
+    expect(net.telegram("editMessageText")).toHaveLength(1);
+    expect(net.telegram("sendMessage")).toHaveLength(2);
+    const replied = {
+      ...commented,
+      comment: { id: 100, user: { login: "Dennis-Otto" } },
+    };
+    expect(
+      await (await call(await fromGitHub("issue_comment", replied))).text(),
+    ).toBe("contribution done: replied");
+  });
+
   it("answers 500 when it failed, so that GitHub can deliver it again", async () => {
     const run = {
       action: "completed",

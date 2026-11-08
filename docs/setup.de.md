@@ -88,13 +88,15 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
 | Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
 | Discussions | Read and write | Eine neue Diskussion oder ein Kommentar zu einer; ✅ Senden einer Antwort in einer Diskussion, als App |
-| Issues | Read | Ein neues Issue; ein Issue mit `bot-failure` |
+| Issues | Read | Ein neues Issue, ein Kommentar dazu oder zu einem Pull Request, und sein Ende; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
 | Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests; wer einen Pull Request eröffnet hat, dessen Bilder sich geändert haben, und sein Head |
 
 Eine App, die du vor 🔁 **Neu starten** registriert hast, hat *Actions: Read*: Setz es in den Einstellungen der App unter *Permissions & events* auf *Read and write* und nimm die neue Berechtigung für jede Installation an, wie GitHub dich per Mail bittet. Bis dahin sagt der Knopf, dass GitHub ihn ablehnte.
 
 Eine App, die du registriert hast, bevor es Diskussionen gab, hat weder *Discussions* noch ihre Ereignisse: Gib ihr in den Einstellungen der App unter *Permissions & events* *Discussions: Read and write*, abonniere die Ereignisse *Discussion* und *Discussion comment* und nimm die neue Berechtigung für jede Installation an. Bis dahin erreicht keine Diskussion den Pager.
+
+Einer App, die du registriert hast, bevor es die Kommentare zu Issues und Pull Requests gab, fehlt ihr Ereignis: Abonniere in den Einstellungen der App unter *Permissions & events* *Issue comment*. Ihre Berechtigungen *Issues* und *Pull requests* decken es ab, also muss keine Installation etwas annehmen. Bis dahin erreicht kein Kommentar zu einem Issue oder Pull Request den Pager, und eine Sache schließt trotzdem mit ihrem Issue oder Pull Request.
 
 ## 5. Der Webhook von Telegram
 

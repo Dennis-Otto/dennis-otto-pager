@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: A workflow that fails on main
+    accDescr: A run of a workflow fails on main, in a push, a schedule, a bot or a start by hand. A rerun that failed too shows at once. A first attempt waits unseen for ten minutes, since the bot of the checks reruns the tests and a release. When its rerun passes, nothing shows. Otherwise one message for the workflow comes, which notifies: the jobs that failed, each linked to its log, with Rerun and Ignore. Each run that fails again edits it in place, with how often and when. A run that passes the jobs that failed turns it green, and the next failure opens a new message in its topic.
+
+    failed["`**🔴** A run of a workflow fails on main`"]
+    first{"Its first attempt?"}
+    wait["`**⏳** It waits unseen for 10 minutes, for a rerun`"]
+    quiet["`**✅** The rerun passes: nothing shows`"]
+    message["`**📨** One message for the workflow, which notifies: the jobs that failed, 🔁 Rerun, ✖ Ignore`"]
+    again["`**✏️** A run fails again: the message counts it, with its time, in place`"]
+    green["`**✅** A run passes the jobs that failed: green again`"]
+
+    failed --> first
+    first -- "yes" --> wait
+    first -- "no: a rerun that failed too" --> message
+    wait -- "the rerun passes" --> quiet
+    wait -- "no rerun, or it fails" --> message
+    message --> again
+    again --> green
+    message --> green
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class first,wait,message,again bot
+    class quiet,green done
+    class failed warn

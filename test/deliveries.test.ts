@@ -673,6 +673,46 @@ describe("each signal applied twice", () => {
           head: { sha: SHA, repo: { full_name: REPO } },
         }),
       )
+      .on("GET", `/repos/${REPO}/actions/runs/60`, () =>
+        json({
+          id: 60,
+          name: "Docs",
+          path: ".github/workflows/docs.yml",
+          event: "push",
+          status: "completed",
+          conclusion: "failure",
+          html_url: `https://github.com/${REPO}/actions/runs/60`,
+          head_branch: "main",
+          run_attempt: 1,
+        }),
+      )
+      .on("GET", `/repos/${REPO}/actions/runs/62`, () =>
+        json({
+          id: 62,
+          name: "Docs",
+          path: ".github/workflows/docs.yml",
+          event: "push",
+          status: "completed",
+          conclusion: "cancelled",
+          html_url: `https://github.com/${REPO}/actions/runs/62`,
+          head_branch: "main",
+          run_attempt: 1,
+        }),
+      )
+      .on(
+        "GET",
+        /\/actions\/runs\/6\d\/attempts\/\d\/jobs\?per_page=100$/,
+        () =>
+          json({
+            jobs: [
+              {
+                name: "build",
+                html_url: `https://github.com/${REPO}/actions/runs/60/job/1`,
+                conclusion: "failure",
+              },
+            ],
+          }),
+      )
       .on("GET", `/repos/${REPO}/actions/runs/31/artifacts?per_page=100`, () =>
         json({
           artifacts: [{ id: 55, name: "visual", size_in_bytes: bytes.length }],
@@ -732,6 +772,17 @@ describe("each signal applied twice", () => {
     url: "https://github.com/alert",
   });
   const release: Signal = { ...at, type: "release-check", numbers: [30] };
+  const workflow = (run: number, attempt: number, failed: boolean): Signal => ({
+    ...at,
+    type: "workflow",
+    path: ".github/workflows/docs.yml",
+    name: "Docs",
+    branch: "main",
+    failed,
+    run,
+    attempt,
+    url: `https://github.com/${REPO}/actions/runs/${run}/attempts/${attempt}`,
+  });
   const pictures: Signal = {
     ...at,
     type: "pictures",
@@ -794,8 +845,66 @@ describe("each signal applied twice", () => {
         name: "lint",
         failed: true,
         branch: "main",
-        url: `https://github.com/${REPO}/actions/runs/31/job/2`,
-        run: 31,
+        url: `https://github.com/${REPO}/runs/2`,
+      },
+    ],
+    ["workflow: a failure that waits", [], workflow(60, 1, true)],
+    ["workflow: a failure that shows", [], workflow(60, 2, true)],
+    [
+      "workflow: a failure again",
+      [workflow(60, 2, true)],
+      workflow(61, 1, true),
+    ],
+    ["workflow: a pass", [workflow(60, 2, true)], workflow(61, 1, false)],
+    [
+      "health",
+      [],
+      {
+        ...at,
+        type: "health",
+        run: 60,
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:5",
+          label: { key: "entry.bot", values: { title: "Docs fails" } },
+          url: `https://github.com/${REPO}/issues/5`,
+          run: 60,
+        },
+      },
+    ],
+    [
+      "health: a run that GitHub stopped at its time limit",
+      [],
+      {
+        ...at,
+        type: "health",
+        run: 62,
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:7",
+          label: { key: "entry.bot", values: { title: "Docs hangs" } },
+          url: `https://github.com/${REPO}/issues/7`,
+          run: 62,
+        },
+      },
+    ],
+    [
+      "health: a run that can't be read",
+      [],
+      {
+        ...at,
+        type: "health",
+        run: 404,
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:6",
+          label: { key: "entry.bot", values: { title: "Lint fails" } },
+          url: `https://github.com/${REPO}/issues/6`,
+          run: 404,
+        },
       },
     ],
     ["release-check", [], release],
@@ -840,6 +949,8 @@ describe("each signal applied twice", () => {
       "still-failing": true,
       recovered: true,
       check: true,
+      workflow: true,
+      health: true,
       "release-check": true,
       "release-updated": true,
       "release-merged": true,

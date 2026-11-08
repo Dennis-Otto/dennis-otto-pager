@@ -7,6 +7,7 @@ import { MAX_EXCERPT } from "../src/content.ts";
 import {
   checkRunOf,
   classify,
+  finishedRun,
   healthRun,
   isBot,
   isMaintainer,
@@ -664,7 +665,7 @@ describe("main failing", () => {
     ).toMatchObject({ signal: { name: "", url: "", failed: false } });
   });
 
-  it("pages for an issue of the bot-health bot and stops with its closing", () => {
+  it("passes an issue of the bot-health bot on and stops with its closing", () => {
     const issue = {
       number: 5,
       title: "Renovate fails",
@@ -672,18 +673,26 @@ describe("main failing", () => {
       user: bot,
       labels: [{ name: "bot-failure" }],
     };
+    // Without a run that the pager could read, it is the entry of the alarm that
+    // it was before the pager paged workflows.
     expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
       signal: {
         ...at,
-        type: "failing",
-        key: "issue:5",
-        label: { key: "entry.bot", values: { title: "Renovate fails" } },
-        url: issue.html_url,
+        type: "health",
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:5",
+          label: { key: "entry.bot", values: { title: "Renovate fails" } },
+          url: issue.html_url,
+        },
       },
     });
     expect(
       classify("issues", event({ action: "reopened", issue }), ME),
-    ).toMatchObject({ signal: { type: "failing" } });
+    ).toMatchObject({
+      signal: { type: "health", fallback: { type: "failing" } },
+    });
     expect(classify("issues", event({ action: "closed", issue }), ME)).toEqual({
       signal: { ...at, type: "recovered", key: "issue:5" },
     });
@@ -706,29 +715,34 @@ describe("main failing", () => {
       user: bot,
       labels: [{ name: "bot-failure" }],
     };
+    const failure = {
+      key: "issue:5",
+      label: { key: "entry.bot", values: { title: "CI fails on main" } },
+      url: issue.html_url,
+      run: 31,
+    };
     expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
       signal: {
         ...at,
-        type: "failing",
-        key: "issue:5",
-        label: { key: "entry.bot", values: { title: "CI fails on main" } },
-        url: issue.html_url,
+        type: "health",
         run: 31,
+        branch: "main",
+        fallback: { type: "failing", ...failure },
       },
     });
-    // A failure again, such as of a rerun, edits the open issue: its entry follows,
-    // but only an open alarm changes, so an edit never pages.
+    // A failure again, such as of a rerun, edits the open issue: the pager reads
+    // its run again, and its entry, where it has one, follows, but only an open
+    // alarm changes, so an edit never pages as an entry.
     const again = { ...issue, body: marker({ attempt: 2, run: 31 }) };
     expect(
       classify("issues", event({ action: "edited", issue: again }), ME),
     ).toEqual({
       signal: {
         ...at,
-        type: "still-failing",
-        key: "issue:5",
-        label: { key: "entry.bot", values: { title: "CI fails on main" } },
-        url: issue.html_url,
+        type: "health",
         run: 31,
+        branch: "main",
+        fallback: { type: "still-failing", ...failure },
       },
     });
     const closed = { ...again, state: "closed" };
@@ -771,7 +785,7 @@ describe("main failing", () => {
     expect(healthRun(`<!-- bot-health {${" ".repeat(70000)}}`)).toBeUndefined();
   });
 
-  it("names the run of a check of GitHub Actions, and of no other app", () => {
+  it("leaves a job of GitHub Actions to its workflow run, and takes out the entry of its pass", () => {
     const actions = {
       ...run,
       html_url: "https://github.com/Dennis-Otto/demo/actions/runs/42/job/7",
@@ -782,7 +796,18 @@ describe("main failing", () => {
         event({ action: "completed", check_run: actions }),
         ME,
       ),
-    ).toMatchObject({ signal: { type: "check", run: 42 } });
+    ).toEqual({ ignored: "a job of a workflow, whose run pages" });
+    const passed = { ...actions, conclusion: "skipped" };
+    expect(
+      classify(
+        "check_run",
+        event({ action: "completed", check_run: passed }),
+        ME,
+      ),
+    ).toEqual({
+      signal: { ...at, type: "recovered", key: "check:check (node)" },
+    });
+    expect(checkRunOf(actions.html_url)).toBe(42);
     expect(checkRunOf(run.html_url)).toBeUndefined();
     expect(
       checkRunOf("https://github.com/o/r/actions/runs/99999999999999999/job/1"),
@@ -797,12 +822,21 @@ describe("main failing", () => {
     expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
       signal: {
         ...at,
-        type: "failing",
-        key: "issue:0",
-        label: { key: "entry.bot", values: { title: "" } },
-        url: "",
+        type: "health",
+        branch: "main",
+        fallback: {
+          type: "failing",
+          key: "issue:0",
+          label: { key: "entry.bot", values: { title: "" } },
+          url: "",
+        },
       },
     });
+    const nowhere = { installation: { id: 9 }, repository: { ...repository } };
+    delete (nowhere.repository as { default_branch?: string }).default_branch;
+    expect(
+      classify("issues", { ...nowhere, action: "opened", issue }, ME),
+    ).toMatchObject({ signal: { type: "health", branch: "" } });
   });
 
   it("takes the label bot-failure from a person as a contribution", () => {
@@ -919,15 +953,15 @@ describe("releases", () => {
     });
   });
 
-  it("drops other workflows, pull requests and runs that didn't end", () => {
-    const ci = { ...workflow, path: ".github/workflows/ci.yml" };
+  it("leaves other workflows and pull requests to the rules of every workflow, and drops runs that didn't end", () => {
+    const ci = { ...workflow, id: 3, path: ".github/workflows/ci.yml" };
     expect(
       classify(
         "workflow_run",
         event({ action: "completed", workflow_run: ci }),
         ME,
       ),
-    ).toEqual({ ignored: "a workflow run of no release" });
+    ).toMatchObject({ signal: { type: "workflow", failed: true } });
     const pull = { ...workflow, event: "pull_request" };
     expect(
       classify(
@@ -935,7 +969,7 @@ describe("releases", () => {
         event({ action: "completed", workflow_run: pull }),
         ME,
       ),
-    ).toEqual({ ignored: "a workflow run of no release" });
+    ).toEqual({ ignored: "a workflow run of a pull request" });
     expect(
       classify(
         "workflow_run",
@@ -954,7 +988,7 @@ describe("releases", () => {
     expect(
       classify("workflow_run", event({ action: "completed" }), ME),
     ).toEqual({
-      ignored: "a workflow run of no release",
+      ignored: "a workflow run of another branch",
     });
   });
 
@@ -1144,6 +1178,159 @@ describe("releases", () => {
   });
 });
 
+describe("workflows on the default branch", () => {
+  const docs = {
+    id: 51,
+    name: "Docs",
+    path: ".github/workflows/docs.yml",
+    event: "push",
+    conclusion: "failure",
+    html_url: "https://github.com/Dennis-Otto/demo/actions/runs/51",
+    head_branch: "main",
+    head_repository: { full_name: "Dennis-Otto/demo" },
+    run_attempt: 1,
+  };
+  const outcome = (run: object, action = "completed") =>
+    classify(
+      "workflow_run",
+      event({ action, workflow_run: { ...docs, ...run } }),
+      ME,
+    );
+
+  it("passes any workflow that failed or passed on the default branch on, with its attempt", () => {
+    expect(outcome({})).toEqual({
+      signal: {
+        ...at,
+        type: "workflow",
+        path: ".github/workflows/docs.yml",
+        name: "Docs",
+        branch: "main",
+        failed: true,
+        run: 51,
+        attempt: 1,
+        url: "https://github.com/Dennis-Otto/demo/actions/runs/51/attempts/1",
+      },
+    });
+    expect(outcome({ conclusion: "success", run_attempt: 2 })).toMatchObject({
+      signal: { type: "workflow", failed: false, attempt: 2 },
+    });
+    for (const conclusion of ["timed_out", "startup_failure"]) {
+      expect(outcome({ conclusion })).toMatchObject({
+        signal: { failed: true },
+      });
+    }
+  });
+
+  it("counts the runs of a schedule, of a bot and of a start by hand on the default branch", () => {
+    for (const each of [
+      "schedule",
+      "workflow_run",
+      "workflow_dispatch",
+      "issues",
+      "dynamic",
+    ]) {
+      expect(outcome({ event: each })).toMatchObject({
+        signal: { type: "workflow", failed: true },
+      });
+    }
+  });
+
+  it("drops the runs of pull requests, other branches and forks, which have checks of their own", () => {
+    for (const each of ["pull_request", "pull_request_target"]) {
+      expect(outcome({ event: each })).toEqual({
+        ignored: "a workflow run of a pull request",
+      });
+    }
+    // A release workflow of a pull request is one as well.
+    expect(
+      outcome({
+        path: ".github/workflows/release.yml",
+        event: "pull_request_target",
+      }),
+    ).toEqual({ ignored: "a workflow run of a pull request" });
+    expect(
+      outcome({ event: "workflow_dispatch", head_branch: "feat/x" }),
+    ).toEqual({
+      ignored: "a workflow run of another branch",
+    });
+    expect(outcome({ head_branch: null })).toEqual({
+      ignored: "a workflow run of another branch",
+    });
+    const nowhere = { installation: { id: 9 }, repository: { ...repository } };
+    delete (nowhere.repository as { default_branch?: string }).default_branch;
+    expect(
+      classify(
+        "workflow_run",
+        {
+          ...nowhere,
+          action: "completed",
+          workflow_run: { ...docs, head_branch: "" },
+        },
+        ME,
+      ),
+    ).toEqual({ ignored: "a workflow run of another branch" });
+    expect(outcome({ head_repository: { full_name: "octocat/demo" } })).toEqual(
+      {
+        ignored: "a workflow run of a fork",
+      },
+    );
+    // A run that names no repository of its code is one of the repository itself.
+    expect(outcome({ head_repository: null })).toMatchObject({
+      signal: { type: "workflow" },
+    });
+  });
+
+  it("drops a run that was cancelled, skipped or didn't end, and one that names no run or no workflow", () => {
+    for (const conclusion of [
+      "cancelled",
+      "skipped",
+      "neutral",
+      "action_required",
+    ]) {
+      expect(outcome({ conclusion })).toEqual({
+        ignored: `a workflow run that ended ${conclusion}`,
+      });
+    }
+    expect(outcome({ conclusion: null })).toEqual({
+      ignored: "a workflow run that ended ",
+    });
+    expect(outcome({ id: "51" })).toEqual({
+      ignored: "a workflow run that names no run or no workflow",
+    });
+    expect(outcome({ path: undefined })).toEqual({
+      ignored: "a workflow run that names no run or no workflow",
+    });
+    expect(outcome({}, "in_progress")).toEqual({
+      ignored: "a workflow run in_progress",
+    });
+  });
+
+  it("names a workflow without a name by its path, and an attempt that GitHub doesn't name as the first", () => {
+    expect(
+      outcome({ name: "", run_attempt: "2", html_url: undefined }),
+    ).toMatchObject({
+      signal: { name: ".github/workflows/docs.yml", attempt: 1, url: "" },
+    });
+    expect(outcome({ name: undefined, run_attempt: undefined })).toMatchObject({
+      signal: {
+        name: ".github/workflows/docs.yml",
+        attempt: 1,
+        url: docs.html_url,
+      },
+    });
+  });
+
+  it("means the same for a run that the pager reads itself", () => {
+    expect(finishedRun(docs, at, "main")).toEqual(outcome({}));
+    expect(finishedRun(docs, at, "develop")).toEqual({
+      ignored: "a workflow run of another branch",
+    });
+    expect(finishedRun(undefined, at, "main")).toEqual({
+      ignored: "a workflow run of another branch",
+    });
+  });
+});
+
 describe("the pictures of a visual change", () => {
   const sha = "a1b2c3d4e5f6";
   const check = {
@@ -1167,12 +1354,15 @@ describe("the pictures of a visual change", () => {
     });
   });
 
-  it("stays quiet for a visual check that failed, or outside a pull request", () => {
+  it("stays quiet for a visual check that failed, and takes one outside a pull request as any workflow", () => {
     expect(completed({ ...check, conclusion: "failure" })).toEqual({
       ignored: "a visual check that ended failure",
     });
-    expect(completed({ ...check, event: "push" })).toEqual({
-      ignored: "a visual check outside a pull request",
+    expect(
+      completed({ ...check, event: "push", head_branch: "main" }),
+    ).toMatchObject({ signal: { type: "workflow", failed: false } });
+    expect(completed({ ...check, event: "pull_request_target" })).toEqual({
+      ignored: "a workflow run of a pull request",
     });
     expect(
       classify(

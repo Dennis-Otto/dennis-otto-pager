@@ -26,6 +26,7 @@ export const MAX_TOPIC_NAME = 128;
 const COLORS: Readonly<Record<Kind, TopicColor>> = {
   contribution: TOPIC_COLORS.blue,
   alarm: TOPIC_COLORS.red,
+  workflow: TOPIC_COLORS.red,
   alert: TOPIC_COLORS.yellow,
   release: TOPIC_COLORS.green,
   pictures: TOPIC_COLORS.rose,
@@ -68,6 +69,8 @@ function what(item: Item, t: Texts): string {
       );
     case "alarm":
       return t("topic.alarm", { repo });
+    case "workflow":
+      return t("topic.workflow", { repo, name: item.name });
     case "alert":
       return t("topic.alert", { repo });
     case "release":
@@ -253,6 +256,10 @@ export function about(item: Item, now: number, t: Texts): About {
           : `https://github.com/${item.repo}/security/code-scanning`,
         ...item.entries.map((entry) => entry.url),
       );
+      break;
+    case "workflow":
+      // The run that failed last, and the log of each job that failed in it.
+      links.push(item.url, ...item.jobs.map((job) => job.url));
       break;
     default:
       break;

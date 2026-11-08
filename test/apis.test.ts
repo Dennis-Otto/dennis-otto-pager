@@ -232,6 +232,40 @@ describe("the GitHub App", () => {
     });
   });
 
+  it("lists the jobs of an attempt of a run, with what GitHub names of each", async () => {
+    const jobs =
+      "/repos/Dennis-Otto/demo/actions/runs/60/attempts/2/jobs?per_page=100";
+    const net = new Net().on("GET", jobs, () =>
+      json({
+        jobs: [
+          {
+            name: "build",
+            html_url: "https://github.com/j/1",
+            conclusion: "failure",
+          },
+          {
+            name: "running",
+            html_url: "https://github.com/j/2",
+            conclusion: null,
+          },
+          { name: "nowhere" },
+          { html_url: "https://github.com/j/4" },
+        ],
+      }),
+    );
+    const api = await github(net);
+    expect(await api.jobs(9, "Dennis-Otto/demo", 60, 2)).toEqual([
+      { name: "build", url: "https://github.com/j/1", conclusion: "failure" },
+      { name: "running", url: "https://github.com/j/2", conclusion: "" },
+    ]);
+    expect(net.github("/access_tokens")[0]?.body.permissions).toEqual({
+      actions: "read",
+    });
+    // An answer without its list lists none.
+    net.on("GET", jobs, () => json({}));
+    expect(await api.jobs(9, "Dennis-Otto/demo", 60, 2)).toEqual([]);
+  });
+
   it("reads the required checks of the rulesets, for ten minutes", async () => {
     const net = new Net().on(
       "GET",

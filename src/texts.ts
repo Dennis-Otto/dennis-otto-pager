@@ -40,6 +40,7 @@ const en = {
   "state.merging": "🔀 Merging…",
   "state.merged": "🔀 Merged: the release is being published…",
   "state.done": "✅ Done.",
+  "state.rerunning": "🔁 The failed jobs run again…",
 
   "message.issue": "🙋 <b>New issue</b> in {repo} by <b>{author}</b>\n{link}",
   "message.pull":
@@ -63,6 +64,12 @@ const en = {
   "message.alert": "🛡 <b>Code scanning in {repo}</b>\n{entries}",
   "message.more": "… and {count} more",
   "message.rerunning": "🔁 running again…",
+  "message.workflow": "🔴 <b>{name} fails on {branch} in {repo}</b>",
+  "message.jobs": "Failed: {jobs}",
+  "message.run": "The run that failed",
+  "message.failedOnce": "Failed on {time}.",
+  "message.failedTimes":
+    "Failed {count} times since {since}, the last time on {time}.",
   "message.release": "📦 <b>Release {version}</b> of {repo}: {link}",
   "message.breaking":
     "⚠️ <b>Breaking changes</b>: read the notes before you merge.",
@@ -122,6 +129,8 @@ const en = {
     "Sent to the control repository: Claude looks for a fix, from your weekly limit.",
   "answer.rerun":
     "The failed jobs run again: a pass takes the entry out, a failure says so.",
+  "answer.rerunWorkflow":
+    "The failed jobs run again: a pass turns it ✅, a failure says so.",
   "answer.rerunRunning":
     "It still runs, or a newer attempt of it runs: nothing was started.",
   "answer.rerunPassed": "It passed already on a retry: nothing was started.",
@@ -203,6 +212,7 @@ const en = {
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} needs you",
+  "topic.workflow": "🔴 {name} in {repo}",
   "topic.alert": "🛡 Code scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Token of Claude",
@@ -262,6 +272,11 @@ export interface Texts {
   phrase(phrase: Phrase): string;
   /** A day, such as 2027-10-07, as the language writes it. */
   date(day: string): string;
+  /**
+   * A moment, in milliseconds since 1970, to the minute in UTC, which the pager
+   * knows no other zone than: 2026-11-08 at 11:20 UTC, or 08.11.2026 um 11:20 UTC.
+   */
+  time(at: number): string;
   /** A whole number, such as 48213, as the language writes it: 48,213 or 48.213. */
   number(value: number): string;
   /** A share between 0 and 1, such as 0.0231, as a percentage: 2.31 % or 2,31 %. */
@@ -294,6 +309,7 @@ const de: Catalog = {
   "state.merging": "🔀 Wird gemergt …",
   "state.merged": "🔀 Gemergt: Das Release wird veröffentlicht …",
   "state.done": "✅ Erledigt.",
+  "state.rerunning": "🔁 Die gescheiterten Jobs laufen erneut …",
 
   "message.issue":
     "🙋 <b>Neues Issue</b> in {repo} von <b>{author}</b>\n{link}",
@@ -318,6 +334,12 @@ const de: Catalog = {
   "message.alert": "🛡 <b>Code Scanning in {repo}</b>\n{entries}",
   "message.more": "… und {count} weitere",
   "message.rerunning": "🔁 läuft erneut …",
+  "message.workflow": "🔴 <b>{name} scheitert auf {branch} in {repo}</b>",
+  "message.jobs": "Gescheitert: {jobs}",
+  "message.run": "Der gescheiterte Lauf",
+  "message.failedOnce": "Gescheitert am {time}.",
+  "message.failedTimes":
+    "{count}-mal gescheitert seit dem {since}, zuletzt am {time}.",
   "message.release": "📦 <b>Release {version}</b> von {repo}: {link}",
   "message.breaking":
     "⚠️ <b>Inkompatible Änderungen</b>: lies die Versionshinweise, bevor du mergst.",
@@ -377,6 +399,8 @@ const de: Catalog = {
     "Ans Steuer-Repository geschickt: Claude sucht einen Fix, von deinem Wochenlimit.",
   "answer.rerun":
     "Die gescheiterten Jobs laufen erneut: Ein Erfolg nimmt den Eintrag heraus, ein Fehlschlag sagt es.",
+  "answer.rerunWorkflow":
+    "Die gescheiterten Jobs laufen erneut: Ein Erfolg macht es ✅, ein Fehlschlag sagt es.",
   "answer.rerunRunning":
     "Der Lauf läuft noch, oder ein neuerer Versuch von ihm läuft: Nichts wurde gestartet.",
   "answer.rerunPassed":
@@ -459,6 +483,7 @@ const de: Catalog = {
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",
   "topic.alarm": "🚨 {repo} braucht dich",
+  "topic.workflow": "🔴 {name} in {repo}",
   "topic.alert": "🛡 Code Scanning in {repo}",
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Claude-Token",
@@ -495,6 +520,15 @@ const DATES: Readonly<Record<Language, (day: string) => string>> = {
   en: (day) => day,
   de: (day) => day.split("-").reverse().join("."),
 };
+
+/** The word between the day and the hour of a moment in each language. */
+const AT: Readonly<Record<Language, string>> = { en: "at", de: "um" };
+
+/** A moment to the minute in UTC, in the words of a language. */
+function time(at: number, language: Language): string {
+  const moment = new Date(at).toISOString();
+  return `${DATES[language](moment.slice(0, 10))} ${AT[language]} ${moment.slice(11, 16)} UTC`;
+}
 
 /** The sign between the thousands of a number in each language. */
 const THOUSANDS: Readonly<Record<Language, string>> = { en: ",", de: "." };
@@ -543,6 +577,7 @@ export function texts(language: Language): Texts {
     phrase: (phrase: Phrase) =>
       fill(catalog[phrase.key], "values" in phrase ? phrase.values : {}),
     date: DATES[language],
+    time: (at: number) => time(at, language),
     number: (value: number) =>
       String(value).replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS[language]),
     percent: (share: number) => percent(share, DECIMALS[language]),

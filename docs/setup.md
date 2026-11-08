@@ -83,8 +83,8 @@ The app is private, so only your account can install it. Its permissions:
 
 | Permission | Access | For |
 | --- | --- | --- |
-| Actions | Read and write | A release workflow that fails; 🔁 Rerun, which reads a run that failed and runs its failed jobs again; the pictures of a visual check |
-| Checks | Read | A required check that fails on `main`; a release whose checks finished |
+| Actions | Read and write | A workflow that fails on `main`, and the jobs that failed in it; 🔁 Rerun, which reads a run that failed and runs its failed jobs again; the pictures of a visual check |
+| Checks | Read | A required check of another app than GitHub Actions that fails on `main`; a release whose checks finished |
 | Code scanning alerts | Read | An alert of severity high or critical |
 | Contents | Read and write | 🔀 Merge of a release; the events to the control repository |
 | Discussions | Read and write | A new discussion or a comment on one; ✅ Send of a reply in a discussion, as the app |
@@ -139,4 +139,5 @@ Then write a question to the bot, such as *What fails on main?*: the 👀 says t
 - **The health of the pager:** the workflow *Health* of the control repository asks the pager once a day how it is, as [How it works](how-it-works.md#when-the-pager-breaks) describes, which takes about a minute of its Actions minutes. Its run fails when the schedule stopped, Telegram refuses the bot or its webhook reported an error in the last day, GitHub refuses the app, or a token expires within a week; GitHub then notifies you of the failed run by itself, also when Telegram or the Worker is what broke. Start it by hand in the Actions tab to check the pager after a change.
 - **A secret that leaked:** set a new one with `npx wrangler secret put NAME`; for the app, make a new private key in its settings and set `GITHUB_APP_PRIVATE_KEY`; for the bot, `/revoke` at @BotFather, then `TELEGRAM_BOT_TOKEN` and step 5 again.
 - **How long "Later" waits** is `LATER_HOURS` in `wrangler.jsonc`.
+- **The mails of GitHub Actions** can go off once the pager pages for every [workflow that fails on `main`](how-it-works.md#a-workflow-that-fails-on-main): in the settings of your account on GitHub, under *Notifications*, *System*, *Actions*, turn off *Email*, but keep *Web and Mobile* on and look at your notifications on github.com or in the GitHub app: the pager can't page a failure of itself, so the failed run of *Health* of the control repository reaches you only that way once *Email* is off. If you would rather keep that one by mail, leave *Email* on and filter your mail instead: keep the mails of Actions of `Dennis-Otto/dennis-otto-pager-control` and drop the others. A run of a pull request still shows on the pull request.
 - **The language** of the pager is `LANGUAGE` in `wrangler.jsonc`: `de` for German, `en` or empty for English. It names every text that the pager sends, and the Worker passes it with each job to the control repository, whose answers follow it. A message that the pager showed already takes the new words when its thing changes. After a change, deploy the Worker again, as [Releases and Cloudflare](releases.md) describes.

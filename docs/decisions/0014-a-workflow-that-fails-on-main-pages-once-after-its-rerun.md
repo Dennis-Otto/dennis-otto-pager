@@ -1,0 +1,26 @@
+# A workflow that fails on main pages once, after its rerun
+
+- Status: accepted
+- Date: 2026-11-08
+
+## Context
+
+GitHub mails the actor of every run of GitHub Actions that fails, and the maintainer's agents push, merge and start runs as the maintainer: on 2026-11-08, a code-scanning alert that made *Findings* fail after each scanner, and an outage of GitHub that broke the downloads of *Docs*, *Links* and CodeQL, sent the maintainer a mail per run, all day, across the repositories. The pager paged only a required check that failed on `main`, a release workflow and, once a night, an issue of the bot-health bot, so a bot that kept failing on `main` reached the maintainer only as those mails, and a required check paged at once, also when the rerun of *After the checks*, the bot of the checks of the blueprint, passed a few minutes later. The app is subscribed to `workflow_run` and has *Actions: Read and write* already, for the release and 🔁 Rerun. Workers KV allows 1000 writes a day on the free plan, and the schedule runs every 15 minutes.
+
+## Options
+
+1. **Page every failed run on `main` at once, as an entry of the alarm.** One bundle per repository, which the pager has. But a run that its rerun fixes pages too, and an entry shows neither how often a workflow failed nor which jobs.
+2. **Page only when the bot-health bot opens its issue.** It runs once a night, so a failure waits for hours, and its issue adds a mail of its own.
+3. **One thing per workflow, after its rerun.** A failure on the default branch, in any run of the repository itself outside a pull request, is the thing of its workflow. The failure of a first attempt waits, unseen, for ten minutes, the time *After the checks* takes to run the failed jobs of the tests and of a release again; then the schedule reads the run and shows it, unless a rerun runs, which it waits for again, or passed, which ends it unseen. A rerun that failed too shows at once. Each later failure edits the message in place, with the count and the time, and a run in which no job that failed ran without passing turns it green.
+
+## Decision
+
+Option 3. The pager can't tell from a run whether *After the checks* will run it again, since the workflows that it reruns are named in each repository, so every first attempt waits: a page 10 to 25 minutes after the failure is soon enough for `main`, and the one that matters, a failure that a rerun doesn't fix, comes once. A pass ends the thing only when it ran the jobs that failed: *After the checks* runs one job per event and skips the others, so a run that passed says nothing about a job that it skipped, while one that doesn't list a job any more has lost it. Run ids grow with time, so a run older than the one that a thing knows changes nothing, which makes every signal safe to come twice and late.
+
+So the same failure doesn't page twice, a job of GitHub Actions is no longer a check of its own: its failure is that of its run, and its pass only takes out an entry that the alarm kept from before. An issue of the bot-health bot is read as the run that it names, which a thing knows already when its event came; only a run that the pager can't read is an entry of the alarm, as before. The alarm keeps the release workflows, whose failure stops a release, and the required checks of other apps.
+
+The thing offers 🔁 Rerun and ✖ Ignore, no 🛠 Start fix: the control repository knows the kinds alarm and alert, and a fix of a workflow takes a change of its contract on both sides. For the same reason, the control repository can't yet propose 🔁 Rerun for a text in the topic of a workflow, since it proposes it only on an alarm: that takes the kind `workflow` and its path in the contract, the Worker first.
+
+## Consequences
+
+The maintainer can turn off the mails of GitHub Actions and still hears of every workflow that fails on `main`, once per failure that a rerun didn't fix. A failure reads the jobs of its attempt once and writes its thing once; a pass reads its jobs only while its workflow fails and writes only when it ends the thing, so even the incident of 2026-11-08, about 40 failed runs on `main` in a day, costs about 40 writes of Workers KV. A run of a pull request, of another branch or of a fork, and one that was cancelled or skipped, never pages: a pull request shows its checks itself. A job that is renamed or removed ends a thing at the next pass of its workflow, and one beyond the first hundred jobs of a run counts as gone. The schedule shows as many waiting things per run as its calls allow, eight each, and leaves the rest for the next run. Once the mails are off, the failure of the control repository's *Health*, the alarm for a broken pager, reaches the maintainer only as a notification of GitHub on the web and in its app, or by a mail filter that keeps the mails of the control repository; the set-up says so. A failure whose delivery failed is in practice not delivered again, since a newer event of a run of the same repository overtakes it (decision 0012): it pages at the next failure of its workflow, or when the bot-health bot opens its issue at night. Ordering the release entries of the alarm by their run would let the redeliveries of runs come back.

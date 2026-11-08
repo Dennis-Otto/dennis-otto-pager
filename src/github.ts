@@ -5,6 +5,7 @@
  * only the permissions of its call, and lives in memory for less than its hour.
  */
 import { base64, base64url, utf8 } from "./crypto.ts";
+import type { Payload } from "./rules.ts";
 import type { Discussion } from "./store.ts";
 import type { Fetch } from "./telegram.ts";
 
@@ -227,10 +228,20 @@ async function readCapped(
   return bytes;
 }
 
-/** The parts of a run of GitHub Actions that 🔁 Rerun reads: those of its newest attempt. */
-export interface WorkflowRun {
+/**
+ * A run of GitHub Actions as its newest attempt stands: what 🔁 Rerun and the
+ * schedule read, and the fields of a run that the rules read in an event.
+ */
+export type WorkflowRun = NonNullable<Payload["workflow_run"]> & {
   status?: string;
-  conclusion?: string | null;
+};
+
+/** A job of an attempt of a run, as its run lists it. */
+export interface RunJob {
+  name: string;
+  /** The address of its log. */
+  url: string;
+  conclusion: string;
 }
 
 export type Permissions = Record<string, "read" | "write">;
@@ -473,6 +484,39 @@ export class GitHub {
     const token = await this.token(installation, repo, { actions: "read" });
     return this.json<WorkflowRun>(
       await this.call(token, "GET", `/repos/${repo}/actions/runs/${id}`),
+    );
+  }
+
+  /**
+   * The jobs of an attempt of a run, the first hundred, each with its name, the
+   * address of its log and its conclusion, which is empty while it runs.
+   */
+  async jobs(
+    installation: number,
+    repo: string,
+    run: number,
+    attempt: number,
+  ): Promise<RunJob[]> {
+    const token = await this.token(installation, repo, { actions: "read" });
+    const answer = await this.json<{
+      jobs?: { name?: unknown; html_url?: unknown; conclusion?: unknown }[];
+    }>(
+      await this.call(
+        token,
+        "GET",
+        `/repos/${repo}/actions/runs/${run}/attempts/${attempt}/jobs?per_page=100`,
+      ),
+    );
+    return (answer.jobs ?? []).flatMap(({ name, html_url, conclusion }) =>
+      typeof name === "string" && typeof html_url === "string"
+        ? [
+            {
+              name,
+              url: html_url,
+              conclusion: typeof conclusion === "string" ? conclusion : "",
+            },
+          ]
+        : [],
     );
   }
 

@@ -4,8 +4,8 @@
  * CLAUDE_TOKEN_EXPIRES names; GITHUB_USER_TOKEN of the Worker, whose day GitHub
  * names in the header github-authentication-token-expiration of each answer, which
  * the schedule reads once a day from GET /rate_limit, a call that counts against no
- * limit; and PAGER_FIX_TOKEN of the control repository, whose day its answers carry
- * as tokens.fix. What the pager learned of them stays in the storage of its Durable
+ * limit; and PAGER_FIX_TOKEN of the control repository, whose day its bodies carry as
+ * tokens.fix, such as that of its daily check of the health. What the pager learned of them stays in the storage of its Durable
  * Object, never a token itself: a reminder names the token, the day and how to
  * renew it.
  */

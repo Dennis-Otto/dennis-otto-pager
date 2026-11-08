@@ -155,7 +155,7 @@ Each body may carry what the run of Claude took from the weekly limit of the sub
 }
 ```
 
-Each body may also name the day on which `PAGER_FIX_TOKEN` of the control repository expires, which its jobs read from GitHub, for its [reminder](#the-tokens-that-expire): `"tokens": {"fix": "2026-12-03"}`, or `{"fix": null}` for a token without a day. A value that the pager can't read is passed over, so that no draft fails over it, and an older pager ignores `tokens`, so either side may deploy first.
+Each body may also name the day on which `PAGER_FIX_TOKEN` of the control repository expires, which its check *Health* reads from GitHub once a day, for its [reminder](#the-tokens-that-expire): `"tokens": {"fix": "2026-12-03"}`, or `{"fix": null}` for a token without a day. A value that the pager can't read is passed over, so that no draft fails over it, and an older pager ignores `tokens`, so either side may deploy first.
 
 `effort` is the `--effort` that the workflow set: `low`, `medium`, `high`, `xhigh` or `max`. `models` names each model that worked, as many as five, with every token that it read and wrote, the cache included, from the `modelUsage` of the result in the transcript of the Claude Code action. The message shows it below the answer, on one line, in the language of the pager:
 
@@ -355,7 +355,7 @@ The pager writes only when something needs its maintainer, so a quiet day looks 
 | --- | --- | --- | --- |
 | `CLAUDE_CODE_OAUTH_TOKEN` of the control repository | every job of Claude | `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` | `claude setup-token`, `gh secret set CLAUDE_CODE_OAUTH_TOKEN`, and the new day in `wrangler.jsonc` |
 | `GITHUB_USER_TOKEN` of the Worker | ✅ Send on an issue or a pull request, 🤖 Assistant again | the header `github-authentication-token-expiration` of GitHub, which the schedule reads once a day | regenerate it on GitHub, then `npx wrangler secret put GITHUB_USER_TOKEN` |
-| `PAGER_FIX_TOKEN` of the control repository | the pull request of 🛠 Start fix | `tokens.fix` in the answers of the control repository, which reads the same header | regenerate it on GitHub, then `gh secret set PAGER_FIX_TOKEN` |
+| `PAGER_FIX_TOKEN` of the control repository | the pull request of 🛠 Start fix | `tokens.fix`, which the check *Health* of the control repository reads from the same header once a day | regenerate it on GitHub, then `gh secret set PAGER_FIX_TOKEN` |
 
 - **Three weeks before a token's day,** a 🔔 reminder comes in a topic of its own, such as *🔔 GitHub token of the pager*, with the day and how to renew the token; ✅ Renewed closes it, and ⏰ Later puts it aside. It comes once per token and day, so a renewed token with a new day reminds again three weeks before that day. A token without a day, or a header that the pager can't read, reminds of nothing.
 - **Once a day,** by the day in UTC, the schedule asks GitHub about `GITHUB_USER_TOKEN` with `GET /rate_limit`, which counts against no limit of the API, and reads the header of its answer: a fine-grained token expires after 30 days unless its maintainer chose another day. A new token is asked about at once, which the pager tells by a short hash of it in the storage of the Durable Object; the token itself is kept nowhere but in the secrets of Cloudflare. When GitHub fails to answer, the log says so and the next run asks again.

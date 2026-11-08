@@ -155,7 +155,7 @@ Jeder Body kann tragen, was der Lauf von Claude vom Wochenlimit des Abos genomme
 }
 ```
 
-Jeder Body kann außerdem den Tag nennen, an dem `PAGER_FIX_TOKEN` des Steuer-Repositorys abläuft, den seine Jobs bei GitHub lesen, für seine [Erinnerung](#die-tokens-die-ablaufen): `"tokens": {"fix": "2026-12-03"}`, oder `{"fix": null}` für ein Token ohne Tag. Einen Wert, den der Pager nicht lesen kann, übergeht er, damit kein Entwurf daran scheitert, und ein älterer Pager übergeht `tokens`, daher darf jede Seite zuerst deployen.
+Jeder Body kann außerdem den Tag nennen, an dem `PAGER_FIX_TOKEN` des Steuer-Repositorys abläuft, den seine Prüfung *Health* einmal am Tag bei GitHub liest, für seine [Erinnerung](#die-tokens-die-ablaufen): `"tokens": {"fix": "2026-12-03"}`, oder `{"fix": null}` für ein Token ohne Tag. Einen Wert, den der Pager nicht lesen kann, übergeht er, damit kein Entwurf daran scheitert, und ein älterer Pager übergeht `tokens`, daher darf jede Seite zuerst deployen.
 
 `effort` ist das `--effort`, das der Workflow gesetzt hat: `low`, `medium`, `high`, `xhigh` oder `max`. `models` nennt jedes Modell, das gearbeitet hat, höchstens fünf, mit jedem Token, das es gelesen und geschrieben hat, den Cache eingeschlossen, aus dem `modelUsage` des Ergebnisses im Transkript der Claude Code Action. Die Nachricht zeigt es unter der Antwort, in einer Zeile, in der Sprache des Pagers:
 
@@ -355,7 +355,7 @@ Der Pager schreibt nur, wenn etwas seinen Maintainer braucht, also sieht ein ruh
 | --- | --- | --- | --- |
 | `CLAUDE_CODE_OAUTH_TOKEN` des Steuer-Repositorys | jedem Job von Claude | `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` | `claude setup-token`, `gh secret set CLAUDE_CODE_OAUTH_TOKEN` und der neue Tag in `wrangler.jsonc` |
 | `GITHUB_USER_TOKEN` des Workers | ✅ Senden bei einem Issue oder Pull Request, 🤖 Assistent nochmal | dem Header `github-authentication-token-expiration` von GitHub, den der Zeitplan einmal am Tag liest | auf GitHub neu erzeugen, dann `npx wrangler secret put GITHUB_USER_TOKEN` |
-| `PAGER_FIX_TOKEN` des Steuer-Repositorys | dem Pull Request von 🛠 Fix starten | `tokens.fix` in den Antworten des Steuer-Repositorys, das denselben Header liest | auf GitHub neu erzeugen, dann `gh secret set PAGER_FIX_TOKEN` |
+| `PAGER_FIX_TOKEN` des Steuer-Repositorys | dem Pull Request von 🛠 Fix starten | `tokens.fix`, das die Prüfung *Health* des Steuer-Repositorys einmal am Tag aus demselben Header liest | auf GitHub neu erzeugen, dann `gh secret set PAGER_FIX_TOKEN` |
 
 - **Drei Wochen vor dem Tag eines Tokens** kommt eine 🔔 Erinnerung in einem eigenen Thema, etwa *🔔 GitHub-Token des Pagers*, mit dem Tag und dem Weg, das Token zu erneuern; ✅ Erneuert schließt sie, und ⏰ Später legt sie beiseite. Sie kommt einmal pro Token und Tag, also erinnert ein erneuertes Token mit einem neuen Tag wieder drei Wochen vor diesem Tag. Ein Token ohne Tag, oder ein Header, den der Pager nicht lesen kann, erinnert an nichts.
 - **Einmal am Tag,** nach dem Tag in UTC, fragt der Zeitplan GitHub mit `GET /rate_limit` nach `GITHUB_USER_TOKEN`, was gegen kein Limit der API zählt, und liest den Header der Antwort: Ein feingranulares Token läuft nach 30 Tagen ab, wenn sein Maintainer keinen anderen Tag gewählt hat. Nach einem neuen Token fragt er sofort, was der Pager an einem kurzen Hash davon im Speicher des Durable Objects erkennt; das Token selbst liegt nirgends außer in den Geheimnissen von Cloudflare. Antwortet GitHub nicht, sagt es das Log, und der nächste Lauf fragt erneut.

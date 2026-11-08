@@ -157,6 +157,54 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 Kein Body lässt den Pager handeln: Was das Steuer-Repository schickt, wird angezeigt, maskiert, und nie ausgeführt, und jede Aktion braucht den Druck auf einen Knopf der Positivliste. Die Antwort geht an den Worker statt direkt an Telegram, wie [Entscheidung 0003](decisions/0003-the-control-repository-answers-the-worker.md) erklärt: Der Token des Bots bleibt bei Cloudflare, und der Worker hält den Zustand, den ein Entwurf, ein fehlgeschlagener Job und ein Vorschlag brauchen.
 
+## Fragen und Berichte deiner Agenten
+
+Die eigenen Agenten des Maintainers, etwa ein Orchestrator, der die Nacht über auf seinem PC läuft, mit `gh` in seinem Namen angemeldet, fragen über den Pager, statt eine Zeile in einem Bericht zu hinterlassen: Eine Frage kommt als eigene Sache, in einem eigenen Thema, mit ihren Optionen als Knöpfen, und der Agent liest die Antwort aus dem privaten Steuer-Repository. Kein Geheimnis geht auf den PC: `gh` schickt das Ereignis und liest die Antwort mit der eigenen Anmeldung des Maintainers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.de.dark.svg">
+  <img src="images/diagrams/a-question-of-an-agent.de.svg" alt="Die Frage eines Agenten: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen, und die GitHub App speichert seine Antwort als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis.">
+</picture>
+
+Ein Agent schickt dem Steuer-Repository einen von zwei [Repository Dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event):
+
+| Ereignistyp | Client Payload | Was der Pager zeigt |
+| --- | --- | --- |
+| `pager-ask` | `id`, `question`, `options` | Ein Thema *🤔 Entscheidung: …*, mit einem Knopf pro Option |
+| `pager-report` | `text`, und `title`, falls es einen gibt | Ein Thema *🧾 Lauf: …*, oder *🧾 Lauf* ohne Titel, mit dem Bericht und ohne Knopf |
+
+```sh
+gh api repos/Dennis-Otto/dennis-otto-pager-control/dispatches --input - <<'JSON'
+{"event_type": "pager-ask", "client_payload": {"id": "merge-order", "question": "Welches Release zuerst?", "options": ["Der Blueprint", "Der Pager"]}}
+JSON
+```
+
+Der Workflow des Steuer-Repositorys nimmt nur ein Ereignis, das der Besitzer des Repositorys geschickt hat, nie eines der GitHub App oder von jemand anderem, prüft es, wie der Pager es tut, und schickt es an `/control` weiter, signiert wie jede Antwort:
+
+- `{"type": "ask", "id": "<id>", "question": "<Frage>", "options": ["<Option>", …]}`: Die `id` benennt die Antwort, aus Buchstaben, Ziffern, Punkten, Bindestrichen und Unterstrichen, höchstens 64 Zeichen, am Anfang ein Buchstabe oder eine Ziffer; die `question` hat höchstens 1000 Zeichen; zwei bis vier `options`, jede anders und höchstens 64 Zeichen lang, werden die Knöpfe, einer pro Reihe. Dieselbe `id` noch einmal fragt nichts Neues: Eine offene Frage bleibt, wie sie ist, und für eine schon beantwortete antwortet der Pager 409. Ohne die GitHub App im Steuer-Repository antwortet der Pager 503, weil er die Antwort nicht speichern könnte;
+- `{"type": "report", "text": "<Bericht>", "title": "<Titel>"}`: der Bericht eines Laufs, seine ersten 3000 Zeichen, mit einem `title` von höchstens 100 Zeichen, den der Pager nicht in seinem Speicher behält.
+
+Ein Druck speichert die Antwort im Steuer-Repository, als GitHub App, mit einem Token nur für dieses Repository und seinem Recht, den Inhalt zu schreiben, das sie für die Dispatches schon hat: die Datei `answers/<id>.json` auf dem Branch `pager-answers`, den ihre erste Antwort mit einem eigenen Commit anlegt, ohne Vorgänger und ohne den Code des Repositorys, damit kein Workflow darauf läuft.
+
+```json
+{
+  "id": "merge-order",
+  "question": "Welches Release zuerst?",
+  "options": ["Der Blueprint", "Der Pager"],
+  "choice": 1,
+  "answer": "Der Pager",
+  "answered": "2026-11-08T07:12:03.000Z"
+}
+```
+
+Die Nachricht zeigt dann die Antwort, ihre Knöpfe verschwinden, und ihr Thema bekommt ✅. Lehnt GitHub die Antwort ab, sagt der Knopf warum, und die Frage bleibt offen, damit ein Druck sie noch einmal speichert. Eine Frage hat kein ⏰ Später und kein ✖ Ignorieren: Ein Agent wartet auf sie. Der Agent liest die Antwort mit seinem eigenen `gh`, das 404 antwortet, solange es keine gibt:
+
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/merge-order.json?ref=pager-answers"
+```
+
+Das Skript `scripts/ask.mjs` des Steuer-Repositorys kann alle drei: Es fragt, berichtet und wartet auf eine Antwort, wie seine README beschreibt.
+
 ## Die Reaktion auf einen Text
 
 Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert sie, während der Job läuft: Ein Bot darf eine Reaktion pro Nachricht setzen, aus der festen Liste von `ReactionTypeEmoji` in der Bot API von Telegram. Diese Liste hat kein ✅, deshalb steht 👍 für eine Antwort, das ihm am nächsten kommt, und 😢 für keine.
@@ -180,6 +228,8 @@ Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `cr
 | Code Scanning | 🛡 Code Scanning in demo | Gelb |
 | Release | 📦 demo 1.2.3 | Grün |
 | Erinnerung | 🔔 Claude-Token | Violett |
+| Frage eines Agenten | 🤔 Entscheidung: Welches Release zuerst? | Violett |
+| Bericht eines Laufs | 🧾 Lauf: Nachtlauf | Grün |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.de.dark.svg">

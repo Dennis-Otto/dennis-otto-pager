@@ -29,7 +29,11 @@ const COLORS: Readonly<Record<Kind, TopicColor>> = {
   release: TOPIC_COLORS.green,
   pictures: TOPIC_COLORS.rose,
   reminder: TOPIC_COLORS.violet,
+  decision: TOPIC_COLORS.violet,
 };
+
+/** The color of the topic of a report of a run, which is no thing: what came out. */
+export const REPORT_COLOR = TOPIC_COLORS.green;
 
 /**
  * Whether a thing is done, as the name of its topic shows: closed, or a release
@@ -83,6 +87,10 @@ function what(item: Item, t: Texts): string {
       });
     case "reminder":
       return t("topic.reminder");
+    case "decision":
+      return t("topic.decision", {
+        question: item.question.replace(/\s+/g, " ").trim(),
+      });
   }
 }
 
@@ -109,48 +117,72 @@ export async function sendThing(
   text: string,
   buttons: Keyboard,
 ): Promise<number> {
-  let topic: Topic | null = item.topic ?? null;
-  if (topic !== null && item.messageId === null) {
-    const message = await context.telegram.postInto(
+  const topic: Topic | null = item.topic ?? null;
+  if (item.messageId === null) {
+    if (topic !== null) {
+      const message = await context.telegram.postInto(
+        text,
+        buttons,
+        topic.thread,
+      );
+      if (message !== null) {
+        return message;
+      }
+    }
+    const opened = await postInNewTopic(
+      context,
+      topicName(item, context.t),
+      COLORS[item.kind],
       text,
       buttons,
-      topic.thread,
     );
-    if (message !== null) {
-      return message;
+    if (opened.topic !== null) {
+      await context.store.link(opened.topic.thread, item.id, isDone(item));
     }
-    topic = null;
+    item.topic = opened.topic;
+    return opened.message;
   }
-  let opened = false;
-  if (topic === null && item.messageId === null) {
-    const name = topicName(item, context.t);
-    const thread = await context.telegram.openTopic(name, COLORS[item.kind]);
-    if (thread !== null) {
-      topic = { thread, name };
-      opened = true;
-    }
-  }
+  const sent = await context.telegram.post(
+    text,
+    buttons,
+    topic?.thread ?? null,
+  );
+  item.topic = sent.thread === null ? null : topic;
+  return sent.message;
+}
+
+/**
+ * Send a message that opens a topic of its own, such as the first of a thing or a
+ * report of a run, or into the main view when the chat has no topics or Telegram
+ * refuses one. A topic that took no message is deleted again, so that no empty
+ * topic stays. Returns the id of the message and its topic.
+ */
+export async function postInNewTopic(
+  context: Context,
+  name: string,
+  color: TopicColor,
+  text: string,
+  buttons: Keyboard,
+): Promise<{ message: number; topic: Topic | null }> {
+  const thread = await context.telegram.openTopic(name, color);
   let sent: Sent;
   try {
-    sent = await context.telegram.post(text, buttons, topic?.thread ?? null);
+    sent = await context.telegram.post(text, buttons, thread);
   } catch (error) {
     // Such as too many requests at once: the topic took nothing, and the next
-    // signal of the thing opens it again.
-    if (opened && topic !== null) {
-      await context.telegram.removeTopic(topic.thread);
+    // signal of a thing opens it again.
+    if (thread !== null) {
+      await context.telegram.removeTopic(thread);
     }
     throw error;
   }
-  if (topic !== null && sent.thread === null) {
-    if (opened) {
-      await context.telegram.removeTopic(topic.thread);
-    }
-    topic = null;
-  } else if (topic !== null && opened) {
-    await context.store.link(topic.thread, item.id, isDone(item));
+  if (thread !== null && sent.thread === null) {
+    await context.telegram.removeTopic(thread);
   }
-  item.topic = topic;
-  return sent.message;
+  return {
+    message: sent.message,
+    topic: thread === null || sent.thread === null ? null : { thread, name },
+  };
 }
 
 /**

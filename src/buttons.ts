@@ -4,7 +4,7 @@
  * only when the thing, in its state at the time of the press, still offers it, so
  * an old button of a changed message does nothing.
  */
-import type { Contribution, Item } from "./store.ts";
+import type { Contribution, Decision, Item } from "./store.ts";
 import type { Keyboard } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 
@@ -19,12 +19,16 @@ export const ACTIONS = [
   "ignore",
   "later",
   "done",
+  "choose",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
 
+/** The actions whose buttons have a label of the catalog: an option of a decision is its own. */
+export type Labeled = Exclude<Action, "choose">;
+
 /** The label of a button, in the language of the texts. */
-export function label(t: Texts, action: Action): string {
+export function label(t: Texts, action: Labeled): string {
   return t(`button.${action}`);
 }
 
@@ -77,6 +81,9 @@ export function allowed(item: Item): Action[] {
       return item.state === "open" ? ["ignore"] : [];
     case "reminder":
       return item.state === "open" ? ["done", "later"] : [];
+    case "decision":
+      // An agent waits for the answer: it takes no "Later" and no "Ignore".
+      return item.state === "open" ? ["choose"] : [];
   }
 }
 
@@ -95,7 +102,8 @@ export function headTag(sha: string): number {
 /**
  * The data of a button, at most 64 bytes as Telegram allows: the action, the id of
  * the thing and, for "Send", the version of the draft that the message shows, for
- * "Merge" the head of the release that it shows.
+ * "Merge" the head of the release that it shows; an option of a decision carries
+ * its place instead, as options() makes it.
  */
 export function callbackData(action: Action, item: Item): string {
   let version = "";
@@ -127,9 +135,25 @@ export function parsePress(data: string): Press | null {
   };
 }
 
+/** The buttons of a decision that is open: one option a row, each its own label. */
+function options(item: Decision): Keyboard {
+  if (!allowed(item).includes("choose")) {
+    return [];
+  }
+  return item.options.map((option, place) => [
+    { text: option, callback_data: `choose:${item.id}:${place}` },
+  ]);
+}
+
 /** The keyboard of a thing: its allowed actions, two buttons a row. */
 export function keyboard(item: Item, t: Texts): Keyboard {
-  const buttons = allowed(item).map((action) => ({
+  if (item.kind === "decision") {
+    return options(item);
+  }
+  const labeled = allowed(item).filter(
+    (action): action is Labeled => action !== "choose",
+  );
+  const buttons = labeled.map((action) => ({
     text: label(t, action),
     callback_data: callbackData(action, item),
   }));

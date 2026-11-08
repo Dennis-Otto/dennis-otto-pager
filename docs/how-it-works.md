@@ -157,6 +157,54 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 No body makes the pager act: whatever the control repository sends is shown, escaped, and never run, and every action needs the press of a button of the allowlist. The answer goes to the Worker rather than straight to Telegram, as [decision 0003](decisions/0003-the-control-repository-answers-the-worker.md) explains: the token of the bot stays in Cloudflare, and the Worker keeps the state that a draft, a failed job and a proposal need.
 
+## Questions and reports of your agents
+
+The maintainer's own agents, such as an orchestrator that runs on their PC through the night with `gh` signed in as them, ask through the pager instead of leaving a line in a report: a question comes as a thing of its own, in a topic of its own, with its options as buttons, and the agent reads the answer from the private control repository. No secret goes to the PC: `gh` sends the event and reads the answer with the maintainer's own sign-in.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.dark.svg">
+  <img src="images/diagrams/a-question-of-an-agent.svg" alt="A question of an agent: An agent of Dennis, such as an orchestrator on his PC, sends the event pager-ask with gh to the private control repository, with an id, a question and two to four options. Its workflow takes only an event of Dennis himself, checks it and sends it to the Worker, signed. The pager opens a topic for the question, with one button per option. Dennis presses one, and the GitHub App saves his answer as answers/id.json on the branch pager-answers of the control repository. The agent reads it there with gh, without a secret of its own.">
+</picture>
+
+An agent sends one of two [repository dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event) to the control repository:
+
+| Event type | Client payload | What the pager shows |
+| --- | --- | --- |
+| `pager-ask` | `id`, `question`, `options` | A topic *🤔 Decision: …*, with one button per option |
+| `pager-report` | `text`, and `title` if any | A topic *🧾 Run: …*, or *🧾 Run* without a title, with the report and no button |
+
+```sh
+gh api repos/Dennis-Otto/dennis-otto-pager-control/dispatches --input - <<'JSON'
+{"event_type": "pager-ask", "client_payload": {"id": "merge-order", "question": "Which release goes first?", "options": ["The blueprint", "The pager"]}}
+JSON
+```
+
+The workflow of the control repository takes only an event that the owner of the repository sent, never one of the GitHub App or of anyone else, checks it as the pager does and sends it on to `/control`, signed as every answer:
+
+- `{"type": "ask", "id": "<id>", "question": "<question>", "options": ["<option>", …]}`: the `id` names the answer, with letters, digits, dots, dashes and underscores, 64 characters at most, starting with a letter or a digit; the `question` has 1000 characters at most; two to four `options`, each different and 64 characters at most, become the buttons, one a row. The same `id` again asks nothing new: an open question stays as it is, and the pager answers 409 for one that is answered already. Without the GitHub App on the control repository, the pager answers 503, since it couldn't save the answer;
+- `{"type": "report", "text": "<report>", "title": "<title>"}`: the report of a run, its first 3000 characters, with a `title` of 100 characters at most, which the pager leaves out of its store.
+
+A press saves the answer in the control repository, as the GitHub App, with a token for that repository alone and its permission to write the contents, which it has for the dispatches already: the file `answers/<id>.json` on the branch `pager-answers`, which its first answer makes with a commit of its own, without a parent and without the code of the repository, so no workflow runs on it.
+
+```json
+{
+  "id": "merge-order",
+  "question": "Which release goes first?",
+  "options": ["The blueprint", "The pager"],
+  "choice": 1,
+  "answer": "The pager",
+  "answered": "2026-11-08T07:12:03.000Z"
+}
+```
+
+The message then shows the answer, its buttons go, and its topic gets ✅. When GitHub refuses the answer, the button says why and the question stays open, so that a press saves it again. A question takes no ⏰ Later and no ✖ Ignore: an agent waits for it. The agent reads the answer with its own `gh`, which answers 404 until there is one:
+
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/merge-order.json?ref=pager-answers"
+```
+
+The script `scripts/ask.mjs` of the control repository does all three: it asks, reports and waits for an answer, as its README describes.
+
 ## The reaction on a text
 
 A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none.
@@ -180,6 +228,8 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 | Code scanning | 🛡 Code scanning in demo | yellow |
 | Release | 📦 demo 1.2.3 | green |
 | Reminder | 🔔 Token of Claude | violet |
+| Question of an agent | 🤔 Decision: Which release goes first? | violet |
+| Report of a run | 🧾 Run: Night run | green |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.dark.svg">

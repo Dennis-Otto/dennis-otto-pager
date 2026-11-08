@@ -8,15 +8,27 @@
  * a text of the maintainer turns the 👀 on that text into 👍, or 😢 when no answer
  * came to be, and goes into the thread that the text came from. A job of a thing
  * that ends without a change may propose one action of its thing, such as 🔁 Rerun
- * after an outage of GitHub, which comes as a proposal in the thing's topic.
+ * after an outage of GitHub, which comes as a proposal in the thing's topic. It
+ * also forwards what the maintainer's own agents send it: a question whose options
+ * are buttons, whose answer the pager saves in the control repository, and the
+ * report of a run.
  */
-import { type Action, allowed, callbackData, label } from "./buttons.ts";
+import { allowed, callbackData, type Labeled, label } from "./buttons.ts";
 import { verifySignature } from "./crypto.ts";
 import { type Context, draftOrWhyNot, show } from "./pager.ts";
 import { html, link } from "./render.ts";
-import { beforeJob, type Item, itemId, keys } from "./store.ts";
+import {
+  beforeJob,
+  type Decision,
+  type Item,
+  itemId,
+  keys,
+  MAX_OPTION,
+  MAX_QUESTION,
+} from "./store.ts";
 import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
+import { postInNewTopic, REPORT_COLOR } from "./topics.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
 
@@ -40,7 +52,7 @@ const ALL: readonly Target["kind"][] = [
  * ✅ Send and ✏️ Edit stay with the message of the draft, which shows the text
  * that they post.
  */
-export const PROPOSABLE: Partial<Record<Action, readonly Target["kind"][]>> = {
+export const PROPOSABLE: Partial<Record<Labeled, readonly Target["kind"][]>> = {
   merge: ["release"],
   assistant: ["contribution"],
   draft: ["contribution"],
@@ -59,14 +71,16 @@ export const PROPOSABLE: Partial<Record<Action, readonly Target["kind"][]>> = {
 export type Message = (
   | { type: "draft"; item: string; text: string }
   | { type: "note"; item?: string; text: string }
-  | { type: "failed"; item?: string; text: string; action?: Action }
-  | { type: "proposal"; text: string; action: Action; target: Target }
+  | { type: "failed"; item?: string; text: string; action?: Labeled }
+  | { type: "proposal"; text: string; action: Labeled; target: Target }
+  | { type: "ask"; id: string; question: string; options: string[] }
+  | { type: "report"; text: string; title?: string }
 ) & { usage?: Usage; message?: number };
 
 type Fields = Partial<Record<string, unknown>>;
 
 /** Whether a value names an action that a proposal may carry. */
-function proposable(action: unknown): action is Action {
+function proposable(action: unknown): action is Labeled {
   // Only an own key: "constructor" or "__proto__" would find the prototype's.
   return typeof action === "string" && Object.hasOwn(PROPOSABLE, action);
 }
@@ -93,8 +107,54 @@ function targetOf(action: unknown, value: unknown): Target | null {
     : null;
 }
 
+/** The id of a question: letters, digits, dots, dashes and underscores, as a file name. */
+const ASK_ID = /^[A-Za-z0-9][\w.-]{0,63}$/;
+
+/** The most options of a decision, as many as its buttons stay easy to read. */
+export const MAX_OPTIONS = 4;
+
+/** The longest title of a report, in characters, which the name of its topic shows whole. */
+export const MAX_TITLE = 100;
+
+/** A text that is no text, or only white space. */
+function blank(value: unknown): boolean {
+  return typeof value !== "string" || value.trim() === "";
+}
+
+/**
+ * A question of an agent: an id that names its answer, a question, and two to four
+ * options, each different and short enough for its button.
+ */
+function questionOf(message: Fields): Message | null {
+  const { id, question, options } = message;
+  if (
+    typeof id !== "string" ||
+    !ASK_ID.test(id) ||
+    blank(question) ||
+    (question as string).length > MAX_QUESTION ||
+    !Array.isArray(options) ||
+    options.length < 2 ||
+    options.length > MAX_OPTIONS
+  ) {
+    return null;
+  }
+  const named = options.map((option: unknown) =>
+    blank(option) ? "" : (option as string).trim(),
+  );
+  if (
+    named.some((option) => option === "" || option.length > MAX_OPTION) ||
+    new Set(named).size !== named.length
+  ) {
+    return null;
+  }
+  return { type: "ask", id, question: question as string, options: named };
+}
+
 function shape(message: Fields): Message | null {
   const { type, item, text, action } = message;
+  if (type === "ask") {
+    return questionOf(message);
+  }
   if (typeof text !== "string" || text.trim() === "") {
     return null;
   }
@@ -121,7 +181,16 @@ function shape(message: Fields): Message | null {
       const target = targetOf(action, message.target);
       return target === null
         ? null
-        : { type, text, action: action as Action, target };
+        : { type, text, action: action as Labeled, target };
+    }
+    case "report": {
+      const { title } = message;
+      if (title === undefined) {
+        return { type, text };
+      }
+      return blank(title) || (title as string).length > MAX_TITLE
+        ? null
+        : { type, text, title: (title as string).replace(/\s+/g, " ").trim() };
     }
     default:
       return null;
@@ -237,7 +306,7 @@ function whereIs(item: Item, t: Texts): string {
 /** What a proposal shows: its answer, the action and the thing that it acts on. */
 interface Proposal {
   text: string;
-  action: Action;
+  action: Labeled;
   target: Target;
   usage?: Usage;
 }
@@ -293,6 +362,72 @@ async function propose(
   return keyboard.length > 0;
 }
 
+/**
+ * A question of an agent: a thing of its own, in a topic of its own, whose options
+ * are its buttons. The same id again, such as an event sent twice, asks nothing
+ * new: an open question stays as it is, and an answered one keeps its answer.
+ */
+async function ask(
+  context: Context,
+  message: Extract<Message, { type: "ask" }>,
+): Promise<Response> {
+  const id = await itemId(keys.decision(message.id));
+  const known = await context.store.get(id);
+  if (known !== null) {
+    return known.state === "open"
+      ? new Response("asked")
+      : new Response("Conflict", { status: 409 });
+  }
+  // The answer is saved in the control repository, with the app installed there.
+  const repo = context.settings.controlRepository;
+  const installation = await context.github.installation(repo);
+  if (installation === null) {
+    return new Response(`The GitHub App isn't installed on ${repo}`, {
+      status: 503,
+    });
+  }
+  const decision: Decision = {
+    id,
+    kind: "decision",
+    state: "open",
+    repo,
+    installation,
+    messageId: null,
+    note: null,
+    snoozedUntil: null,
+    ask: message.id,
+    question: message.question,
+    options: message.options,
+    choice: null,
+  };
+  // A new message, which notifies: an agent waits for the answer.
+  await show(context, decision);
+  return new Response("asked");
+}
+
+/**
+ * The report of a run of an agent: a message in a topic of its own, without
+ * buttons, which keeps nothing in the store.
+ */
+async function report(
+  context: Context,
+  message: Extract<Message, { type: "report" }>,
+): Promise<Response> {
+  const { t } = context;
+  const name =
+    message.title === undefined
+      ? t("topic.report")
+      : t("topic.reportTitled", { title: message.title });
+  await postInNewTopic(
+    context,
+    name,
+    REPORT_COLOR,
+    t("message.report", { text: html(message.text, MAX_DRAFT) }),
+    [],
+  );
+  return new Response("reported");
+}
+
 /** Handle a request of the control repository. */
 export async function handleControl(
   context: Context,
@@ -309,6 +444,12 @@ export async function handleControl(
   const message = parse(body);
   if (message === null) {
     return new Response("Bad Request", { status: 400 });
+  }
+  if (message.type === "ask") {
+    return ask(context, message);
+  }
+  if (message.type === "report") {
+    return report(context, message);
   }
   if (message.type === "proposal") {
     const { target } = message;

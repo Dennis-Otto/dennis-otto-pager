@@ -83,14 +83,19 @@ export async function sha256Hex(text: string): Promise<string> {
   return toHex(await crypto.subtle.digest("SHA-256", utf8(text)));
 }
 
-/** Bytes, or a text in UTF-8, in base64url without padding, as a JWT takes them. */
-export function base64url(data: ArrayBuffer | Uint8Array | string): string {
+/** Bytes, or a text in UTF-8, in base64, as the contents API of GitHub takes them. */
+export function base64(data: ArrayBuffer | Uint8Array | string): string {
   const bytes = typeof data === "string" ? utf8(data) : new Uint8Array(data);
   let binary = "";
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary)
+  return btoa(binary);
+}
+
+/** Bytes, or a text in UTF-8, in base64url without padding, as a JWT takes them. */
+export function base64url(data: ArrayBuffer | Uint8Array | string): string {
+  return base64(data)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");

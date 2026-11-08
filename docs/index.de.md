@@ -16,7 +16,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 
 Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für diesen Pager, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
 
-- [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository und der Zustand.
+- [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository, die Fragen und Berichte deiner Agenten und der Zustand.
 - [Einrichten](setup.md): der Bot, der Worker, die GitHub-App, die Geheimnisse und der Webhook, Schritt für Schritt.
 - [Releases and Cloudflare](releases.md): wie ein Release live geht.
 - [Security design](security.md): die Sicherheit des Repositorys und seiner Releases.

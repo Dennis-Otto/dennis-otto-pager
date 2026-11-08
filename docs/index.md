@@ -16,7 +16,7 @@ The pager writes only when something needs its maintainer, never to say that all
 
 The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for this pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository.
 
-- [How it works](how-it-works.md): the rules of what counts, the buttons, the control repository and the state.
+- [How it works](how-it-works.md): the rules of what counts, the buttons, the control repository, the questions and reports of your agents, and the state.
 - [Set up](setup.md): the bot, the Worker, the GitHub App, the secrets and the webhook, step by step.
 - [Releases and Cloudflare](releases.md): how a release goes live.
 - [Security design](security.md): the security of the repository and its releases.

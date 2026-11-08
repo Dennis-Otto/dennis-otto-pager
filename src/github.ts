@@ -4,7 +4,7 @@
  * name, with their own token. Each token of the app is made for one repository and
  * only the permissions of its call, and lives in memory for less than its hour.
  */
-import { base64url, utf8 } from "./crypto.ts";
+import { base64, base64url, utf8 } from "./crypto.ts";
 import type { Discussion } from "./store.ts";
 import type { Fetch } from "./telegram.ts";
 
@@ -168,6 +168,19 @@ export interface WorkflowRun {
 }
 
 export type Permissions = Record<string, "read" | "write">;
+
+/**
+ * The branch of the control repository that keeps the answers to the questions of
+ * the maintainer's agents, as answers/<id>.json: it has no parent and no code of
+ * the repository, so no workflow runs on it.
+ */
+export const ANSWERS = "pager-answers";
+
+/** The one file of the branch of the answers when the pager makes it. */
+const ANSWERS_README = `# The answers of the pager
+
+Each file \`answers/<id>.json\` is the answer of the maintainer to the question \`<id>\` of one of their agents, saved by the GitHub App of the pager when its button was pressed. The pager's documentation describes how an agent asks and reads: https://dennis-otto.github.io/dennis-otto-pager/how-it-works.html
+`;
 
 /** The thread of a comment of a discussion: that of its parent, for a reply. */
 const THREAD = `query($comment: ID!) {
@@ -484,6 +497,74 @@ export class GitHub {
     if (!response.ok) {
       await this.json(response);
     }
+  }
+
+  /**
+   * Keep the answer to a question of an agent as answers/<id>.json on the branch of
+   * the answers of a repository, the control repository, where the agent reads it
+   * with its own gh. The first answer makes the branch; an answer again, such as to
+   * a question asked again after its record expired, replaces the file.
+   */
+  async saveAnswer(
+    installation: number,
+    repo: string,
+    id: string,
+    answer: unknown,
+  ): Promise<void> {
+    const token = await this.token(installation, repo, { contents: "write" });
+    const branch = await this.call(
+      token,
+      "GET",
+      `/repos/${repo}/git/ref/heads/${ANSWERS}`,
+    );
+    if (branch.status === 404) {
+      await this.answersBranch(token, repo);
+    } else {
+      await this.json(branch);
+    }
+    const path = `/repos/${repo}/contents/answers/${id}.json`;
+    const before = await this.call(token, "GET", `${path}?ref=${ANSWERS}`);
+    const sha =
+      before.status === 404
+        ? undefined
+        : (await this.json<{ sha: string }>(before)).sha;
+    await this.json(
+      await this.call(token, "PUT", path, {
+        message: `The answer to ${id}`,
+        content: base64(`${JSON.stringify(answer, null, 2)}\n`),
+        branch: ANSWERS,
+        ...(sha === undefined ? {} : { sha }),
+      }),
+    );
+  }
+
+  /** Make the branch of the answers: one commit without a parent, with its README. */
+  private async answersBranch(token: string, repo: string): Promise<void> {
+    const tree = await this.json<{ sha: string }>(
+      await this.call(token, "POST", `/repos/${repo}/git/trees`, {
+        tree: [
+          {
+            path: "README.md",
+            mode: "100644",
+            type: "blob",
+            content: ANSWERS_README,
+          },
+        ],
+      }),
+    );
+    const commit = await this.json<{ sha: string }>(
+      await this.call(token, "POST", `/repos/${repo}/git/commits`, {
+        message: "The branch of the answers of the pager",
+        tree: tree.sha,
+        parents: [],
+      }),
+    );
+    await this.json(
+      await this.call(token, "POST", `/repos/${repo}/git/refs`, {
+        ref: `refs/heads/${ANSWERS}`,
+        sha: commit.sha,
+      }),
+    );
   }
 
   private user(): string {

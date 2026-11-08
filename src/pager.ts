@@ -837,6 +837,7 @@ async function pictures(
     changed: read.changed.slice(0, MAX_LISTED),
     count: read.changed.length,
     shown: read.shown,
+    differences: read.differences,
     check: `https://github.com/${signal.repo}/actions/runs/${signal.run}`,
   };
   if (ofRelease !== null) {

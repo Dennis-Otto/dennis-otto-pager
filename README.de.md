@@ -32,7 +32,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | Das Secret Scanning findet ein Secret, oder findet es auch öffentlich | Ein Eintrag in der Sicherheitsnachricht des Repositorys, neben seinem Code Scanning, mit der Art des Secrets und seiner Datei, nie dem Secret |
 | Jemand meldet vertraulich eine Sicherheitslücke, wie `SECURITY.md` bittet | Ihr Schweregrad, ihr Link und die Tage, bis zu denen `SECURITY.md` eine Antwort verspricht, nie, was sie sagt; eine Erinnerung am Tag davor, solange sie in der Triage wartet |
 | Ein Release-Pull-Request ist grün und aktuell | 🔀 **Mergen**, das das Release veröffentlicht |
-| Ein Pull Request des Maintainers oder eines Bots ändert, wie etwas aussieht, wie sein Visual Check findet | Die Bilder, die anders aussehen, vorher und nachher, als ein Album in seinem Thema, höchstens einmal pro Head |
+| Ein Pull Request des Maintainers oder eines Bots ändert, wie etwas aussieht, wie sein Visual Check findet | Die Bilder, die anders aussehen, jedes geänderte Pixel rot, vorher und nachher, als ein Album in seinem Thema, höchstens einmal pro Head |
 | Ein Token von dir läuft in drei Wochen ab: das von Claude im Steuer-Repository, `GITHUB_USER_TOKEN` von ✅ **Senden** oder `PAGER_FIX_TOKEN` von 🛠 **Fix starten**, oder GitHub lehnt `GITHUB_USER_TOKEN` ab | Wie du es erneuerst; ✅ **Erneuert** |
 
 Eine Nachricht zeigt, was ihre Sache sagt, sodass du GitHub selten öffnen musst: den Anfang eines Issues, eines Pull Requests, einer Diskussion oder eines Kommentars als eingeklapptes Zitat und die Versionshinweise eines Releases, mit *⚠️ Inkompatible Änderungen* darüber, wenn es etwas bricht, sodass du weißt, was 🔀 **Mergen** veröffentlicht.

@@ -120,6 +120,9 @@ interface Answer {
  */
 export const MAX_RETRY_AFTER = 3;
 
+/** The photos of one album at most, as sendMediaGroup takes them. */
+export const MAX_MEDIA = 10;
+
 /** Wait so many seconds. */
 export type Sleep = (seconds: number) => Promise<void>;
 
@@ -367,7 +370,7 @@ export class Telegram {
     }
   }
 
-  /** sendMediaGroup for two to ten photos, sendPhoto for one, with where they go. */
+  /** sendMediaGroup for two to MAX_MEDIA photos, sendPhoto for one, with where they go. */
   private async sendPhotos(
     photos: readonly Photo[],
     where: object,

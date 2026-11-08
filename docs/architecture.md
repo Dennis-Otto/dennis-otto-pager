@@ -59,7 +59,7 @@ The [decisions](decisions/README.md) record each choice that shapes the pager, w
 - **The control repository answers the Worker** ([0003](decisions/0003-the-control-repository-answers-the-worker.md)): Claude Code runs in a private repository with the maintainer's subscription, and its answer comes back signed.
 - **One language per pager, from a catalog** ([0004](decisions/0004-one-language-per-pager-from-a-catalog.md)), and **one topic per thing, kept when it is done** ([0005](decisions/0005-one-topic-per-thing-kept-when-done.md)).
 - **A discussion gets its draft at once, and its reply comes from the app** ([0006](decisions/0006-a-discussion-gets-its-draft-at-once-and-the-reply-of-the-app.md)).
-- **The pictures of a visual change come from the artifacts of its check** ([0007](decisions/0007-the-pictures-of-a-visual-change-come-from-the-artifacts-of-its-check.md)), and **an agent reads its answer from a branch of the control repository** ([0008](decisions/0008-an-agent-reads-its-answer-from-a-branch-of-the-control-repository.md)).
+- **The pictures of a visual change come from the artifacts of its check** ([0007](decisions/0007-the-pictures-of-a-visual-change-come-from-the-artifacts-of-its-check.md)), **and their album shows the changed pixels first** ([0016](decisions/0016-the-album-of-a-visual-change-shows-the-changed-pixels-first.md)), and **an agent reads its answer from a branch of the control repository** ([0008](decisions/0008-an-agent-reads-its-answer-from-a-branch-of-the-control-repository.md)).
 
 ## Tests
 

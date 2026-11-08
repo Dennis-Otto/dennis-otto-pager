@@ -1,15 +1,19 @@
 /**
  * The pictures of a visual change: what the artifacts of the visual check of a pull
- * request hold, and the few that go to the chat as an album, before and after.
+ * request hold, and the few that go to the chat as an album: the changed pixels in
+ * red, before and after.
  *
  * The visual check of a repository (its visual.yml) renders its pictures again and
  * keeps each one that looks different in an artifact, `visual` or one per language
  * such as `visual-en`: as committed and as rendered, and their list in report.json,
- * with the share of the pixels that changed. The reports of the repositories differ
- * a little: the list is `pictures` or `images`, a picture is new or added, deleted
- * or removed, and its files are before/ and after/ with its path, or named in its
- * entry. The pager reads them all, checks each entry as the comments of the checks
- * do, and takes the largest changes that Telegram shows as photos.
+ * with the share of the pixels that changed, and for a picture that changed, the
+ * picture of its difference, each changed pixel in red. The reports of the
+ * repositories differ a little: the list is `pictures` or `images`, a picture is new
+ * or added, deleted or removed, its files are before/ and after/ with its path, or
+ * named in its entry, and its difference is named as `diff` or `difference`, or is
+ * diff/ with the path of a PNG. The pager reads them all, checks each entry as the
+ * comments of the checks do, and takes the largest changes that Telegram shows as
+ * photos.
  */
 import { html } from "./render.ts";
 import type { Changed } from "./store.ts";
@@ -25,7 +29,10 @@ export const MAX_ARTIFACTS = 4;
 export const MAX_ARTIFACT = 32 * 1024 * 1024;
 /** The largest report of a visual check that the pager reads. */
 export const MAX_REPORT = 256 * 1024;
-/** The pictures of an album at most, each before and after: few, as the chat wants them. */
+/**
+ * The pictures of an album at most, each with its difference, before and after: few,
+ * as the chat wants them, and with three photos each within the MAX_MEDIA of Telegram.
+ */
 export const MAX_ALBUM = 3;
 /** The largest file that goes as a photo; Telegram takes 10 MB. */
 export const MAX_PHOTO = 5 * 1024 * 1024;
@@ -48,6 +55,8 @@ const LONGEST_PATH = 300;
 export interface Reported extends Changed {
   before: string | null;
   after: string | null;
+  /** The file of its difference, each changed pixel in red, if the artifact has it. */
+  diff: string | null;
 }
 
 function plainPath(value: unknown): value is string {
@@ -73,6 +82,28 @@ function fileOf(
     return null;
   }
   return plainPath(named) ? named : `${side}/${path}`;
+}
+
+/**
+ * The file of the difference of a picture that changed: the one that its entry names,
+ * as `diff` or as `difference`, or for a PNG whose share is a number, its path in
+ * diff/, where the checks of PNG files wrote it before they named it. None for a new
+ * picture and a deleted one, which have one side only.
+ */
+function differenceOf(
+  entry: Record<string, unknown>,
+  status: Changed["status"],
+  share: number | null,
+  path: string,
+): string | null {
+  if (status !== "changed") {
+    return null;
+  }
+  const named = [entry.diff, entry.difference].find(plainPath);
+  if (named !== undefined) {
+    return named;
+  }
+  return share !== null && /\.png$/i.test(path) ? `diff/${path}` : null;
 }
 
 /**
@@ -109,6 +140,7 @@ export function readReport(text: string): Reported[] | null {
         share,
         before: fileOf("before", status, entry.before, path),
         after: fileOf("after", status, entry.after, path),
+        diff: differenceOf(entry, status, share, path),
       },
     ];
   });
@@ -117,21 +149,26 @@ export function readReport(text: string): Reported[] | null {
 /** A file that may be a photo, by its name: one of another kind is never read. */
 const PHOTO_FILE = /\.(?:png|webp)$/i;
 
+/** A picture to put in order: how it changed, and the file of its difference, if any. */
+type Ordered = Changed & { diff?: string | null };
+
 /**
  * How much a picture changed, for the order of the album: the share of its pixels,
  * all of it for a new one and one of another size or frames, and nothing for one
- * that is gone, which shows only what was. A file that can't be a photo, such as a
- * video, comes after all of them, so that the list starts with what the album shows.
+ * that is gone, which shows only what was. A picture that can't be a photo, neither
+ * its file nor its difference, such as a video, comes after all of them, so that
+ * the list starts with what the album shows; a GIF with its difference doesn't.
  */
-function weight(picture: Changed): number {
-  if (!PHOTO_FILE.test(picture.path)) {
+function weight(picture: Ordered): number {
+  const photos = [picture.path, picture.diff ?? ""];
+  if (!photos.some((name) => PHOTO_FILE.test(name))) {
     return -1;
   }
   return picture.status === "deleted" ? 0 : (picture.share ?? 1);
 }
 
 /** The pictures, the largest change first; the same changes keep their order. */
-export function largestFirst<T extends Changed>(pictures: readonly T[]): T[] {
+export function largestFirst<T extends Ordered>(pictures: readonly T[]): T[] {
   return [...pictures].sort((one, other) => weight(other) - weight(one));
 }
 
@@ -244,42 +281,77 @@ export async function readArtifact(
   }
 }
 
-/** The photos of a picture, each side of it, or null when one of them can't go. */
-async function photosOf(
+/** A file of the ZIP as a photo with its caption, or null when it can't go as one. */
+async function photo(
+  zip: Zip,
+  name: string,
+  caption: string,
+): Promise<Photo | null> {
+  const entry = PHOTO_FILE.test(name) ? zip.get(name) : undefined;
+  if (entry === undefined || entry.size > MAX_PHOTO) {
+    return null;
+  }
+  const bytes = await zip.read(entry).catch(() => null);
+  const type = bytes === null ? null : photoType(bytes);
+  return bytes === null || type === null ? null : { bytes, type, caption };
+}
+
+/** The path of a picture in its caption. */
+function captioned(picture: Changed): { path: string } {
+  return { path: `<code>${html(picture.path)}</code>` };
+}
+
+/** The photos of the sides of a picture, or none when one of them can't go. */
+async function sidesOf(
   zip: Zip,
   picture: Reported,
   t: Texts,
-): Promise<Photo[] | null> {
+): Promise<Photo[]> {
   const photos: Photo[] = [];
   for (const [side, caption] of SIDES[picture.status]) {
     // The sides that SIDES lists for a status are those that have a file.
     const name = picture[side] as string;
-    const entry = PHOTO_FILE.test(name) ? zip.get(name) : undefined;
-    if (entry === undefined || entry.size > MAX_PHOTO) {
-      return null;
+    const one = await photo(zip, name, t(caption, captioned(picture)));
+    if (one === null) {
+      return [];
     }
-    const bytes = await zip.read(entry).catch(() => null);
-    const type = bytes === null ? null : photoType(bytes);
-    if (bytes === null || type === null) {
-      return null;
-    }
-    photos.push({
-      bytes,
-      type,
-      caption: t(caption, { path: `<code>${html(picture.path)}</code>` }),
-    });
+    photos.push(one);
   }
   return photos;
+}
+
+/**
+ * The photos of a picture: the picture of its difference first, each changed pixel
+ * in red, when the artifact has one that goes as a photo, then its sides when each
+ * of them goes. A GIF, whose sides can't, shows its difference alone, and a
+ * difference that is broken or too large leaves the sides alone.
+ */
+async function photosOf(
+  zip: Zip,
+  picture: Reported,
+  t: Texts,
+): Promise<Photo[]> {
+  const difference =
+    picture.diff === null
+      ? null
+      : await photo(zip, picture.diff, t("caption.diff", captioned(picture)));
+  const sides = await sidesOf(zip, picture, t);
+  return difference === null ? sides : [difference, ...sides];
 }
 
 /** What the artifacts of a visual check show. */
 export interface Album {
   /** Every picture that looks different, the largest change first. */
   changed: Changed[];
-  /** The photos of the album: the largest changes that Telegram shows, before and after. */
+  /**
+   * The photos of the album: the largest changes that Telegram shows, each with the
+   * picture of its difference first, then before and after.
+   */
   photos: Photo[];
   /** How many pictures the album shows. */
   shown: number;
+  /** How many pictures the artifacts hold the difference of, each changed pixel in red. */
+  differences: number;
 }
 
 /**
@@ -301,9 +373,9 @@ export async function album(
     if (shown === MAX_ALBUM) {
       break;
     }
-    const sides = await photosOf(picture.zip, picture, t);
-    if (sides !== null) {
-      photos.push(...sides);
+    const its = await photosOf(picture.zip, picture, t);
+    if (its.length > 0) {
+      photos.push(...its);
       shown += 1;
     }
   }
@@ -311,5 +383,8 @@ export async function album(
     changed: all.map(({ path, status, share }) => ({ path, status, share })),
     photos,
     shown,
+    differences: all.filter(
+      ({ zip, diff }) => diff !== null && zip.get(diff) !== undefined,
+    ).length,
   };
 }

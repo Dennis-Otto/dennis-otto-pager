@@ -223,8 +223,13 @@ export interface Pictures extends Base {
   changed: Changed[];
   /** How many pictures look different in all; none once the newest head looks as committed. */
   count: number;
-  /** How many of them the album shows, before and after. */
+  /** How many of them the album shows, with its difference, before and after. */
   shown: number;
+  /**
+   * How many of them the artifacts hold the difference of, each changed pixel in red;
+   * none in a record from before the pager read the differences.
+   */
+  differences?: number;
   /** The run of the visual check, whose artifacts have every picture before and after. */
   check: string;
 }

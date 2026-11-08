@@ -86,10 +86,11 @@ const en = {
     "🖼 <b>{count} pictures look different</b> in {repo} at {sha}: {link}",
   "message.picturesSame":
     "🖼 <b>Every picture looks as committed again</b> in {repo} at {sha}: {link}",
-  "message.album": "📸 Before and after below: {shown} of {count}.",
+  "message.album": "📸 The album below: {shown} of {count}.",
   "message.noAlbum":
     "📸 No album: none of them is a PNG or WebP that Telegram shows as a photo.",
-  "message.check": "All of them before and after, each changed pixel in red",
+  "message.check": "All of them before and after",
+  "message.checkRed": "All of them before and after, each changed pixel in red",
   "message.decision": "🤔 <b>A decision for you</b>\n{question}",
   "message.chosen": "✅ Your answer: <b>{option}</b>",
   "message.ownAnswer": "✅ Your answer, in your own words:\n{answer}",
@@ -101,6 +102,7 @@ const en = {
   "picture.resized": "another size or frames",
   "picture.new": "new",
   "picture.deleted": "deleted",
+  "caption.diff": "🔴 Changed pixels: {path}",
   "caption.before": "◀️ Before: {path}",
   "caption.after": "▶️ After: {path}",
   "caption.new": "🆕 New: {path}",
@@ -373,10 +375,11 @@ const de: Catalog = {
     "🖼 <b>{count} Bilder sehen anders aus</b> in {repo} bei {sha}: {link}",
   "message.picturesSame":
     "🖼 <b>Jedes Bild sieht wieder so aus wie committet</b> in {repo} bei {sha}: {link}",
-  "message.album": "📸 Vorher und nachher unten: {shown} von {count}.",
+  "message.album": "📸 Das Album unten: {shown} von {count}.",
   "message.noAlbum":
     "📸 Kein Album: Keines davon ist ein PNG oder WebP, das Telegram als Foto zeigt.",
-  "message.check": "Alle vorher und nachher, jedes geänderte Pixel rot",
+  "message.check": "Alle vorher und nachher",
+  "message.checkRed": "Alle vorher und nachher, jedes geänderte Pixel rot",
   "message.decision": "🤔 <b>Eine Entscheidung für dich</b>\n{question}",
   "message.chosen": "✅ Deine Antwort: <b>{option}</b>",
   "message.ownAnswer": "✅ Deine Antwort, in deinen eigenen Worten:\n{answer}",
@@ -388,6 +391,7 @@ const de: Catalog = {
   "picture.resized": "andere Größe oder Frames",
   "picture.new": "neu",
   "picture.deleted": "gelöscht",
+  "caption.diff": "🔴 Geänderte Pixel: {path}",
   "caption.before": "◀️ Vorher: {path}",
   "caption.after": "▶️ Nachher: {path}",
   "caption.new": "🆕 Neu: {path}",

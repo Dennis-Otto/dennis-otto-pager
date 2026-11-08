@@ -26,7 +26,12 @@ import {
   type Pictures,
   type Release,
 } from "../src/store.ts";
-import { type Photo, Telegram, TelegramError } from "../src/telegram.ts";
+import {
+  MAX_MEDIA,
+  type Photo,
+  Telegram,
+  TelegramError,
+} from "../src/telegram.ts";
 import { type Texts, texts } from "../src/texts.ts";
 import { about, topicName } from "../src/topics.ts";
 import { json, REPO, START, type World, withTopics, world } from "./helpers.ts";
@@ -148,6 +153,7 @@ describe("the report of a visual check", () => {
         share: 0.5,
         before: "before/screenshots/a.png",
         after: "after/screenshots/a.png",
+        diff: "diff/screenshots/a.png",
       },
       {
         path: "screenshots/b.png",
@@ -155,6 +161,7 @@ describe("the report of a visual check", () => {
         share: null,
         before: null,
         after: "after/screenshots/b.png",
+        diff: null,
       },
       {
         path: "screenshots/c.png",
@@ -162,6 +169,7 @@ describe("the report of a visual check", () => {
         share: null,
         before: "before/screenshots/c.png",
         after: null,
+        diff: null,
       },
     ]);
   });
@@ -192,6 +200,7 @@ describe("the report of a visual check", () => {
         share: 0.06,
         before: "en/voice.before.webp",
         after: "en/voice.after.webp",
+        diff: null,
       },
       {
         path: "en/new.webp",
@@ -199,6 +208,7 @@ describe("the report of a visual check", () => {
         share: 1,
         before: null,
         after: "after/en/new.webp",
+        diff: null,
       },
       {
         path: "en/old.webp",
@@ -206,7 +216,75 @@ describe("the report of a visual check", () => {
         share: 1,
         before: "before/en/old.webp",
         after: null,
+        diff: null,
       },
+    ]);
+  });
+
+  it("names the difference of a picture that changed, as each check keeps it", () => {
+    const found = readReport(
+      report([
+        // The blueprint's keep, and the checks that take it, name it as diff.
+        {
+          path: "docs/a.webp",
+          status: "changed",
+          share: 0.08,
+          diff: "diff/docs/a.webp.png",
+        },
+        {
+          path: "docs/b.gif",
+          status: "changed",
+          share: 0.001,
+          diff: "diff/docs/b.gif.png",
+        },
+        // The visual check of homedarts-for-autodarts names it as difference.
+        {
+          path: "en/c.webp",
+          status: "changed",
+          share: 0.2,
+          difference: "en/c.difference.png",
+        },
+        // A name that isn't a plain path counts as none, as for before and after.
+        {
+          path: "docs/d.png",
+          status: "changed",
+          share: 0.1,
+          diff: "../x.png",
+          difference: 7,
+        },
+        // A check that writes the difference of a PNG by its path, without its name.
+        { path: "docs/e.png", status: "changed", share: 0.3 },
+        // Its end in capitals is a PNG all the same, as the checks see it.
+        { path: "docs/E.PNG", status: "changed", share: 0.3 },
+        { path: "docs/e.xpng", status: "changed", share: 0.3 },
+        { path: "docs/f.png", status: "changed", share: null },
+        { path: "docs/g.webp", status: "changed", share: 0.3 },
+        {
+          path: "docs/h.png",
+          status: "new",
+          share: null,
+          diff: "diff/docs/h.png",
+        },
+        {
+          path: "docs/i.png",
+          status: "deleted",
+          share: null,
+          diff: "diff/docs/i.png",
+        },
+      ]),
+    );
+    expect(found?.map(({ path, diff }) => [path, diff])).toEqual([
+      ["docs/a.webp", "diff/docs/a.webp.png"],
+      ["docs/b.gif", "diff/docs/b.gif.png"],
+      ["en/c.webp", "en/c.difference.png"],
+      ["docs/d.png", "diff/docs/d.png"],
+      ["docs/e.png", "diff/docs/e.png"],
+      ["docs/E.PNG", "diff/docs/E.PNG"],
+      ["docs/e.xpng", null],
+      ["docs/f.png", null],
+      ["docs/g.webp", null],
+      ["docs/h.png", null],
+      ["docs/i.png", null],
     ]);
   });
 
@@ -218,23 +296,38 @@ describe("the report of a visual check", () => {
   });
 
   it("puts the largest change first, a picture that is gone after it, and a video last", () => {
-    const pictures: Changed[] = [
+    const pictures: (Changed & { diff?: string | null })[] = [
       { path: "gone.png", status: "deleted", share: null },
       { path: "small.png", status: "changed", share: 0.01 },
       { path: "resized.png", status: "changed", share: null },
       { path: "added.png", status: "new", share: null },
       { path: "docs/images/demo.mp4", status: "changed", share: null },
+      {
+        path: "docs/images/plain.gif",
+        status: "changed",
+        share: 0.9,
+        diff: null,
+      },
       { path: "half.png", status: "changed", share: 0.5 },
+      // A GIF with its difference, which the album shows, is one of the photos.
+      {
+        path: "docs/images/demo.gif",
+        status: "changed",
+        share: 0.3,
+        diff: "diff/docs/images/demo.gif.png",
+      },
       { path: "shot.WEBP", status: "changed", share: 0.2 },
     ];
     expect(largestFirst(pictures).map(({ path }) => path)).toEqual([
       "resized.png",
       "added.png",
       "half.png",
+      "docs/images/demo.gif",
       "shot.WEBP",
       "small.png",
       "gone.png",
       "docs/images/demo.mp4",
+      "docs/images/plain.gif",
     ]);
   });
 });
@@ -294,6 +387,147 @@ describe("the artifact of a visual check", () => {
     // The new picture is the one after, the eleventh byte of the last row of each.
     expect(found.photos.map(({ bytes }) => bytes[39])).toEqual([
       103, 2, 102, 0, 100,
+    ]);
+    // No picture of the artifact has its difference: none of the PNGs has one in diff/.
+    expect(found.differences).toBe(0);
+  });
+
+  it("shows the changed pixels in red first, then before and after, from each kind of report", async () => {
+    const found = await read([
+      await artifact(
+        [
+          {
+            path: "docs/a.webp",
+            status: "changed",
+            share: 0.4,
+            diff: "diff/docs/a.webp.png",
+          },
+          {
+            path: "en/b.webp",
+            status: "changed",
+            share: 0.3,
+            difference: "en/b.difference.png",
+          },
+          // Its check wrote the difference of the PNG by its path, without its name.
+          { path: "docs/c.png", status: "changed", share: 0.2 },
+          {
+            path: "docs/d.png",
+            status: "changed",
+            share: 0.1,
+            diff: "diff/docs/d.png",
+          },
+        ],
+        [{ name: "diff/docs/c.png", data: png(800, 600, 222), deflate: true }],
+      ),
+    ]);
+    expect(found.shown).toBe(MAX_ALBUM);
+    expect(found.differences).toBe(4);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels: <code>docs/a.webp</code>",
+      "◀️ Before: <code>docs/a.webp</code>",
+      "▶️ After: <code>docs/a.webp</code>",
+      "🔴 Changed pixels: <code>en/b.webp</code>",
+      "◀️ Before: <code>en/b.webp</code>",
+      "▶️ After: <code>en/b.webp</code>",
+      "🔴 Changed pixels: <code>docs/c.png</code>",
+      "◀️ Before: <code>docs/c.png</code>",
+      "▶️ After: <code>docs/c.png</code>",
+    ]);
+    // The difference of each is its own file: the 201st byte of the first, and so on.
+    expect(found.photos.map(({ bytes }) => bytes[39])).toEqual([
+      200, 0, 100, 201, 1, 101, 222, 2, 102,
+    ]);
+    // Three pictures of three photos each stay within the ten of an album of Telegram.
+    expect(found.photos.length).toBeLessThanOrEqual(MAX_MEDIA);
+    expect(3 * MAX_ALBUM).toBeLessThanOrEqual(MAX_MEDIA);
+    const german = await read(
+      [
+        await artifact([
+          {
+            path: "docs/a.png",
+            status: "changed",
+            share: 0.4,
+            diff: "diff/docs/a.png",
+          },
+        ]),
+      ],
+      de,
+    );
+    expect(german.photos[0]?.caption).toBe(
+      "🔴 Geänderte Pixel: <code>docs/a.png</code>",
+    );
+  });
+
+  it("shows the difference of a GIF alone, among the photos, and a GIF without one last", async () => {
+    const found = await read([
+      await artifact([
+        { path: "docs/plain.gif", status: "changed", share: 0.9 },
+        { path: "screenshots/small.png", status: "changed", share: 0.1 },
+        {
+          path: "docs/demo.gif",
+          status: "changed",
+          share: 0.5,
+          diff: "diff/docs/demo.gif.png",
+        },
+      ]),
+    ]);
+    expect(found.changed.map(({ path }) => path)).toEqual([
+      "docs/demo.gif",
+      "screenshots/small.png",
+      "docs/plain.gif",
+    ]);
+    expect(found.shown).toBe(2);
+    expect(found.differences).toBe(1);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels: <code>docs/demo.gif</code>",
+      "◀️ Before: <code>screenshots/small.png</code>",
+      "▶️ After: <code>screenshots/small.png</code>",
+    ]);
+  });
+
+  it("shows a picture without its difference when that is missing, broken or too large", async () => {
+    const pictures = [
+      {
+        path: "docs/a.png",
+        status: "changed",
+        share: 0.5,
+        diff: "diff/docs/a.png",
+      },
+      {
+        path: "docs/b.png",
+        status: "changed",
+        share: 0.4,
+        diff: "diff/docs/b.png",
+      },
+      {
+        path: "docs/c.png",
+        status: "changed",
+        share: 0.3,
+        diff: "diff/docs/c.png",
+      },
+    ];
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report(pictures) },
+        ...pictures.flatMap(({ path }) => [
+          { name: `before/${path}`, data: png(800, 600) },
+          { name: `after/${path}`, data: png(800, 600) },
+        ]),
+        // The difference of a.png is missing, that of b.png no picture, and that of
+        // c.png larger than Telegram takes as a photo.
+        { name: "diff/docs/b.png", data: "no picture" },
+        { name: "diff/docs/c.png", data: png(6000, 4001) },
+      ]),
+    ]);
+    expect(found.differences).toBe(2);
+    expect(found.shown).toBe(MAX_ALBUM);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "◀️ Before: <code>docs/a.png</code>",
+      "▶️ After: <code>docs/a.png</code>",
+      "◀️ Before: <code>docs/b.png</code>",
+      "▶️ After: <code>docs/b.png</code>",
+      "◀️ Before: <code>docs/c.png</code>",
+      "▶️ After: <code>docs/c.png</code>",
     ]);
   });
 
@@ -452,7 +686,7 @@ describe("the text of the pictures", () => {
   };
 
   it("lists each picture with how it changed, and links the artifact", () => {
-    expect(picturesText(view, en)).toBe(
+    expect(picturesText({ ...view, differences: 2 }, en)).toBe(
       [
         `🖼 <b>6 pictures look different</b> in <a href="https://github.com/${REPO}">${REPO}</a> at <code>a1b2c3d</code>: <a href="https://github.com/${REPO}/pull/8">#8 Make it &lt;b&gt;</a>`,
         "• <code>a.png</code>: changed, 2.31 % of its pixels",
@@ -461,7 +695,7 @@ describe("the text of the pictures", () => {
         "• <code>d.png</code>: deleted",
         "• <code>e.png</code>: changed, < 0.01 % of its pixels",
         "• <code>f.png</code>: changed, 100 % of its pixels",
-        "📸 Before and after below: 2 of 6.",
+        "📸 The album below: 2 of 6.",
         `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
       ].join("\n"),
     );
@@ -480,6 +714,20 @@ describe("the text of the pictures", () => {
       `🖼 <b>Every picture looks as committed again</b> in <a href="https://github.com/${REPO}">${REPO}</a> at <code>a1b2c3d</code>: <a href="https://github.com/${REPO}/pull/8">#8 Make it &lt;b&gt;</a>`,
     );
     expect(de.percent(0.00001)).toBe("< 0,01 %");
+  });
+
+  it("promises the changed pixels in red only when the artifacts hold the difference of one", () => {
+    const last = (text: string) => text.split("\n").at(-1);
+    const plain = `<a href="${CHECK}">All of them before and after</a>`;
+    expect(last(picturesText({ ...view, differences: 0 }, en))).toBe(plain);
+    // A record from before the pager read the differences promises no red either.
+    expect(last(picturesText(view, en))).toBe(plain);
+    expect(last(picturesText(view, de))).toBe(
+      `<a href="${CHECK}">Alle vorher und nachher</a>`,
+    );
+    expect(last(picturesText({ ...view, differences: 1 }, de))).toBe(
+      `<a href="${CHECK}">Alle vorher und nachher, jedes geänderte Pixel rot</a>`,
+    );
   });
 });
 
@@ -653,7 +901,11 @@ describe("the pictures of a pull request", () => {
     const [message] = w.net.telegram("sendMessage");
     expect(message?.body.message_thread_id).toBe(900);
     expect(message?.body.text).toContain("<b>4 pictures look different</b>");
-    expect(message?.body.text).toContain("📸 Before and after below: 3 of 4.");
+    expect(message?.body.text).toContain("📸 The album below: 3 of 4.");
+    // The artifact holds no difference, so the link promises no red.
+    expect(message?.body.text).toContain(
+      `<a href="${CHECK}">All of them before and after</a>`,
+    );
     expect(message?.body.reply_markup.inline_keyboard).toEqual([
       [
         {
@@ -677,9 +929,42 @@ describe("the pictures of a pull request", () => {
       sha: SHA,
       count: 4,
       shown: 3,
+      differences: 0,
       messageId: 100,
       check: CHECK,
       topic: { thread: 900 },
+    });
+  });
+
+  it("show the changed pixels in red first, as their message promises", async () => {
+    const w = await withArtifact(
+      await artifact([
+        ...changes,
+        {
+          path: "docs/images/b.webp",
+          status: "changed",
+          share: 0.1,
+          diff: "diff/docs/images/b.webp.png",
+        },
+      ]),
+    );
+    expect(await apply(w.context, signal())).toBe("pictures shown");
+    const [message] = w.net.telegram("sendMessage");
+    expect(message?.body.text).toContain(
+      `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
+    );
+    expect(media(w).map(({ caption }) => caption)).toEqual([
+      "🆕 New: <code>screenshots/added.png</code>",
+      "◀️ Before: <code>screenshots/large.png</code>",
+      "▶️ After: <code>screenshots/large.png</code>",
+      "🔴 Changed pixels: <code>docs/images/b.webp</code>",
+      "◀️ Before: <code>docs/images/b.webp</code>",
+      "▶️ After: <code>docs/images/b.webp</code>",
+    ]);
+    expect(await stored(w, keys.pictures(REPO, 8))).toMatchObject({
+      count: 5,
+      shown: 3,
+      differences: 1,
     });
   });
 

@@ -1,6 +1,6 @@
 # The pictures of a visual change come from the artifacts of its check
 
-- Status: accepted
+- Status: accepted, amended by [0016](0016-the-album-of-a-visual-change-shows-the-changed-pixels-first.md): the album shows the changed pixels in red first, and the link promises red only when the artifacts have it
 - Date: 2026-11-08
 
 ## Context

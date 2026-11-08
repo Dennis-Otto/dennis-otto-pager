@@ -109,19 +109,37 @@ export function report(pictures: unknown[]): string {
   return `${JSON.stringify({ pictures }, null, 1)}\n`;
 }
 
+/** A picture of a report, and the file of its difference that its entry names, if any. */
+export interface Picture {
+  path: string;
+  status: string;
+  share: number | null;
+  diff?: string;
+  difference?: string;
+}
+
 /**
  * The artifact of a visual check: the report, and each picture before and after
- * as PNG, deflated as upload-artifact does it.
+ * as PNG, and the picture of its difference that its entry names, deflated as
+ * upload-artifact does it.
  */
 export async function artifact(
-  pictures: { path: string; status: string; share: number | null }[],
+  pictures: Picture[],
   extra: ZipFile[] = [],
 ): Promise<Uint8Array> {
   const files: ZipFile[] = [
     { name: "report.json", data: report(pictures), deflate: true },
     { name: "summary.md", data: "### Visual check\n", deflate: true },
   ];
-  pictures.forEach(({ path, status }, index) => {
+  pictures.forEach(({ path, status, diff, difference }, index) => {
+    const named = diff ?? difference;
+    if (named !== undefined) {
+      files.push({
+        name: named,
+        data: png(800, 600, 200 + index),
+        deflate: true,
+      });
+    }
     if (status !== "new") {
       files.push({
         name: `before/${path}`,

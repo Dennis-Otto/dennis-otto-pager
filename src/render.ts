@@ -4,7 +4,16 @@
  * escaped, and every link has to point to GitHub, so a title can't add markup or a
  * link of its own.
  */
-import type { Changed, Contribution, Entry, Item, Pictures } from "./store.ts";
+import {
+  type Changed,
+  type Contribution,
+  type Decision,
+  type Entry,
+  type Item,
+  MAX_OPTION,
+  MAX_QUESTION,
+  type Pictures,
+} from "./store.ts";
 import type { Texts } from "./texts.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
@@ -211,7 +220,20 @@ function body(item: Item, t: Texts): string {
       return picturesText(item, t);
     case "reminder":
       return `🔔 ${html(item.text, 1000)}`;
+    case "decision":
+      return decisionText(item, t);
   }
+}
+
+/** A question of an agent, and the answer once the maintainer chose one. */
+function decisionText(item: Decision, t: Texts): string {
+  const head = t("message.decision", {
+    question: html(item.question, MAX_QUESTION),
+  });
+  const chosen = item.choice === null ? undefined : item.options[item.choice];
+  return chosen === undefined
+    ? head
+    : `${head}\n\n${t("message.chosen", { option: html(chosen, MAX_OPTION) })}`;
 }
 
 /** The whole text of a thing's message: what it is, its state and its last note. */

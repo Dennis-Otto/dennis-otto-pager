@@ -16,7 +16,7 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 1. **Internet → Worker.** Every request, its headers and its body are untrusted input.
 2. **Worker → bindings and other services.** Only those of `wrangler.jsonc` and the addresses that its code names, with the secrets that Cloudflare keeps.
 3. **Repository → Cloudflare.** Workers Builds builds every push to `main`, and only a release goes live.
-4. **Control repository → Worker.** The private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run.
+4. **Control repository → Worker.** The private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run. It also forwards the questions and reports of the maintainer's own agents, and only those that the owner of the repository sent; the answer to a question is saved there, as a file on a branch of its own, `pager-answers`, which holds no code.
 
 ## Threats and countermeasures
 
@@ -28,6 +28,7 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 | A key of Cloudflare leaks from GitHub | None is stored there: Cloudflare builds and deploys with Workers Builds |
 | An issue, a comment or a log steers Claude | Claude reads them as data, with tools that only read, behind a firewall; both sides check its answer against the allowlist, and only a press acts |
 | A forged answer of the control repository | The Worker takes only a body signed with `CONTROL_SECRET` within five minutes; a proposal gets a button only while its thing offers the action |
+| Someone else asks a question in the maintainer's name, or an answer runs | The control repository is private, and its workflow forwards only the events of its owner; an option is a label and an answer is data, a file that the agent reads, and neither acts on GitHub |
 | A package that it depends on runs code as it installs | Every install, in the CI, the dev container, Workers Builds and the documentation, is `npm ci --ignore-scripts`; Workers Builds skips its own install with `SKIP_DEPENDENCY_INSTALL` |
 
 ## Residual risks

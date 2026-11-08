@@ -44,12 +44,14 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 | Release | ready | 🔀 Mergen, ⏰ Später, ✖ Ignorieren |
 | Bilder | open | ✖ Ignorieren |
 | Erinnerung | open | ✅ Erneuert, ⏰ Später |
+| Frage eines Agenten | open | Ein Knopf pro Option (kein ⏰ Später, kein ✖ Ignorieren) |
 
 - **🔀 Mergen** fragt GitHub erneut nach dem Pull Request und merged ihn per Squash nur an dem Stand, den die Nachricht zeigte, solange er noch clean ist; ein geändertes Release wartet wieder auf seine Checks.
 - **✅ Senden** postet den Entwurf, dessen Version sein Knopf trägt, genau so, wie die Nachricht ihn zeigte, im Namen des Maintainers, und in einer Diskussion als App; ein älterer Knopf derselben Sache lehnt ab. **✏️ Bearbeiten** bittet um den neuen Text als Antwort auf seine Rückfrage und zeigt ihn als nächsten Entwurf.
 - **🤖 Assistent nochmal** startet den Workflow `issue-assistant.yml` des Repositorys auf dem Issue mit `override`, im Namen des Maintainers. Ein Repository, dessen Issue-Assistent den Override noch nicht kennt, antwortet mit 422, und der Knopf sagt das.
 - **🔁 Neu starten** liest jeden Lauf, den die Einträge nennen, mit einem Token der App für `actions: read`, und startet seine gescheiterten Jobs erneut, wie *Re-run failed jobs* auf GitHub, mit einem Token für `actions: write`. Ein Lauf, der noch läuft oder dessen neuerer Versuch läuft, und einer, der bei einem neuen Versuch schon grün wurde, bleiben, wie sie sind, und der Knopf sagt das. Die Einträge eines Laufs, der erneut läuft, zeigen *🔁 läuft erneut …* in der Nachricht, die sich an Ort und Stelle ändert, bis der Lauf wieder scheitert oder grün wird: Ein Erfolg schließt das Issue des Bot-Health-Bots oder beendet den Fehlschlag des Releases, was den Eintrag herausnimmt, und der letzte macht den Alarm ✅. Der Knopf kostet keinen Lauf von Claude, daher steht er vorn, für einen kurzen Ausfall von GitHub, etwa einen Download, der mit 504 antwortete.
 - **✍️ Antwort entwerfen** und **🛠 Fix starten** schicken die Sache an das Steuer-Repository, dessen Antwort wie unten beschrieben zurückkommt. Jeder ist ein Lauf von Claude mit dem Abo des Maintainers, der auf dessen Wochenlimit zählt, und die Antwort nennt sein Modell, seinen Aufwand und seine Tokens; ein Fix, der in den Logs einen Ausfall von GitHub oder eines Downloads findet, etwa eine 504, eine Zeitüberschreitung oder `error connecting to api.github.com`, ändert nichts und schlägt 🔁 **Neu starten** mit einem Knopf ✅ **Bestätigen** vor; ein Job, der fehlschlägt, bringt seinen Knopf zurück, und ebenso ein Job, der binnen einer Stunde keine Antwort schickte: Der Zeitplan gibt seiner Sache die Knöpfe einmal zurück, als neue Nachricht mit der Notiz *⌛ Keine Antwort vom Steuer-Repository*.
+- **Ein Knopf pro Option** beantwortet die [Frage eines Agenten](#fragen-und-berichte-deiner-agenten) und speichert die Antwort.
 - **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie.
 
 <picture>
@@ -157,6 +159,54 @@ curl -s "$PAGER_URL/control" -H "X-Pager-Timestamp: $stamp" -H "X-Pager-Signatur
 
 Kein Body lässt den Pager handeln: Was das Steuer-Repository schickt, wird angezeigt, maskiert, und nie ausgeführt, und jede Aktion braucht den Druck auf einen Knopf der Positivliste. Die Antwort geht an den Worker statt direkt an Telegram, wie [Entscheidung 0003](decisions/0003-the-control-repository-answers-the-worker.md) erklärt: Der Token des Bots bleibt bei Cloudflare, und der Worker hält den Zustand, den ein Entwurf, ein fehlgeschlagener Job und ein Vorschlag brauchen.
 
+## Fragen und Berichte deiner Agenten
+
+Die eigenen Agenten des Maintainers, etwa ein Orchestrator, der die Nacht über auf seinem PC läuft, mit `gh` in seinem Namen angemeldet, fragen über den Pager, statt eine Zeile in einem Bericht zu hinterlassen: Eine Frage kommt als eigene Sache, in einem eigenen Thema, mit ihren Optionen als Knöpfen, und der Agent liest die Antwort aus dem privaten Steuer-Repository. Kein Geheimnis geht auf den PC: `gh` schickt das Ereignis und liest die Antwort mit der eigenen Anmeldung des Maintainers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-question-of-an-agent.de.dark.svg">
+  <img src="images/diagrams/a-question-of-an-agent.de.svg" alt="Die Frage eines Agenten: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen, und die GitHub App speichert seine Antwort als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis.">
+</picture>
+
+Ein Agent schickt dem Steuer-Repository einen von zwei [Repository Dispatches](https://docs.github.com/rest/repos/repos#create-a-repository-dispatch-event):
+
+| Ereignistyp | Client Payload | Was der Pager zeigt |
+| --- | --- | --- |
+| `pager-ask` | `id`, `question`, `options` | Ein Thema *🤔 Entscheidung: …*, mit einem Knopf pro Option |
+| `pager-report` | `text`, und `title`, falls es einen gibt | Ein Thema *🧾 Lauf: …*, oder *🧾 Lauf* ohne Titel, mit dem Bericht und ohne Knopf |
+
+```sh
+gh api repos/Dennis-Otto/dennis-otto-pager-control/dispatches --input - <<'JSON'
+{"event_type": "pager-ask", "client_payload": {"id": "2026-11-08-merge-order", "question": "Welches Release zuerst?", "options": ["Der Blueprint", "Der Pager"]}}
+JSON
+```
+
+Der Workflow des Steuer-Repositorys nimmt nur ein Ereignis, das der Besitzer des Repositorys geschickt hat, nie eines der GitHub App oder von jemand anderem, prüft es, wie der Pager es tut, und schickt es an `/control` weiter, signiert wie jede Antwort:
+
+- `{"type": "ask", "id": "<id>", "question": "<Frage>", "options": ["<Option>", …]}`: Die `id` benennt die Antwort, aus Buchstaben, Ziffern, Punkten, Bindestrichen und Unterstrichen, höchstens 64 Zeichen, am Anfang ein Buchstabe oder eine Ziffer; die `question` hat höchstens 1000 Zeichen; zwei bis vier `options`, jede anders und höchstens 64 Zeichen lang, werden die Knöpfe, einer pro Reihe. Dieselbe `id` noch einmal fragt nichts Neues: Eine offene Frage bleibt, wie sie ist, und für eine schon beantwortete antwortet der Pager 409. Eine beantwortete `id` behält ihre Datei auf `pager-answers` für immer und lässt sich nicht noch einmal fragen, daher braucht jede Frage eine neue `id`, mit dem Datum oder dem Lauf darin, etwa `2026-11-08-merge-order`: Sonst läse der Agent die alte Antwort als Wahl für seine neue Frage. Ohne die GitHub App im Steuer-Repository antwortet der Pager 503, weil er die Antwort nicht speichern könnte;
+- `{"type": "report", "text": "<Bericht>", "title": "<Titel>"}`: der Bericht eines Laufs, seine ersten 3000 Zeichen, mit einem `title` von höchstens 100 Zeichen, den der Pager nicht in seinem Speicher behält.
+
+Ein Druck speichert die Antwort im Steuer-Repository, als GitHub App, mit einem Token nur für dieses Repository und seinem Recht, den Inhalt zu schreiben, das sie für die Dispatches schon hat: die Datei `answers/<id>.json` auf dem Branch `pager-answers`, den ihre erste Antwort mit einem eigenen Commit anlegt, ohne Vorgänger und ohne den Code des Repositorys, damit kein Workflow darauf läuft.
+
+```json
+{
+  "id": "2026-11-08-merge-order",
+  "question": "Welches Release zuerst?",
+  "options": ["Der Blueprint", "Der Pager"],
+  "choice": 1,
+  "answer": "Der Pager",
+  "answered": "2026-11-08T07:12:03.000Z"
+}
+```
+
+Die Nachricht zeigt dann die Antwort, ihre Knöpfe verschwinden, und ihr Thema bekommt ✅. Lehnt GitHub die Antwort ab, sagt der Knopf warum, und die Frage bleibt offen, damit ein Druck sie noch einmal speichert. Eine Frage hat kein ⏰ Später und kein ✖ Ignorieren: Ein Agent wartet auf sie. Der Agent liest die Antwort mit seinem eigenen `gh`, das 404 antwortet, solange es keine gibt, für eine `id`, die noch nie gefragt wurde:
+
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" "repos/Dennis-Otto/dennis-otto-pager-control/contents/answers/2026-11-08-merge-order.json?ref=pager-answers"
+```
+
+Das Skript `scripts/ask.mjs` des Steuer-Repositorys kann alle drei: Es fragt, berichtet und wartet auf eine Antwort, wie seine README beschreibt.
+
 ## Die Reaktion auf einen Text
 
 Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert sie, während der Job läuft: Ein Bot darf eine Reaktion pro Nachricht setzen, aus der festen Liste von `ReactionTypeEmoji` in der Bot API von Telegram. Diese Liste hat kein ✅, deshalb steht 👍 für eine Antwort, das ihm am nächsten kommt, und 😢 für keine.
@@ -180,6 +230,8 @@ Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `cr
 | Code Scanning | 🛡 Code Scanning in demo | Gelb |
 | Release | 📦 demo 1.2.3 | Grün |
 | Erinnerung | 🔔 Claude-Token | Violett |
+| Frage eines Agenten | 🤔 Entscheidung: Welches Release zuerst? | Violett |
+| Bericht eines Laufs | 🧾 Lauf: Nachtlauf | Grün |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/a-topic-per-thing.de.dark.svg">

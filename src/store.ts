@@ -146,7 +146,38 @@ export interface Reminder extends Base {
   text: string;
 }
 
-export type Item = Contribution | Alarm | Alert | Release | Pictures | Reminder;
+/**
+ * A question of the maintainer's own agents, such as an orchestrator that runs
+ * through the night, which the control repository forwards: its options are its
+ * buttons, and the one pressed is saved in the control repository, where the agent
+ * reads it. Its repository is the control repository.
+ */
+export interface Decision extends Base {
+  kind: "decision";
+  state: "open" | "answered";
+  /** The id that the agent gave the question, which names its answer. */
+  ask: string;
+  question: string;
+  /** Two to four options, in the order of their buttons. */
+  options: string[];
+  /** The place in options of the one that the maintainer chose, once answered. */
+  choice: number | null;
+}
+
+/** The longest question of a decision, in characters, which its message shows whole. */
+export const MAX_QUESTION = 1000;
+
+/** The longest option of a decision, in characters, which its button shows whole. */
+export const MAX_OPTION = 64;
+
+export type Item =
+  | Contribution
+  | Alarm
+  | Alert
+  | Release
+  | Pictures
+  | Reminder
+  | Decision;
 export type Kind = Item["kind"];
 
 const CLOSED: ReadonlySet<string> = new Set([
@@ -156,6 +187,7 @@ const CLOSED: ReadonlySet<string> = new Set([
   "resolved",
   "published",
   "done",
+  "answered",
 ]);
 
 /** The states in which a job of the control repository runs, and the one before. */
@@ -182,8 +214,8 @@ export async function itemId(key: string): Promise<string> {
 
 /**
  * The key of each kind of thing: one thing per issue, pull request or discussion,
- * whose numbers GitHub counts together, one bundle per repository, and the
- * pictures of one pull request.
+ * whose numbers GitHub counts together, one bundle per repository, the
+ * pictures of one pull request, and one question of an agent per id.
  */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
@@ -192,6 +224,7 @@ export const keys = {
   release: (repo: string) => `r:${repo}`,
   pictures: (repo: string, number: number) => `p:${repo}#${number}`,
   reminder: (name: string) => `t:${name}`,
+  decision: (ask: string) => `d:${ask}`,
 };
 
 const MONTH = 30 * 24 * 60 * 60;

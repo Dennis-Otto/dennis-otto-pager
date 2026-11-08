@@ -11,6 +11,7 @@ import type {
   Alarm,
   Alert,
   Contribution,
+  Decision,
   Item,
   Release,
   Reminder,
@@ -191,6 +192,34 @@ async function edit(context: Context, item: Contribution): Promise<Reply> {
   return done(context.t("answer.edit"));
 }
 
+/**
+ * Save the option of a decision in the control repository, where the agent that
+ * asked reads it, and show it as the answer. When GitHub refuses, the question
+ * stays open, so that a press can save it again.
+ */
+async function choose(
+  context: Context,
+  item: Decision,
+  place: number | null,
+): Promise<Reply> {
+  const option = item.options[place ?? -1];
+  if (place === null || option === undefined) {
+    return refused(context.t("answer.unknown"));
+  }
+  await context.github.saveAnswer(item.installation, item.repo, item.ask, {
+    id: item.ask,
+    question: item.question,
+    options: item.options,
+    choice: place,
+    answer: option,
+    answered: new Date(context.now()).toISOString(),
+  });
+  item.state = "answered";
+  item.choice = place;
+  await show(context, item);
+  return done(context.t("answer.chosen", { option }));
+}
+
 /** Run the action of a pressed button on its thing, if the thing still offers it. */
 export async function press(
   context: Context,
@@ -232,6 +261,8 @@ export async function press(
         return await send(context, item as Contribution, pressed.version);
       case "edit":
         return await edit(context, item as Contribution);
+      case "choose":
+        return await choose(context, item as Decision, pressed.version);
     }
   } catch (error) {
     if (error instanceof NoUserToken) {

@@ -70,6 +70,9 @@ const en = {
   "message.noAlbum":
     "📸 No album: none of them is a PNG or WebP that Telegram shows as a photo.",
   "message.check": "All of them before and after, each changed pixel in red",
+  "message.decision": "🤔 <b>A decision for you</b>\n{question}",
+  "message.chosen": "✅ Your answer: <b>{option}</b>",
+  "message.report": "🧾 <b>The report of a run</b>\n{text}",
 
   "picture.changed": "changed, {share} of its pixels",
   "picture.resized": "another size or frames",
@@ -121,6 +124,7 @@ const en = {
   "answer.later": "Back in {hours} h.",
   "answer.ignored": "Ignored.",
   "answer.done": "Done.",
+  "answer.chosen": "Saved for your agent: {option}",
   "answer.refused": "GitHub refused: {detail}",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN isn't set, so nothing can act in your name: set it, as docs/setup.md says.",
@@ -175,6 +179,9 @@ const en = {
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Token of Claude",
   "topic.pictures": "🖼 {repo}#{number} {title}",
+  "topic.decision": "🤔 Decision: {question}",
+  "topic.report": "🧾 Run",
+  "topic.reportTitled": "🧾 Run: {title}",
   "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 day",
@@ -278,6 +285,9 @@ const de: Catalog = {
   "message.noAlbum":
     "📸 Kein Album: Keines davon ist ein PNG oder WebP, das Telegram als Foto zeigt.",
   "message.check": "Alle vorher und nachher, jedes geänderte Pixel rot",
+  "message.decision": "🤔 <b>Eine Entscheidung für dich</b>\n{question}",
+  "message.chosen": "✅ Deine Antwort: <b>{option}</b>",
+  "message.report": "🧾 <b>Der Bericht eines Laufs</b>\n{text}",
 
   "picture.changed": "geändert, {share} seiner Pixel",
   "picture.resized": "andere Größe oder Frames",
@@ -330,6 +340,7 @@ const de: Catalog = {
   "answer.later": "Zurück in {hours} Std.",
   "answer.ignored": "Ignoriert.",
   "answer.done": "Erledigt.",
+  "answer.chosen": "Für deinen Agenten gespeichert: {option}",
   "answer.refused": "GitHub lehnt ab: {detail}",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN ist nicht gesetzt, also kann nichts in deinem Namen handeln: Setz ihn, wie docs/setup.md es beschreibt.",
@@ -384,6 +395,9 @@ const de: Catalog = {
   "topic.release": "📦 {repo} {version}",
   "topic.reminder": "🔔 Claude-Token",
   "topic.pictures": "🖼 {repo}#{number} {title}",
+  "topic.decision": "🤔 Entscheidung: {question}",
+  "topic.report": "🧾 Lauf",
+  "topic.reportTitled": "🧾 Lauf: {title}",
   "topic.done": "✅ {name}",
 
   "reminder.days.one": "1 Tag",

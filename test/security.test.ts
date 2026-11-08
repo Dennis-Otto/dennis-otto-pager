@@ -31,6 +31,7 @@ import {
   REPO,
   START,
   type World,
+  withControl,
   withTopics,
   world,
 } from "./helpers.ts";
@@ -86,6 +87,9 @@ function secretAlert(extra: Record<string, unknown> = {}) {
     secret_type_display_name: "Mailchimp API Key",
     resolution: null,
     publicly_leaked: false,
+    created_at: new Date(START).toISOString(),
+    updated_at: new Date(START).toISOString(),
+    resolved_at: null,
     secret: HIDDEN,
     ...extra,
   };
@@ -100,7 +104,11 @@ const reported: Signal = {
   reported: START,
 };
 
-function secret(number: number, leaked = false): Signal {
+function secret(
+  number: number,
+  leaked = false,
+  time: number | null = START,
+): Signal {
   return {
     ...at,
     type: "secret-open",
@@ -109,6 +117,17 @@ function secret(number: number, leaked = false): Signal {
     what: "Mailchimp API Key",
     leaked,
     url: `https://github.com/${REPO}/security/secret-scanning/${number}`,
+    time,
+  };
+}
+
+function resolved(number: number, time: number | null): Signal {
+  return {
+    ...at,
+    type: "secret-closed",
+    key: `secret:${number}`,
+    number,
+    time,
   };
 }
 
@@ -248,6 +267,7 @@ describe("the rules of secret scanning", () => {
           type: "secret-open",
           leaked: false,
           url: `https://github.com/${REPO}/security/secret-scanning/3`,
+          time: START,
         },
       });
       expect(JSON.stringify(outcome)).not.toContain(HIDDEN);
@@ -293,8 +313,20 @@ describe("the rules of secret scanning", () => {
         what: "",
         leaked: false,
         url: "",
+        time: null,
       },
     });
+    // The time of the change, or of the alert where GitHub names none.
+    expect(
+      classify(
+        "secret_scanning_alert",
+        event({
+          action: "reopened",
+          alert: secretAlert({ updated_at: null }),
+        }),
+        ME,
+      ),
+    ).toMatchObject({ signal: { time: START } });
   });
 
   it("take a resolved alert out, and drop a resolved one found in public and other actions", () => {
@@ -303,11 +335,32 @@ describe("the rules of secret scanning", () => {
         "secret_scanning_alert",
         event({
           action: "resolved",
-          alert: secretAlert({ resolution: "revoked" }),
+          alert: secretAlert({
+            resolution: "revoked",
+            resolved_at: new Date(START + DAY).toISOString(),
+          }),
         }),
         ME,
       ),
-    ).toEqual({ signal: { ...at, type: "alert-closed", key: "secret:3" } });
+    ).toEqual({ signal: resolved(3, START + DAY) });
+    expect(
+      classify(
+        "secret_scanning_alert",
+        event({ action: "resolved", alert: secretAlert() }),
+        ME,
+      ),
+    ).toMatchObject({ signal: { time: START } });
+    expect(
+      classify("secret_scanning_alert", event({ action: "resolved" }), ME),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "secret-closed",
+        key: "secret:0",
+        number: 0,
+        time: null,
+      },
+    });
     expect(
       classify(
         "secret_scanning_alert",
@@ -424,6 +477,7 @@ describe("a vulnerability report", () => {
     const item = await advisory(w);
     expect(item.state).toBe("published");
     expect(item.remindAt).toBeUndefined();
+    expect(item.note).toBeNull();
     expect(await apply(w.context, published)).toBe(
       "advisory published already",
     );
@@ -451,12 +505,15 @@ describe("a vulnerability report", () => {
     );
   });
 
-  it("tells the control repository its id and link alone", async () => {
+  it("tells the control repository its message as the maintainer sees it, never what it says", async () => {
     const w = await security();
     await apply(w.context, reported);
     const told = about(await advisory(w), START, texts("en"));
     expect(told).toMatchObject({ kind: "advisory", links: [ADVISORY] });
     expect(told.text).toContain(GHSA);
+    expect(told.text).toContain("severity: high");
+    expect(JSON.stringify(told)).not.toContain(SUMMARY);
+    expect(JSON.stringify(told)).not.toContain(DESCRIPTION);
   });
 });
 
@@ -534,7 +591,22 @@ describe("the reminder of a vulnerability report", () => {
     }
     const published = await due("published");
     expect(await runSchedule(published.context)).toEqual([]);
-    expect(await advisory(published)).toMatchObject({ state: "published" });
+    expect(await advisory(published)).toMatchObject({
+      state: "published",
+      note: null,
+    });
+  });
+
+  it("is gone from the message once the report is published after it", async () => {
+    const w = await due("triage");
+    await runSchedule(w.context);
+    expect((await advisory(w)).note).toContain("Still in triage");
+    expect(
+      await apply(w.context, { ...at, type: "advisory-published", ghsa: GHSA }),
+    ).toBe("advisory published");
+    const edit = w.net.telegram("editMessageText").at(-1)?.body;
+    expect(edit.text).toMatch(/✅ Published\.$/);
+    expect(edit.text).not.toContain("Still in triage");
   });
 
   it("waits for the next run when a report came back from Later in this one, or no call is left", async () => {
@@ -613,10 +685,67 @@ describe("the security message of a repository", () => {
     expect((await bundle(w)).entries[0]?.label).toBe(
       "🔑 Mailchimp API Key in config/.env, leaked in public too",
     );
-    expect(
-      await apply(w.context, { ...at, type: "alert-closed", key: "secret:3" }),
-    ).toBe("alert closed");
+    expect(await apply(w.context, resolved(3, START + 60_000))).toBe(
+      "alert closed",
+    );
     expect(await bundle(w)).toMatchObject({ state: "resolved", entries: [] });
+  });
+
+  it("keeps a resolved secret out when a late copy of an older event comes, and lets one found again back in", async () => {
+    const w = await security();
+    // Resolved before the pager had it: a copy of its "created" comes late.
+    expect(await apply(w.context, resolved(3, START + 60_000))).toBe(
+      "no open alert",
+    );
+    expect(await apply(w.context, secret(3))).toBe(
+      "a secret alert that was resolved since",
+    );
+    expect(await apply(w.context, secret(3, false, null))).toBe(
+      "a secret alert that was resolved since",
+    );
+    expect(await bundle(w)).toBeNull();
+    // A secret found again after it was resolved pages, and so does another one.
+    expect(await apply(w.context, secret(3, false, START + 120_000))).toBe(
+      "alert opened",
+    );
+    expect(await apply(w.context, secret(4))).toBe("alert updated");
+    // A resolution without a time counts from its arrival; the mark holds its
+    // time alone.
+    w.clock.now = START + 180_000;
+    await apply(w.context, resolved(4, null));
+    expect(await env.PAGER.get(keys.secretResolved(REPO, 4))).toBe(
+      String(START + 180_000),
+    );
+    expect(await apply(w.context, secret(4))).toBe(
+      "a secret alert that was resolved since",
+    );
+  });
+
+  it("sends no secret to the control repository when a fix starts", async () => {
+    const w = await security();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    await apply(w.context, secret(3));
+    await apply(w.context, {
+      ...at,
+      type: "alert-open",
+      key: "alert:4",
+      label: { key: "entry.alert", values: { severity: "high", what: "XSS" } },
+      url: `https://github.com/${REPO}/security/code-scanning/4`,
+    });
+    const item = await bundle(w);
+    await press(w.context, item, { action: "fix", id: item.id, version: null });
+    const dispatched = w.net.github("/dispatches")[0]?.body;
+    expect(dispatched.client_payload.entries).toEqual([
+      {
+        label: item.entries[1]?.label,
+        url: `https://github.com/${REPO}/security/code-scanning/4`,
+      },
+    ]);
+    expect(JSON.stringify(dispatched)).not.toContain("Mailchimp");
   });
 
   it("lists a secret without a file where it was found elsewhere, or GitHub doesn't say", async () => {

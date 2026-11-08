@@ -47,7 +47,9 @@ export const ALARM_CHANGE = 10;
  * closed, answered, edited or deleted since. A late copy would bring back the
  * older state. A comment adds to its thing and overtakes nothing, and neither
  * does a vulnerability report: one that comes again is shown once, and one that
- * stayed away would be a report missed.
+ * stayed away would be a report missed. Nor does an alert of secret scanning,
+ * whose events come in bursts, one per alert, and a leak missed is worse: a late
+ * copy of one that was resolved since is known by its time (src/pager.ts).
  */
 export const SUPERSEDED = new Set([
   "check_run",
@@ -57,7 +59,6 @@ export const SUPERSEDED = new Set([
   "issues",
   "pull_request",
   "release",
-  "secret_scanning_alert",
   "workflow_run",
 ]);
 

@@ -53,6 +53,7 @@ async function remind(context: Context, item: Advisory): Promise<boolean> {
     case "published":
       item.state = "published";
       item.snoozedUntil = null;
+      item.note = null;
       await show(context, item);
       return false;
     case "closed":

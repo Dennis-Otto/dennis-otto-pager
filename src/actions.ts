@@ -7,15 +7,16 @@ import { allowed, headTag, type Press } from "./buttons.ts";
 import { GitHubError, NoUserToken, UserTokenRefused } from "./github.ts";
 import { askForDraft, type Context, show, toControl } from "./pager.ts";
 import { PASSED, releaseBlocker } from "./rules.ts";
-import type {
-  Alarm,
-  Alert,
-  Contribution,
-  Decision,
-  Item,
-  Release,
-  Reminder,
-  Workflow,
+import {
+  type Alarm,
+  type Alert,
+  type Contribution,
+  type Decision,
+  type Item,
+  type Release,
+  type Reminder,
+  SECRET_ENTRY,
+  type Workflow,
 } from "./store.ts";
 
 export interface Reply {
@@ -72,7 +73,11 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
     item: item.id,
     repo: item.repo,
     kind: item.kind,
-    entries: item.entries.map(({ label, url }) => ({ label, url })),
+    // A secret that leaked is revoked where it was issued, which no change of the
+    // code does, and Claude sees no alert of secret scanning: it gets the rest.
+    entries: item.entries
+      .filter((entry) => !entry.key.startsWith(SECRET_ENTRY))
+      .map(({ label, url }) => ({ label, url })),
   });
   if (failed !== null) {
     return refused(failed);

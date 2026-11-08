@@ -430,9 +430,11 @@ describe("an event that the pager failed to handle", () => {
     ]);
   });
 
-  it("lets a newer alert of secret scanning overtake an older one, and never a report", async () => {
-    // A late alert found would bring back one that was resolved since; a report
-    // that comes again is shown once, and a report missed is a promise missed.
+  it("lets neither an alert of secret scanning nor a report be overtaken", async () => {
+    // Secret scanning sends one event per alert in a burst, and a leak missed is
+    // worse than a late copy, which its time keeps out once the alert was
+    // resolved; a report that comes again is shown once, and a report missed is
+    // a promise missed.
     const found = attempt("found", 40, 500, {
       event: "secret_scanning_alert",
       repository: 1,
@@ -451,7 +453,7 @@ describe("an event that the pager failed to handle", () => {
     });
     const w = listing(await world(), [[published, resolved, reported, found]]);
     await failedEvents(w.context);
-    expect(redelivered(w)).toEqual([reported.id]);
+    expect(redelivered(w)).toEqual([found.id, reported.id]);
   });
 
   it("counts a passing redelivery of a newer event as newer, and of an older one not", async () => {
@@ -806,6 +808,7 @@ describe("each signal applied twice", () => {
     what: "Mailchimp API Key",
     leaked: false,
     url: `https://github.com/${REPO}/security/secret-scanning/3`,
+    time: 0,
   };
   const report: Signal = {
     ...at,
@@ -981,6 +984,11 @@ describe("each signal applied twice", () => {
     ],
     ["secret-open", [alert("alert:1")], secret],
     [
+      "secret-closed",
+      [secret],
+      { ...at, type: "secret-closed", key: "secret:3", number: 3, time: 1 },
+    ],
+    [
       "secret-open: leaked in public too",
       [secret],
       { ...secret, leaked: true },
@@ -1016,6 +1024,7 @@ describe("each signal applied twice", () => {
       "alert-open": true,
       "secret-open": true,
       "alert-closed": true,
+      "secret-closed": true,
       advisory: true,
       "advisory-published": true,
     };

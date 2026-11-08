@@ -373,6 +373,7 @@ async function advisoryPublished(
   }
   known.state = "published";
   known.snoozedUntil = null;
+  known.note = null;
   delete known.remindAt;
   await show(context, known);
   return "advisory published";
@@ -1264,7 +1265,19 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
         label: context.t.phrase(signal.label),
         url: signal.url,
       });
-    case "secret-open":
+    case "secret-open": {
+      // A late copy of an event from before the alert was resolved would bring
+      // it back: an event that doesn't come after the resolution changes nothing.
+      const resolved = await context.store.secretResolvedAt(
+        signal.repo,
+        signal.number,
+      );
+      if (
+        resolved !== null &&
+        (signal.time === null || signal.time <= resolved)
+      ) {
+        return "a secret alert that was resolved since";
+      }
       return addEntry(
         context,
         "alert",
@@ -1272,6 +1285,14 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
         signal.installation,
         await secretEntry(context, signal),
       );
+    }
+    case "secret-closed":
+      await context.store.resolveSecret(
+        signal.repo,
+        signal.number,
+        signal.time ?? context.now(),
+      );
+      return removeEntry(context, "alert", signal.repo, signal.key);
     case "alert-closed":
       return removeEntry(context, "alert", signal.repo, signal.key);
     case "advisory":

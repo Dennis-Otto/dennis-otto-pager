@@ -367,7 +367,16 @@ export const keys = {
   pictures: (repo: string, number: number) => `p:${repo}#${number}`,
   reminder: (name: string) => `t:${name}`,
   decision: (ask: string) => `d:${ask}`,
+  /** When an alert of secret scanning was resolved, a mark of its own, no thing. */
+  secretResolved: (repo: string, number: number) => `x:${repo}#${number}`,
 };
+
+/**
+ * How long the pager remembers that an alert of secret scanning was resolved, in
+ * seconds: longer than the schedule asks for an event again (LOOK_BACK of
+ * src/deliveries.ts), with the time that a redelivery takes.
+ */
+export const SECRET_MEMORY = 4 * 60 * 60;
 
 const MONTH = 30 * 24 * 60 * 60;
 
@@ -595,6 +604,23 @@ export class Store {
     const id = await this.kv.get(`topic:${thread}`);
     const item = id === null ? null : await this.get(id);
     return item?.topic?.thread === thread ? item : null;
+  }
+
+  /** Remember when an alert of secret scanning was resolved: its number and that time, nothing else. */
+  async resolveSecret(
+    repo: string,
+    number: number,
+    time: number,
+  ): Promise<void> {
+    await this.kv.put(keys.secretResolved(repo, number), String(time), {
+      expirationTtl: SECRET_MEMORY,
+    });
+  }
+
+  /** When an alert of secret scanning was resolved, within SECRET_MEMORY, or null. */
+  async secretResolvedAt(repo: string, number: number): Promise<number | null> {
+    const kept = await this.kv.get(keys.secretResolved(repo, number));
+    return kept === null ? null : Number(kept);
   }
 
   async pendingEdit(): Promise<PendingEdit | null> {

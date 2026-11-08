@@ -127,6 +127,10 @@ export interface Payload {
     resolution?: string | null;
     /** Whether secret scanning found the secret in public as well. */
     publicly_leaked?: boolean | null;
+    /** When the alert of secret scanning was found, changed last, and resolved. */
+    created_at?: string;
+    updated_at?: string | null;
+    resolved_at?: string | null;
     rule?: {
       id?: string;
       description?: string;
@@ -294,8 +298,17 @@ export type Signal = Where &
         /** Whether secret scanning found it in public as well. */
         leaked: boolean;
         url: string;
+        /** When the alert last changed, by the event, so that a late copy shows as such. */
+        time: number | null;
       }
     | { type: "alert-closed"; key: string }
+    | {
+        type: "secret-closed";
+        key: string;
+        number: number;
+        /** When the alert was resolved. */
+        time: number | null;
+      }
     | {
         type: "advisory";
         /** The id of the advisory, such as GHSA-4f6x-8m2c-jq7p. */
@@ -1016,7 +1029,15 @@ function secretScanning(payload: Payload, at: Where): Outcome {
   const key = `${SECRET_ENTRY}${number}`;
   const action = payload.action ?? "";
   if (action === "resolved") {
-    return { signal: { ...at, type: "alert-closed", key } };
+    return {
+      signal: {
+        ...at,
+        type: "secret-closed",
+        key,
+        number,
+        time: timeOf(alert?.resolved_at) ?? timeOf(alert?.updated_at),
+      },
+    };
   }
   if (!SECRET_OPENS.has(action)) {
     return { ignored: `a secret alert ${action}` };
@@ -1035,6 +1056,7 @@ function secretScanning(payload: Payload, at: Where): Outcome {
       what: alert?.secret_type_display_name || (alert?.secret_type ?? ""),
       leaked: action === "publicly_leaked" || alert?.publicly_leaked === true,
       url: alert?.html_url ?? "",
+      time: timeOf(alert?.updated_at) ?? timeOf(alert?.created_at),
     },
   };
 }

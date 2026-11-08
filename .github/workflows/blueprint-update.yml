@@ -12,7 +12,7 @@ name: Blueprint update
 
 on:
   schedule:
-    - cron: "58 4 * * 5"
+    - cron: "37 4 * * 2"
   workflow_dispatch:
 
 permissions: {}

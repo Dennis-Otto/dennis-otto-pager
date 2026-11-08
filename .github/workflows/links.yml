@@ -35,7 +35,7 @@ on:
       - .lycheeignore
       - .github/workflows/links.yml
   schedule:
-    - cron: "9 5 * * 4"
+    - cron: "47 5 * * 1"
   workflow_dispatch:
 
 permissions: {}

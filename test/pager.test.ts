@@ -497,6 +497,18 @@ describe("comments on issues and pull requests", () => {
     expect(fresh.net.calls).toHaveLength(made);
   });
 
+  it("change nothing for an older comment that comes after a newer one", async () => {
+    const w = await shown();
+    await apply(w.context, commented(101));
+    const calls = w.net.calls.length;
+    const before = await thing(w);
+    expect(await apply(w.context, commented(100, "octocat"))).toBe(
+      "comment shown already",
+    );
+    expect(w.net.calls).toHaveLength(calls);
+    expect(await thing(w)).toEqual(before);
+  });
+
   it("make a new thing of an issue that the pager never showed, or whose record expired", async () => {
     const w = await chat();
     expect(

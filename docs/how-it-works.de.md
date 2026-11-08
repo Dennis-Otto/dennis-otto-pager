@@ -41,7 +41,7 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 | Diskussion | new | ✍️ Antwort entwerfen, ✖ Ignorieren, nur wenn ihr Entwurf nicht angefragt werden konnte oder sein Job fehlschlug oder nicht innerhalb der Stunde antwortete |
 | Diskussion | drafting | ✖ Ignorieren |
 | Diskussion | draft | ✅ Senden, ✏️ Bearbeiten, ✖ Ignorieren |
-| Beitrag, Diskussion | sent, done, ignored | Keine; ein neuer Kommentar von jemand anderem öffnet eine gesendete oder erledigte wieder, mit den Knöpfen von *new* |
+| Beitrag, Diskussion | sent, done, ignored | Keine; ein neuer Kommentar von jemand anderem öffnet eine gesendete oder erledigte wieder: ein Issue oder einen Pull Request mit den Knöpfen von *new*, eine Diskussion gleich mit ihrem Entwurf (*drafting*) |
 | Alarm | open | 🔁 Neu starten (wo ein Eintrag einen Lauf nennt), 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
 | Code Scanning | open | 🛠 Fix starten, ⏰ Später, ✖ Ignorieren |
 | Alarm, Code Scanning | fixing | ⏰ Später, ✖ Ignorieren |

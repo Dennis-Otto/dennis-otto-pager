@@ -41,7 +41,7 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 | Discussion | new | ✍️ Draft a reply, ✖ Ignore, only when its draft couldn't be asked for, or its job failed or didn't answer within the hour |
 | Discussion | drafting | ✖ Ignore |
 | Discussion | draft | ✅ Send, ✏️ Edit, ✖ Ignore |
-| Contribution, discussion | sent, done, ignored | None; a new comment of someone else opens one that was sent or done again, with the buttons of *new* |
+| Contribution, discussion | sent, done, ignored | None; a new comment of someone else opens one that was sent or done again: an issue or a pull request with the buttons of *new*, a discussion with its draft at once (*drafting*) |
 | Alarm | open | 🔁 Rerun (where an entry names a run), 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Code scanning | open | 🛠 Start fix, ⏰ Later, ✖ Ignore |
 | Alarm, code scanning | fixing | ⏰ Later, ✖ Ignore |

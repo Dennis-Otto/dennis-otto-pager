@@ -470,7 +470,7 @@ async function redraft(context: Context, known: Contribution): Promise<string> {
  * whose reply went, or that GitHub dealt with, opens again in its topic with
  * ✍️ Draft a reply, where its old message stays as history, and one that the
  * pager never showed, or whose record expired, is a new thing. An ignored thing
- * stays ignored, and the same comment twice changes nothing.
+ * stays ignored, and the same comment twice, or an older one, changes nothing.
  */
 async function comment(
   context: Context,
@@ -481,7 +481,9 @@ async function comment(
   if (known?.state === "ignored") {
     return "comment ignored";
   }
-  if (known?.comment?.id === signal.comment) {
+  // GitHub promises no order of its deliveries, and a redelivery can bring an
+  // older comment back; the ids of comments only grow.
+  if (known?.comment !== undefined && signal.comment <= known.comment.id) {
     return "comment shown already";
   }
   const now = context.now();

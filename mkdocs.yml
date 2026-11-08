@@ -48,7 +48,9 @@ nav:
   - Home: index.md
   - How it works: how-it-works.md
   - Set up: setup.md
+  - Architecture: architecture.md
   - Releases and Cloudflare: releases.md
   - Security design: security.md
   - automation.md
   - Decisions: decisions/README.md
+  - Roadmap: roadmap.md

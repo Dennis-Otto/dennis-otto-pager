@@ -1,0 +1,43 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: The path of a request through the Worker
+    accDescr: Telegram calls the Worker at /telegram with a button or a text of the maintainer, the GitHub App at /github with an event, and the control repository at /control with an answer. src/index.ts turns away every other path and method and hands the rest to Serial, the one Durable Object of src/serial.ts, which runs one change at a time, as it does with the run of the schedule every 15 minutes. src/routes.ts first checks where a request comes from, by the secret header of Telegram or the signature of GitHub or of the control repository, and refuses it without a change otherwise. updates.ts, rules.ts, control.ts and schedule.ts decide what it means, and pager.ts and actions.ts apply it: the state of the things in Workers KV, through store.ts, one message per thing in Telegram, through render.ts, texts.ts and telegram.ts, and the action of a button on GitHub, through github.ts.
+
+    telegram["`**Telegram** at /telegram: a button or a text of the maintainer`"]
+    github["`**The GitHub App** at /github: an event`"]
+    control["`**The control repository** at /control: an answer`"]
+    cron["`**The schedule** of Cloudflare, every 15 minutes`"]
+    index["`**src/index.ts** turns away every other path and method`"]
+    serial["`**Serial**, the one Durable Object of src/serial.ts, runs one change at a time`"]
+    routes{"`**routes.ts**: does it prove its origin?`"}
+    refused["`No: refused, and nothing changes`"]
+    doors["`**updates.ts, rules.ts, control.ts** and **schedule.ts** decide what it means`"]
+    apply["`**pager.ts** and **actions.ts** apply it`"]
+    kv["`**Workers KV**, through store.ts: the state of each thing`"]
+    message["`**Telegram**, through render.ts, texts.ts and telegram.ts: one message per thing, edited in place`"]
+    act["`**GitHub**, through github.ts: the action of a button`"]
+
+    telegram --> index
+    github --> index
+    control --> index
+    index --> serial
+    cron --> serial
+    serial -- "a request" --> routes
+    serial -- "a run of the schedule" --> doors
+    routes --> refused
+    routes -- "yes" --> doors
+    doors --> apply
+    apply --> kv
+    apply --> message
+    apply --> act
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class telegram you
+    class github,control,cron,index,serial,routes,doors,apply bot
+    class refused,kv,message,act done

@@ -23,7 +23,7 @@ release_app_id: '4739928'
 renovate_runner: hub
 sample_code: false
 sponsor: Dennis-Otto
-successor: false
+successor: true
 test_marker: ''
 test_workflows: ''
 topics: cloudflare-workers, cloudflare, typescript, telegram-bot, github-webhooks,

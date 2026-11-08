@@ -19,6 +19,8 @@ The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de`
 - [How it works](how-it-works.md): the rules of what counts, the buttons, the control repository, the questions and reports of your agents, and the state.
 - [Set up](setup.md): the bot, the Worker, the GitHub App, the secrets and the webhook, step by step.
 - [Releases and Cloudflare](releases.md): how a release goes live.
+- [Architecture](architecture.md): the modules of the Worker, the path of a request through them and the decisions behind them.
 - [Security design](security.md): the security of the repository and its releases.
+- [Roadmap](roadmap.md): what the pager intends to do in the next twelve months, and what it won't.
 
 Telegram doesn't encrypt chats with a bot from end to end: Telegram can read the messages, which show titles of issues and drafts of replies. Free text and drafts run only in the private control repository, with Claude Code and the maintainer's own subscription.

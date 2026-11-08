@@ -9,10 +9,9 @@ requests when there is none.
 
 ## [0.7.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.7.0...v0.7.1) (2026-11-08)
 
-
 ### Bug fixes
 
-* a message of a thing whose topic you deleted opens a new topic instead of the main chat ([#106](https://github.com/Dennis-Otto/repo-pager/issues/106)) ([85881db](https://github.com/Dennis-Otto/repo-pager/commit/85881db0e9b56cdea5b380477514a85596c7bf7b))
+- A message about a thing whose topic you deleted opens a new topic instead of landing in the main chat. That holds for every message of the thing: its own message when it changes or ⏰ Later brings it back, and the messages below it, such as the pictures of a release and their album, the notice of a new comment, a draft to read or a proposal with ✅ Confirm, which bring the thing's own message with its buttons into the new topic first. The thing keeps the new topic, so its later messages follow there. A thing that an earlier version left in the main chat after you deleted its topic, such as a release whose pictures kept landing there, moves into a new topic with its next message. The main chat is left for a chat without topics, for a topic that Telegram refuses, and for a thing from before topics, and a comment whose message went anew no longer notifies twice. It needs no new permission and no new secret.
 
 ## [0.7.0](https://github.com/Dennis-Otto/dennis-otto-pager/compare/v0.6.0...v0.7.0) (2026-11-08)
 

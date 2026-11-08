@@ -41,7 +41,7 @@ on:
     types: [completed]
     branches: [main]
   schedule:
-    - cron: "26 4 * * 5"
+    - cron: "47 4 * * 1"
   workflow_dispatch:
 
 permissions: {}

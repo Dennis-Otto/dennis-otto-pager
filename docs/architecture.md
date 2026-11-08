@@ -1,6 +1,6 @@
 # Architecture
 
-[← README](https://github.com/Dennis-Otto/dennis-otto-pager) · [How it works](how-it-works.md) · [Security design](security.md) · [Roadmap](roadmap.md)
+[← README](https://github.com/Dennis-Otto/repo-pager) · [How it works](how-it-works.md) · [Security design](security.md) · [Roadmap](roadmap.md)
 
 How the pager is built: the services around it, the modules of the Worker in `src/`, the path of a request through them and the decisions behind it. [How it works](how-it-works.md) says what the pager does; this page says where in the code it happens.
 
@@ -63,4 +63,4 @@ The [decisions](decisions/README.md) record each choice that shapes the pager, w
 
 ## Tests
 
-The tests in `test/` run in workerd, the runtime of Cloudflare, through the Vitest plugin of Cloudflare, against a simulated Telegram and GitHub and a clock of their own (`test/helpers.ts`). They cover every line, branch, function and statement of `src/`, which `vitest.config.ts` requires; property tests with fast-check feed random input to the rules, to the escaping of every text and to the parsers of what comes in, such as the data of a button. `bash scripts/check.sh` runs them with the compiler in strict mode, Biome and the other checks of the CI, as [CONTRIBUTING.md](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/CONTRIBUTING.md) describes.
+The tests in `test/` run in workerd, the runtime of Cloudflare, through the Vitest plugin of Cloudflare, against a simulated Telegram and GitHub and a clock of their own (`test/helpers.ts`). They cover every line, branch, function and statement of `src/`, which `vitest.config.ts` requires; property tests with fast-check feed random input to the rules, to the escaping of every text and to the parsers of what comes in, such as the data of a button. `bash scripts/check.sh` runs them with the compiler in strict mode, Biome and the other checks of the CI, as [CONTRIBUTING.md](https://github.com/Dennis-Otto/repo-pager/blob/main/CONTRIBUTING.md) describes.

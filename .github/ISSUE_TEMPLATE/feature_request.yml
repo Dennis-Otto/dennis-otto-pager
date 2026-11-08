@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Within a few minutes, the issue assistant posts a first analysis; the maintainer reads every issue as well ([what happens with your issue](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/SUPPORT.md#what-happens-with-your-issue)).
+        Within a few minutes, the issue assistant posts a first analysis; the maintainer reads every issue as well ([what happens with your issue](https://github.com/Dennis-Otto/repo-pager/blob/main/SUPPORT.md#what-happens-with-your-issue)).
   - type: textarea
     id: problem
     attributes:

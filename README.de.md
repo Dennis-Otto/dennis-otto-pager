@@ -1,21 +1,21 @@
-# Dennis Otto Pager
+# Repo Pager
 
-[![CI](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Dennis-Otto/dennis-otto-pager/badge)](https://scorecard.dev/viewer/?uri=github.com/Dennis-Otto/dennis-otto-pager)
+[![CI](https://github.com/Dennis-Otto/repo-pager/actions/workflows/ci.yml/badge.svg)](https://github.com/Dennis-Otto/repo-pager/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Dennis-Otto/repo-pager/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dennis-Otto/repo-pager/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Dennis-Otto/repo-pager/badge)](https://scorecard.dev/viewer/?uri=github.com/Dennis-Otto/repo-pager)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16429/badge)](https://www.bestpractices.dev/projects/16429)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/16429/baseline)](https://www.bestpractices.dev/projects/16429)
-[![REUSE](https://api.reuse.software/badge/github.com/Dennis-Otto/dennis-otto-pager)](https://api.reuse.software/info/github.com/Dennis-Otto/dennis-otto-pager)
+[![REUSE](https://api.reuse.software/badge/github.com/Dennis-Otto/repo-pager)](https://api.reuse.software/info/github.com/Dennis-Otto/repo-pager)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-website-526cfe?logo=materialformkdocs&logoColor=white)](https://dennis-otto.github.io/dennis-otto-pager/)
+[![Documentation](https://img.shields.io/badge/docs-website-526cfe?logo=materialformkdocs&logoColor=white)](https://dennis-otto.github.io/repo-pager/)
 [![Issues: Triage durch den Issue-Assistenten](https://img.shields.io/badge/issues-triaged%20by%20issue%20assistant-blue)](https://dennis-otto.github.io/issue-assistant/)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Dennis-Otto)
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
-Die Dokumentation steht auf der [Website](https://dennis-otto.github.io/dennis-otto-pager/de/). English: [README.md](README.md).
+Die Dokumentation steht auf der [Website](https://dennis-otto.github.io/repo-pager/de/). English: [README.md](README.md).
 
-<sub>💛 Wenn dir Dennis Otto Pager nützt, kannst du [seine Entwicklung unterstützen](https://github.com/sponsors/Dennis-Otto).</sub>
+<sub>💛 Wenn dir Repo Pager nützt, kannst du [seine Entwicklung unterstützen](https://github.com/sponsors/Dennis-Otto).</sub>
 
 ## Was er tut
 
@@ -49,11 +49,11 @@ Auch deine eigenen Agenten fragen über den Pager, etwa ein Orchestrator, der di
 
 Sind die Threads von Telegram für den Bot an, **bekommt jede Sache ein eigenes Thema**, etwa *🚨 repo-blueprint braucht dich* oder *📦 repo-blueprint 1.11.1*: Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Entwürfe, die Antwort von 🛠 **Fix starten**, die Rückfrage von ✏️ **Bearbeiten** und die Antworten auf das, was du darin fragst, folgen dort. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, so genügt *warum?*. Eine erledigte Sache bekommt ein ✅ vor ihr Thema, das als ihre Geschichte bleibt, und die Liste der Themen ist die Übersicht. Lösch ein Thema, sobald du damit fertig bist: Die nächste Nachricht seiner Sache, etwa neue Bilder eines Releases, öffnet ein neues Thema, mit der Nachricht der Sache zuerst. Ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch, und jede Antwort bleibt im Thread des Textes, auf den sie antwortet. Ohne Themen bleibt alles in der Hauptansicht, wie bisher.
 
-Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entscheidet, `de` für diesen Pager, Englisch, wenn es leer ist. Jeder Text, den er schickt, folgt ihr, die Knöpfe und `/help` eingeschlossen, und ebenso die Antworten des Steuer-Repositorys; ein Antwortentwurf bleibt in der Sprache seines Issues oder Pull Requests, und was von GitHub kommt, etwa ein Titel, bleibt, wie es ist. Diese Seite nennt die Knöpfe, wie sie mit `de` heißen.
+Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entscheidet, `de` für den eigenen Pager des Maintainers, Englisch, wenn es leer ist. Jeder Text, den er schickt, folgt ihr, die Knöpfe und `/help` eingeschlossen, und ebenso die Antworten des Steuer-Repositorys; ein Antwortentwurf bleibt in der Sprache seines Issues oder Pull Requests, und was von GitHub kommt, etwa ein Titel, bleibt, wie es ist. Diese Seite nennt die Knöpfe, wie sie mit `de` heißen.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/diagrams/how-the-pager-works.de.dark.svg">
-  <img src="docs/images/diagrams/how-the-pager-works.de.svg" alt="So arbeitet der Pager: GitHub schickt die Ereignisse der GitHub-App an den Worker auf Cloudflare, signiert mit dem Geheimnis ihres Webhooks. Die Regeln entscheiden, was Dennis braucht; alles andere endet dort. Was zählt, wird eine Nachricht in Telegram, die sich an Ort und Stelle ändert, mit Knöpfen. Ein Knopf führt eine Aktion der Positivliste auf GitHub aus, etwa das Mergen eines grünen Releases. Entwürfe, Fixes und freier Text gehen an den Workflow des privaten Steuer-Repositorys, der Claude Code mit Dennis' Abo ausführt und seine Antwort signiert zurückschickt, als Entwurf, Notiz oder Vorschlag, die ein Knopf freigeben muss.">
+  <img src="docs/images/diagrams/how-the-pager-works.de.svg" alt="So arbeitet der Pager: GitHub schickt die Ereignisse der GitHub-App an den Worker auf Cloudflare, signiert mit dem Geheimnis ihres Webhooks. Die Regeln entscheiden, was der Maintainer braucht; alles andere endet dort. Was zählt, wird eine Nachricht in Telegram, die sich an Ort und Stelle ändert, mit Knöpfen. Ein Knopf führt eine Aktion der Positivliste auf GitHub aus, etwa das Mergen eines grünen Releases. Entwürfe, Fixes und freier Text gehen an den Workflow des privaten Steuer-Repositorys, der Claude Code mit dem Abo des Maintainers ausführt und seine Antwort signiert zurückschickt, als Entwurf, Notiz oder Vorschlag, die ein Knopf freigeben muss.">
 </picture>
 
 [So arbeitet er](docs/how-it-works.de.md) zählt die Regeln, die Knöpfe und das auf, was das Steuer-Repository zurückschickt.
@@ -68,7 +68,9 @@ Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entschei
 
 ## Einrichten
 
-Der Pager läuft mit den kostenlosen Tarifen von Cloudflare und Telegram. [Einrichten](docs/setup.de.md) geht jeden Schritt in seiner Reihenfolge durch: der Bot bei @BotFather, der Worker auf Cloudflare, die GitHub-App aus ihrem Manifest, die Geheimnisse und der Webhook von Telegram. Auf deinem Rechner läuft er unter <http://localhost:8787>, mit den Geheimnissen aus `.dev.vars` (siehe `.dev.vars.example`):
+Repo Pager betreibt jeder selbst: Wer ihn nutzt, hat eine eigene Instanz, mit eigenem Bot, Worker, eigener GitHub-App und eigenem privatem Steuer-Repository. Es gibt keine gemeinsame App zum Installieren, damit deine Tokens und die Ereignisse deiner Repositorys deine bleiben, und jeder Pager bedient den einen Chat seines Maintainers; `wrangler.jsonc` hält die Werte einer Instanz, die deine Kopie für deine setzt.
+
+Der Pager läuft mit den kostenlosen Tarifen von Cloudflare und Telegram. [Einrichten](docs/setup.de.md) geht jeden Schritt in seiner Reihenfolge durch: deine Kopie dieses Repositorys, der Bot bei @BotFather, der Worker auf Cloudflare, die GitHub-App aus ihrem Manifest, die Geheimnisse und der Webhook von Telegram. Auf deinem Rechner läuft er unter <http://localhost:8787>, mit den Geheimnissen aus `.dev.vars` (siehe `.dev.vars.example`):
 
 ```sh
 npm ci --ignore-scripts

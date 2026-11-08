@@ -43,7 +43,7 @@ exclude = [
   # The website of this repository, which the Docs workflow publishes only after a run
   # on main, so the first push and the pull requests before it can't reach it yet: the
   # check docs checks every page of it.
-  '^https://dennis\-otto\.github\.io/dennis\-otto\-pager/',
+  '^https://dennis\-otto\.github\.io/repo\-pager/',
   # The badge of a workflow, which a pull request that adds the workflow can't show yet.
   '^https://github\.com/[^/]+/[^/]+/actions/workflows/[^/]+/badge\.svg',
   # A page of HTML of this repository, such as cards.html of docs/cards.md, which

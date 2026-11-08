@@ -5,15 +5,15 @@ config:
 ---
 flowchart TB
     accTitle: Ein Thema pro Sache
-    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Antwort von Fix, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was Dennis im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Löscht Dennis das Thema, öffnet die nächste Nachricht der Sache ein neues, mit der Nachricht der Sache zuerst. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.
+    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Antwort von Fix, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was der Maintainer im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Löscht der Maintainer das Thema, öffnet die nächste Nachricht der Sache ein neues, mit der Nachricht der Sache zuerst. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.
 
     thing["Eine neue Sache: ein Alarm, ein Beitrag, ein Release, Code Scanning"]
     open["`**createForumTopic** öffnet ihr Thema, etwa 🚨 demo braucht dich`"]
     first["`Ihre Nachricht mit den Knöpfen kommt zuerst; ihre Änderungen bearbeiten sie dort`"]
-    ask["`Dennis fragt im Thema: Der Text geht **mit der Sache** an das Steuer-Repository`"]
+    ask["`Der Maintainer fragt im Thema: Der Text geht **mit der Sache** an das Steuer-Repository`"]
     more["`Entwürfe, die Antwort von 🛠 Fix, ✏️ Bearbeiten, ⏰ Später und die Antworten folgen im Thema`"]
     done["`**✅** vor ihrem Namen, wenn sie erledigt ist; das Thema bleibt`"]
-    gone["`Dennis löscht das Thema: Die **nächste Nachricht** der Sache öffnet ein neues, ihre eigene Nachricht zuerst`"]
+    gone["`Der Maintainer löscht das Thema: Die **nächste Nachricht** der Sache öffnet ein neues, ihre eigene Nachricht zuerst`"]
     main["`**Hauptansicht**, wie bisher: kein Threaded Mode, ein abgelehntes Thema oder eine abgelehnte Nachricht`"]
 
     thing --> open
@@ -22,7 +22,7 @@ flowchart TB
     ask -- "die Antwort" --> more
     first --> more
     more -- "gemergt, wieder grün, ignoriert" --> done
-    done -- "für Dennis erledigt" --> gone
+    done -- "für den Maintainer erledigt" --> gone
     open -- "keine Themen, oder Telegram lehnt ab" --> main
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px

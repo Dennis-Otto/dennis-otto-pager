@@ -5,15 +5,15 @@ config:
 ---
 flowchart TB
     accTitle: So arbeitet der Pager
-    accDescr: GitHub schickt die Ereignisse der GitHub-App an den Worker auf Cloudflare, signiert mit dem Geheimnis ihres Webhooks. Die Regeln entscheiden, was Dennis braucht; alles andere endet dort. Was zählt, wird eine Nachricht in Telegram, die sich an Ort und Stelle ändert, mit Knöpfen. Ein Knopf führt eine Aktion der Positivliste auf GitHub aus, etwa das Mergen eines grünen Releases. Entwürfe, Fixes und freier Text gehen an den Workflow des privaten Steuer-Repositorys, der Claude Code mit Dennis' Abo ausführt und seine Antwort signiert zurückschickt, als Entwurf, Notiz oder Vorschlag, die ein Knopf freigeben muss.
+    accDescr: GitHub schickt die Ereignisse der GitHub-App an den Worker auf Cloudflare, signiert mit dem Geheimnis ihres Webhooks. Die Regeln entscheiden, was der Maintainer braucht; alles andere endet dort. Was zählt, wird eine Nachricht in Telegram, die sich an Ort und Stelle ändert, mit Knöpfen. Ein Knopf führt eine Aktion der Positivliste auf GitHub aus, etwa das Mergen eines grünen Releases. Entwürfe, Fixes und freier Text gehen an den Workflow des privaten Steuer-Repositorys, der Claude Code mit dem Abo des Maintainers ausführt und seine Antwort signiert zurückschickt, als Entwurf, Notiz oder Vorschlag, die ein Knopf freigeben muss.
 
     github["`**GitHub** schickt die Ereignisse der App, signiert`"]
-    rules{"`**Die Regeln** des Workers: braucht es Dennis?`"}
+    rules{"`**Die Regeln** des Workers: braucht es den Maintainer?`"}
     quiet["`Nein: hier endet es, ohne Nachricht`"]
     message["`**Eine Nachricht** in Telegram, die sich an Ort und Stelle ändert`"]
-    dennis["Dennis drückt einen Knopf oder schreibt einen Text"]
+    dennis["Der Maintainer drückt einen Knopf oder schreibt einen Text"]
     action["`**Eine Aktion der Positivliste** auf GitHub, etwa ein grünes Release mergen`"]
-    control["`**Das private Steuer-Repository** entwirft eine Antwort, startet einen Fix oder liest den freien Text, mit Claude Code und Dennis' Abo`"]
+    control["`**Das private Steuer-Repository** entwirft eine Antwort, startet einen Fix oder liest den freien Text, mit Claude Code und dem Abo des Maintainers`"]
 
     github --> rules
     rules --> quiet

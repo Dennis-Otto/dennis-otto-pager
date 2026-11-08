@@ -4,5 +4,5 @@
 // https://docs.renovatebot.com/configuration-options/
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["local>Dennis-Otto/dennis-otto-pager//.github/renovate-blueprint.json5"],
+  extends: ["local>Dennis-Otto/repo-pager//.github/renovate-blueprint.json5"],
 }

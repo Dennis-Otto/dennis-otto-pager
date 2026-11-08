@@ -19,7 +19,7 @@
   extends: [
     "config:recommended",
     ":semanticCommits",
-    "local>Dennis-Otto/dennis-otto-pager//.github/renovate-accepted.json5",
+    "local>Dennis-Otto/repo-pager//.github/renovate-accepted.json5",
   ],
   timezone: "Europe/Berlin",
   // No dependency dashboard, so that a repository can have no open issue: routine

@@ -860,7 +860,7 @@ describe("the artifact on GitHub", () => {
     const [link] = w.net.github("/actions/artifacts/55/zip");
     expect(link?.headers.authorization).toMatch(/^Bearer ghs_test_/);
     const storage = w.net.calls.find((call) => call.url === STORAGE);
-    expect(storage?.headers).toEqual({ "user-agent": "dennis-otto-pager" });
+    expect(storage?.headers).toEqual({ "user-agent": "repo-pager" });
   });
 
   it("is refused when GitHub names no storage, or the storage refuses, or it is too large", async () => {

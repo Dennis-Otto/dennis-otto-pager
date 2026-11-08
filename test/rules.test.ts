@@ -471,7 +471,7 @@ describe("discussions from outside", () => {
         event({
           action: "created",
           discussion,
-          comment: { ...comment, user: { login: "dennis-otto-pager[bot]" } },
+          comment: { ...comment, user: { login: "repo-pager[bot]" } },
         }),
         ME,
       ),

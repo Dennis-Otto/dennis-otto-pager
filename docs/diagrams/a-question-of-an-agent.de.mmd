@@ -5,12 +5,12 @@ config:
 ---
 flowchart TB
     accTitle: Die Frage eines Agenten
-    accDescr: Ein Agent von Dennis, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis von Dennis selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Dennis drückt einen oder schreibt seine eigene Antwort in das Thema, und die GitHub App speichert sie als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis, und wait nimmt nur eine Antwort, die neuer ist als die Frage. Ein Agent, der die Antwort nicht mehr braucht, schickt pager-withdraw: Die Knöpfe verschwinden, und das Thema sagt, dass er die Frage zurückgenommen hat.
+    accDescr: Ein Agent des Maintainers, etwa ein Orchestrator auf seinem PC, schickt das Ereignis pager-ask mit gh an das private Steuer-Repository, mit einer Id, einer Frage und zwei bis vier Optionen. Dessen Workflow nimmt nur ein Ereignis des Maintainers selbst, prüft es und schickt es signiert an den Worker. Der Pager öffnet ein Thema für die Frage, mit einem Knopf pro Option. Der Maintainer drückt einen oder schreibt seine eigene Antwort in das Thema, und die GitHub App speichert sie als answers/id.json auf dem Branch pager-answers des Steuer-Repositorys. Der Agent liest sie dort mit gh, ohne ein eigenes Geheimnis, und wait nimmt nur eine Antwort, die neuer ist als die Frage. Ein Agent, der die Antwort nicht mehr braucht, schickt pager-withdraw: Die Knöpfe verschwinden, und das Thema sagt, dass er die Frage zurückgenommen hat.
 
-    agent["`**Ein Agent von Dennis** schickt pager-ask mit gh: eine Id, eine Frage und ihre Optionen`"]
-    control["`**Der Workflow des Steuer-Repositorys** nimmt nur Dennis' eigene Ereignisse und schickt sie signiert weiter`"]
+    agent["`**Ein Agent des Maintainers** schickt pager-ask mit gh: eine Id, eine Frage und ihre Optionen`"]
+    control["`**Der Workflow des Steuer-Repositorys** nimmt nur die eigenen Ereignisse des Maintainers und schickt sie signiert weiter`"]
     topic["`**🤔 Ein eigenes Thema** in Telegram, mit einem Knopf pro Option`"]
-    press["Dennis drückt eine Option oder schreibt seine eigene Antwort in das Thema"]
+    press["Der Maintainer drückt eine Option oder schreibt seine eigene Antwort in das Thema"]
     saved["`**answers/id.json** auf dem Branch pager-answers, gespeichert von der GitHub App`"]
     read["Der Agent liest die Antwort mit gh, eine, die neuer ist als seine Frage"]
     back["`**pager-withdraw** des Agenten, der sie nicht mehr braucht: Die Knöpfe verschwinden, und das Thema sagt es`"]

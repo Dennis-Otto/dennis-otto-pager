@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: Wenn ein Ereignis von GitHub scheitert
-    accDescr: GitHub stellt dem Pager ein Ereignis zu, und seine Verarbeitung scheitert, etwa bei einem Ausfall von Telegram, sodass der Pager 500 antwortet, oder keine Antwort kommt rechtzeitig. GitHub stellt es von sich aus nie noch einmal zu. Alle 15 Minuten liest der Zeitplan die Zustellungen des Webhooks der App der letzten drei Stunden und lässt GitHub das Ereignis noch einmal zustellen, bis zu drei Versuche insgesamt und zehn Ereignisse pro Lauf. Ein Versuch, der gelingt, beendet es, und da jedes Signal nichts ändert, wenn es zweimal kommt, ist eine erneute Zustellung sicher. Scheitert auch der dritte Versuch, bekommt der Alarm des Steuer-Repositorys einen Eintrag, Ein Ereignis von GitHub scheitert, verlinkt auf die letzten Zustellungen auf der Seite Advanced der App. Dennis kann es dort noch einmal zustellen, und ein Versuch, der gelingt, nimmt den Eintrag heraus.
+    accDescr: GitHub stellt dem Pager ein Ereignis zu, und seine Verarbeitung scheitert, etwa bei einem Ausfall von Telegram, sodass der Pager 500 antwortet, oder keine Antwort kommt rechtzeitig. GitHub stellt es von sich aus nie noch einmal zu. Alle 15 Minuten liest der Zeitplan die Zustellungen des Webhooks der App der letzten drei Stunden und lässt GitHub das Ereignis noch einmal zustellen, bis zu drei Versuche insgesamt und zehn Ereignisse pro Lauf. Ein Versuch, der gelingt, beendet es, und da jedes Signal nichts ändert, wenn es zweimal kommt, ist eine erneute Zustellung sicher. Scheitert auch der dritte Versuch, bekommt der Alarm des Steuer-Repositorys einen Eintrag, Ein Ereignis von GitHub scheitert, verlinkt auf die letzten Zustellungen auf der Seite Advanced der App. Der Maintainer kann es dort noch einmal zustellen, und ein Versuch, der gelingt, nimmt den Eintrag heraus.
 
     event["GitHub stellt dem Pager ein Ereignis zu"]
     failed["`**❌** Seine Verarbeitung scheitert: Der Pager antwortet 500, oder keine Antwort kommt rechtzeitig`"]
@@ -13,7 +13,7 @@ flowchart TB
     again["`**🔁** GitHub stellt es noch einmal zu: drei Versuche insgesamt, zehn Ereignisse pro Lauf`"]
     passed["`**✅** Ein Versuch gelingt; dasselbe Signal zweimal ändert nichts`"]
     alarm["`**🚨** Der dritte Versuch scheitert: ein Eintrag im Alarm des Steuer-Repositorys, verlinkt auf die Seite Advanced der App`"]
-    redeliver["Dennis stellt es auf der Seite Advanced noch einmal zu"]
+    redeliver["Der Maintainer stellt es auf der Seite Advanced noch einmal zu"]
 
     event --> failed --> schedule --> again
     again -- "es gelingt" --> passed

@@ -8,7 +8,7 @@ Security fixes are provided for the latest release.
 
 Please do not open a public issue, discussion or pull request for a suspected vulnerability. Use GitHub's private vulnerability reporting for this repository:
 
-<https://github.com/Dennis-Otto/dennis-otto-pager/security/advisories/new>
+<https://github.com/Dennis-Otto/repo-pager/security/advisories/new>
 
 Include the affected release, the set-up, reproduction steps and the potential impact. Reports in English or German are welcome.
 
@@ -40,9 +40,9 @@ CodeQL and OpenSSF Scorecard report their findings in the repository's Security 
 A release is immutable once it is published, and GitHub signs an attestation of it that ties its tag to its commit and to every file it carries. The release workflow also signs the build provenance of every file with [Sigstore](https://www.sigstore.dev/), using a certificate for the workflow of this repository that is valid for ten minutes. No long-lived signing key exists, so none can leak, and none is stored where the releases are downloaded. The [GitHub CLI](https://cli.github.com/) checks both signatures with the public keys of GitHub and Sigstore, which it fetches itself:
 
 ```sh
-gh release verify vX.Y.Z --repo Dennis-Otto/dennis-otto-pager
-gh release download vX.Y.Z --repo Dennis-Otto/dennis-otto-pager --pattern '<asset>'
-gh attestation verify <asset> --repo Dennis-Otto/dennis-otto-pager --signer-workflow Dennis-Otto/dennis-otto-pager/.github/workflows/build-release.yml --source-ref refs/heads/main --deny-self-hosted-runners
+gh release verify vX.Y.Z --repo Dennis-Otto/repo-pager
+gh release download vX.Y.Z --repo Dennis-Otto/repo-pager --pattern '<asset>'
+gh attestation verify <asset> --repo Dennis-Otto/repo-pager --signer-workflow Dennis-Otto/repo-pager/.github/workflows/build-release.yml --source-ref refs/heads/main --deny-self-hosted-runners
 ```
 
 `--signer-workflow` accepts only the provenance of the workflow that builds the release, `--source-ref` only that of a run for `main`, the only branch whose runs make releases, and `--deny-self-hosted-runners` only that of a runner of GitHub: an attestation that another workflow, another branch or a machine of someone else made for this repository fails.
@@ -51,11 +51,11 @@ Every asset of a release carries this provenance, those that the project builds 
 
 Cloudflare deploys exactly the commit of a release: Workers Builds builds the Worker from the commit of `main` that the release tags, with the lock file of that commit, and `scripts/deploy-worker.sh` deploys only that commit, as [docs/releases.md](docs/releases.md) describes. No key of Cloudflare is stored in GitHub, and the secrets of the Worker live in Cloudflare, never in the repository.
 
-Every release describes what it ships in an SBOM, as SPDX in `dennis-otto-pager.spdx.json` and as CycloneDX in `dennis-otto-pager.cdx.json`: the files of its tag, without those that only check, test and document the project, or, where the project builds assets of its own with `scripts/release-assets.sh`, the zips and tarballs of that script, under the name `dennis-otto-pager` and the version of the release. A scanner such as [Grype](https://github.com/anchore/grype) checks it against the advisories it knows. When the project accepts an advisory in `osv-scanner.toml`, with its reason, the release carries the OpenVEX document `dennis-otto-pager.openvex.json` too, which tells the scanner that the advisory doesn't affect the release; without that document, leave out `--vex`:
+Every release describes what it ships in an SBOM, as SPDX in `repo-pager.spdx.json` and as CycloneDX in `repo-pager.cdx.json`: the files of its tag, without those that only check, test and document the project, or, where the project builds assets of its own with `scripts/release-assets.sh`, the zips and tarballs of that script, under the name `repo-pager` and the version of the release. A scanner such as [Grype](https://github.com/anchore/grype) checks it against the advisories it knows. When the project accepts an advisory in `osv-scanner.toml`, with its reason, the release carries the OpenVEX document `repo-pager.openvex.json` too, which tells the scanner that the advisory doesn't affect the release; without that document, leave out `--vex`:
 
 ```sh
-gh release download vX.Y.Z --repo Dennis-Otto/dennis-otto-pager --pattern 'dennis-otto-pager.*.json'
-grype sbom:dennis-otto-pager.spdx.json --vex dennis-otto-pager.openvex.json
+gh release download vX.Y.Z --repo Dennis-Otto/repo-pager --pattern 'repo-pager.*.json'
+grype sbom:repo-pager.spdx.json --vex repo-pager.openvex.json
 ```
 
 ## Verify the website
@@ -63,8 +63,8 @@ grype sbom:dennis-otto-pager.spdx.json --vex dennis-otto-pager.openvex.json
 The Docs workflow publishes the website on GitHub Pages and signs the build provenance of what it publishes with Sigstore, as the release workflow signs a release: `artifact.tar` of the artifact `github-pages` of its run, which GitHub keeps for a day. It then asks the published website for the home page of each of its languages, and for an address that leads nowhere, which must answer with 404, and fails when one doesn't. Take the artifact of the run that published the website, and check it with the GitHub CLI:
 
 ```sh
-gh run download RUN_ID --repo Dennis-Otto/dennis-otto-pager --name github-pages
-gh attestation verify artifact.tar --repo Dennis-Otto/dennis-otto-pager --signer-workflow Dennis-Otto/dennis-otto-pager/.github/workflows/docs.yml
+gh run download RUN_ID --repo Dennis-Otto/repo-pager --name github-pages
+gh attestation verify artifact.tar --repo Dennis-Otto/repo-pager --signer-workflow Dennis-Otto/repo-pager/.github/workflows/docs.yml
 ```
 
 ## Assurance case

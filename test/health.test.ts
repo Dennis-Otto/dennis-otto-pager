@@ -12,7 +12,7 @@ import { runSchedule } from "../src/schedule.ts";
 import { TOKENS, type Tokens } from "../src/tokens.ts";
 import { appKey, json, START, type World, world } from "./helpers.ts";
 
-const APP = { slug: "dennis-otto-pager", owner: { login: "Dennis-Otto" } };
+const APP = { slug: "repo-pager", owner: { login: "Dennis-Otto" } };
 
 async function ask(
   w: World,

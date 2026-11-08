@@ -2,7 +2,7 @@
 
 <!-- The blueprint wrote this page once; from now on it belongs to the project. Keep it true to the software: what it protects, what it trusts, the threats and how the code counters them, and what remains. -->
 
-What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURITY.md](https://github.com/Dennis-Otto/dennis-otto-pager/blob/main/SECURITY.md) says how to report a vulnerability and how to verify a release, and argues why the repository and its releases are safe.
+What Repo Pager protects, what it trusts and which risks remain. [SECURITY.md](https://github.com/Dennis-Otto/repo-pager/blob/main/SECURITY.md) says how to report a vulnerability and how to verify a release, and argues why the repository and its releases are safe.
 
 ## What you can expect
 
@@ -16,7 +16,7 @@ What Dennis Otto Pager protects, what it trusts and which risks remain. [SECURIT
 1. **Internet → Worker.** Every request, its headers and its body are untrusted input.
 2. **Worker → bindings and other services.** Only those of `wrangler.jsonc` and the addresses that its code names, with the secrets that Cloudflare keeps.
 3. **Repository → Cloudflare.** Workers Builds builds every push to `main`, and only a release goes live.
-4. **Control repository → Worker.** The private repository `Dennis-Otto/dennis-otto-pager-control` runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run. It also forwards the questions and reports of the maintainer's own agents, and only those that the owner of the repository sent; the answer to a question is saved there, as a file on a branch of its own, `pager-answers`, which holds no code.
+4. **Control repository → Worker.** The private control repository of the maintainer, which `CONTROL_REPOSITORY` of `wrangler.jsonc` names, runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run. It also forwards the questions and reports of the maintainer's own agents, and only those that the owner of the repository sent; the answer to a question is saved there, as a file on a branch of its own, `pager-answers`, which holds no code.
 
 ## Threats and countermeasures
 

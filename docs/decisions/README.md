@@ -23,3 +23,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0015](0015-a-vulnerability-report-pages-without-a-word-of-what-it-says.md) | A vulnerability report pages without a word of what it says, and a secret by its kind and its file | accepted |
 | [0016](0016-the-album-of-a-visual-change-shows-the-changed-pixels-first.md) | The album of a visual change shows the changed pixels first, and promises red only when it has them | accepted |
 | [0017](0017-a-topic-that-the-maintainer-deleted-opens-anew-with-the-next-message-of-its-thing.md) | A topic that the maintainer deleted opens anew with the next message of its thing | accepted |
+| [0018](0018-the-pager-is-repo-pager-which-everyone-runs-as-an-instance-of-their-own.md) | The pager is Repo Pager, which everyone runs as an instance of their own | accepted |

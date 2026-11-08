@@ -5,5 +5,5 @@ version = 1
 [[annotations]]
 path = "**"
 precedence = "aggregate"
-SPDX-FileCopyrightText = ["2026 Dennis Otto", "Contributors to Dennis Otto Pager"]
+SPDX-FileCopyrightText = ["2026 Dennis Otto", "Contributors to Repo Pager"]
 SPDX-License-Identifier = "MIT"

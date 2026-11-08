@@ -5,16 +5,16 @@ config:
 ---
 flowchart TB
     accTitle: When the pager breaks
-    accDescr: Once a day, the workflow Health of the private control repository sends the pager the signed body health. The pager answers with when its schedule last ran, whether Telegram takes the token of the bot and delivers to its webhook, whether GitHub takes the key of the app, and when the tokens expire, without a secret. When all is well, the run passes and nothing is said. When something is wrong, or the pager doesn't answer, the run fails with an error that names it, and GitHub notifies Dennis of the failed run by itself, also when Telegram or the Worker is what broke. Besides, the schedule reads the day of GITHUB_USER_TOKEN from GitHub once a day, and three weeks before a token expires a reminder comes in a topic of its own, with how to renew it.
+    accDescr: Once a day, the workflow Health of the private control repository sends the pager the signed body health. The pager answers with when its schedule last ran, whether Telegram takes the token of the bot and delivers to its webhook, whether GitHub takes the key of the app, and when the tokens expire, without a secret. When all is well, the run passes and nothing is said. When something is wrong, or the pager doesn't answer, the run fails with an error that names it, and GitHub notifies the maintainer of the failed run by itself, also when Telegram or the Worker is what broke. Besides, the schedule reads the day of GITHUB_USER_TOKEN from GitHub once a day, and three weeks before a token expires a reminder comes in a topic of its own, with how to renew it.
 
     health["`**🩺** Once a day, the workflow Health of the control repository sends the signed body health`"]
     answer["The pager answers: the schedule's last run, Telegram and its webhook, the app on GitHub, the days of the tokens; no secret"]
     passed["`**✅** All is well: the run passes, and nothing is said`"]
     failed["`**❌** The run fails with an error that names what is wrong, or that the pager didn't answer`"]
-    notify["GitHub notifies Dennis of the failed run by itself, also when Telegram or the Worker broke"]
+    notify["GitHub notifies the maintainer of the failed run by itself, also when Telegram or the Worker broke"]
     schedule["Once a day, the schedule reads the day of GITHUB_USER_TOKEN from GitHub"]
     reminder["`**🔔** Three weeks before a token expires: a reminder in a topic of its own, with how to renew it`"]
-    renew["Dennis renews the token"]
+    renew["The maintainer renews the token"]
 
     health --> answer
     answer -- "all is well" --> passed

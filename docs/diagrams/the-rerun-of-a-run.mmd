@@ -5,10 +5,10 @@ config:
 ---
 flowchart TB
     accTitle: The rerun of a run that failed
-    accDescr: A message names a run of GitHub Actions that failed on main: that of a workflow, or an entry of the alarm, such as a release. Dennis presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the message says so. When they fail again, the message shows the failure, and Rerun can run them once more. When they pass, the workflow turns green, or the entry goes, and the last one turns the alarm green.
+    accDescr: A message names a run of GitHub Actions that failed on main: that of a workflow, or an entry of the alarm, such as a release. The maintainer presses Rerun, and the pager reads the run. While it still runs, or once it passed on a retry, the button says so and nothing starts. Otherwise its failed jobs run again, and the message says so. When they fail again, the message shows the failure, and Rerun can run them once more. When they pass, the workflow turns green, or the entry goes, and the last one turns the alarm green.
 
     alarm["`**🚨** A message names a run that failed on main: a workflow, or an entry of the alarm`"]
-    press["Dennis presses 🔁 Rerun"]
+    press["The maintainer presses 🔁 Rerun"]
     read["The pager reads the run"]
     nothing["`**ℹ️** It still runs, or passed on a retry: the button says so, and nothing starts`"]
     again["`**🔁** Its failed jobs run again, and the message says so`"]

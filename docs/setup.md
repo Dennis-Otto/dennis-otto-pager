@@ -1,8 +1,35 @@
 # Set up
 
-The pager needs a bot of Telegram, the Worker on Cloudflare, a GitHub App and a few secrets. These steps take about half an hour, on the free plans of Cloudflare and Telegram, and nothing of them is stored in GitHub. Do them in this order: each step needs the one before.
+Repo Pager is self-hosted: you run an instance of your own, with your own bot of Telegram, your own Worker on Cloudflare, your own GitHub App, a few secrets and your own private control repository. These steps take about half an hour, on the free plans of Cloudflare and Telegram, and nothing of them is stored in GitHub. Do them in this order: each step needs the one before.
 
-Run the commands in Git Bash or another shell of Unix, in a checkout of this repository, after `npm ci --ignore-scripts`. Read a secret with `read -rs`, so that it stays out of the history of the shell.
+Run the commands in Git Bash or another shell of Unix, in a checkout of your copy of this repository, after `npm ci --ignore-scripts`. Read a secret with `read -rs`, so that it stays out of the history of the shell.
+
+## Why there is no shared app
+
+There is no app of Repo Pager to install and no pager that serves several people, on purpose:
+
+- **Your tokens and your events stay yours.** A shared app would receive the events of every user's repositories, private ones included, and hold the tokens that act in their names. Your own app sends the events of your repositories to your Worker alone, and its secrets live in your account of Cloudflare.
+- **One pager serves one chat.** The Worker serves only the chat that `TELEGRAM_CHAT_ID` names and acts for one account, `MAINTAINER_LOGIN`; its state is that of one maintainer.
+- **Your subscription answers.** The drafts, the fixes and the free text run with Claude Code and your own subscription, in your own private control repository, never with the key of a shared service.
+
+## Your copy
+
+Make a copy of this repository: a fork, or a repository of your own. `wrangler.jsonc` is the configuration of an instance, and the values in it are those of the maintainer's own; set yours there and commit them, before step 2:
+
+| In `wrangler.jsonc` | Your value |
+| --- | --- |
+| `name` | The name of your Worker, such as `repo-pager`, which its address takes |
+| `kv_namespaces` | No `id`: the one there names the namespace of the maintainer's instance, and your first deployment creates your own and writes its id there |
+| `MAINTAINER_LOGIN` | Your account on GitHub |
+| `CONTROL_REPOSITORY` | Your private control repository of step 7, such as `octocat/repo-pager-control` |
+| `LANGUAGE` | `de` for German, `en` or empty for English |
+| `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
+
+The commands below name your control repository with a variable of the shell:
+
+```sh
+CONTROL=octocat/repo-pager-control   # your account and the name of your control repository
+```
 
 ## 1. The bot of Telegram
 
@@ -28,7 +55,13 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-The first deployment also creates the namespace of Workers KV that holds the state of the pager and the Durable Object that runs its changes one at a time, and names the address of the Worker, such as `https://dennis-otto-pager.ACCOUNT.workers.dev`. Until step 3 is done, the Worker answers each webhook with `503`.
+The first deployment also creates the namespace of Workers KV that holds the state of the pager, and writes its id into `wrangler.jsonc`: commit it, so that every later deployment stays on that namespace. It creates the Durable Object that runs the changes one at a time as well, and names the address of the Worker, such as `https://repo-pager.ACCOUNT.workers.dev`, which the steps after take from a variable of the shell:
+
+```sh
+WORKER=https://repo-pager.ACCOUNT.workers.dev   # the address that the deployment named
+```
+
+Until step 3 is done, the Worker answers each webhook with `503`.
 
 ## 3. The secrets of the Worker
 
@@ -52,7 +85,7 @@ WEBHOOK_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomByte
 printf %s "$WEBHOOK_SECRET" | npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 CONTROL_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")
 printf %s "$CONTROL_SECRET" | npx wrangler secret put CONTROL_SECRET
-printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R Dennis-Otto/dennis-otto-pager-control
+printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R "$CONTROL"
 ```
 
 **`GITHUB_USER_TOKEN`** acts in your name for two buttons only: ✅ **Send**, which posts a reply that you approved on an issue or a pull request, and 🤖 **Assistant again**, which starts the issue assistant past its rule of one comment; the issue assistant asks GitHub for the role of the person who started it, and an app has none. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) for your account and your repositories, with these permissions and no others:
@@ -74,10 +107,10 @@ Without it, the pager works as well, and those two buttons say what is missing. 
 The app sends the events of your repositories to the Worker and merges a release and reruns the failed jobs of a run with its own, scoped tokens. `github-app.json` is its manifest, with the least permissions that the pager needs. Register it with your Worker's address:
 
 ```sh
-node scripts/register-app.mjs https://dennis-otto-pager.ACCOUNT.workers.dev
+node scripts/register-app.mjs "$WORKER"
 ```
 
-Open the address that it prints, in the browser that is signed in to GitHub, and confirm the app. The script puts its App ID, private key and webhook secret into the secrets of the Worker, without a file, and prints the page that installs it. **Install the app** on the repositories that the pager watches **and on `Dennis-Otto/dennis-otto-pager-control`**, where it sends the drafts, the fixes and the free text.
+Open the address that it prints, in the browser that is signed in to GitHub, and confirm the app. GitHub shows its name, *Repo Pager*, in a field above the button: an app's name is unique on GitHub, so give yours one of your own there, of at most 34 characters, such as *Repo Pager of octocat*. The script puts its App ID, private key and webhook secret into the secrets of the Worker, without a file, and prints the page that installs it. **Install the app** on the repositories that the pager watches **and on your control repository**, where it sends the drafts, the fixes and the free text.
 
 The app is private, so only your account can install it. Its permissions:
 
@@ -108,7 +141,7 @@ Tell Telegram where to send the updates, with the secret of step 3:
 
 ```sh
 curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
-  -d url=https://dennis-otto-pager.ACCOUNT.workers.dev/telegram \
+  -d url="$WORKER/telegram" \
   -d secret_token="$WEBHOOK_SECRET" \
   -d 'allowed_updates=["message","callback_query"]' \
   -d max_connections=1
@@ -125,11 +158,11 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 ## 7. The control repository
 
-The private repository `Dennis-Otto/dennis-otto-pager-control` drafts the replies, starts the fixes and answers the free text, with Claude Code and `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`; its README has every step. Besides the token of Claude and `PAGER_CONTROL_SECRET` of step 3, it needs the address of the Worker, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix:
+Your private control repository, which `CONTROL_REPOSITORY` names, drafts the replies, starts the fixes and answers the free text, with Claude Code and `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. [How it works](how-it-works.md#the-control-repository) has the contract between the two: the events that the pager sends it and the signed answers that the pager takes. The workflow of the maintainer's own control repository is private, so a workflow of your own answers by that contract. Besides the token of Claude and `PAGER_CONTROL_SECRET` of step 3, it needs the address of the Worker, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix:
 
 ```sh
-gh variable set PAGER_URL -R Dennis-Otto/dennis-otto-pager-control --body https://dennis-otto-pager.ACCOUNT.workers.dev
-gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control
+gh variable set PAGER_URL -R "$CONTROL" --body "$WORKER"
+gh secret set PAGER_FIX_TOKEN -R "$CONTROL"
 ```
 
 Then write a question to the bot, such as *What fails on main?*: the 👀 says that it went to the control repository, and its answer comes in a minute or two and turns it into 👍. A 😢 says that no answer came to be: the job failed, or it didn't answer within an hour, and the run of the workflow in the Actions tab of the control repository says why. Until the control repository is set up, its buttons send their events, and the summary of its run shows the answer instead of the chat.
@@ -137,11 +170,11 @@ Then write a question to the bot, such as *What fails on main?*: the 👀 says t
 ## Later on
 
 - **Your tokens expire,** and the pager reminds you three weeks before each, in a topic of its own, with how to renew it; ✅ **Renewed** closes the reminder:
-  - **The token of Claude** in the control repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` names the day. Renew it with `claude setup-token` and `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R Dennis-Otto/dennis-otto-pager-control`, then change the day in a pull request.
+  - **The token of Claude** in the control repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` names the day. Renew it with `claude setup-token` and `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"`, then change the day in a pull request.
   - **`GITHUB_USER_TOKEN`** of the Worker: GitHub names its day in the answers of its API, which the pager reads once a day. Regenerate it on the page of your [fine-grained tokens](https://github.com/settings/personal-access-tokens), with a new day, and set it with `npx wrangler secret put GITHUB_USER_TOKEN`; the pager asks GitHub about a new token at once. When GitHub refuses the token, because it expired or was revoked, the reminder says so, and ✅ **Send** and 🤖 **Assistant again** too.
-  - **`PAGER_FIX_TOKEN`** of the control repository: its daily check *Health* reads the day from GitHub and sends it along. Regenerate it the same way and set it with `gh secret set PAGER_FIX_TOKEN -R Dennis-Otto/dennis-otto-pager-control`.
+  - **`PAGER_FIX_TOKEN`** of the control repository: its daily check *Health* reads the day from GitHub and sends it along. Regenerate it the same way and set it with `gh secret set PAGER_FIX_TOKEN -R "$CONTROL"`.
 - **The health of the pager:** the workflow *Health* of the control repository asks the pager once a day how it is, as [How it works](how-it-works.md#when-the-pager-breaks) describes, which takes about a minute of its Actions minutes. Its run fails when the schedule stopped, Telegram refuses the bot or its webhook reported an error in the last day, GitHub refuses the app, or a token expires within a week; GitHub then notifies you of the failed run by itself, also when Telegram or the Worker is what broke. Start it by hand in the Actions tab to check the pager after a change.
 - **A secret that leaked:** set a new one with `npx wrangler secret put NAME`; for the app, make a new private key in its settings and set `GITHUB_APP_PRIVATE_KEY`; for the bot, `/revoke` at @BotFather, then `TELEGRAM_BOT_TOKEN` and step 5 again.
 - **How long "Later" waits** is `LATER_HOURS` in `wrangler.jsonc`.
-- **The mails of GitHub Actions** can go off once the pager pages for every [workflow that fails on `main`](how-it-works.md#a-workflow-that-fails-on-main): in the settings of your account on GitHub, under *Notifications*, *System*, *Actions*, turn off *Email*, but keep *Web and Mobile* on and look at your notifications on github.com or in the GitHub app: the pager can't page a failure of itself, so the failed run of *Health* of the control repository reaches you only that way once *Email* is off. If you would rather keep that one by mail, leave *Email* on and filter your mail instead: keep the mails of Actions of `Dennis-Otto/dennis-otto-pager-control` and drop the others. A run of a pull request still shows on the pull request.
+- **The mails of GitHub Actions** can go off once the pager pages for every [workflow that fails on `main`](how-it-works.md#a-workflow-that-fails-on-main): in the settings of your account on GitHub, under *Notifications*, *System*, *Actions*, turn off *Email*, but keep *Web and Mobile* on and look at your notifications on github.com or in the GitHub app: the pager can't page a failure of itself, so the failed run of *Health* of the control repository reaches you only that way once *Email* is off. If you would rather keep that one by mail, leave *Email* on and filter your mail instead: keep the mails of Actions of your control repository and drop the others. A run of a pull request still shows on the pull request.
 - **The language** of the pager is `LANGUAGE` in `wrangler.jsonc`: `de` for German, `en` or empty for English. It names every text that the pager sends, and the Worker passes it with each job to the control repository, whose answers follow it. A message that the pager showed already takes the new words when its thing changes. After a change, deploy the Worker again, as [Releases and Cloudflare](releases.md) describes.

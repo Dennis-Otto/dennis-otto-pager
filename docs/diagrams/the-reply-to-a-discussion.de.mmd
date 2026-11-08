@@ -5,17 +5,17 @@ config:
 ---
 flowchart TB
     accTitle: Die Antwort auf eine Diskussion
-    accDescr: Jemand anderes als Dennis oder ein Bot eröffnet eine Diskussion oder kommentiert eine. Eine Diskussion von Dennis und eine mit gewählter Antwort enden hier. Sonst zeigt der Pager sie in ihrem Thema und bittet das Steuer-Repository sofort um einen Entwurf, den Claude in Dennis' Stimme schreibt. Der Entwurf kommt mit Senden, Bearbeiten und Ignorieren. Senden postet genau diesen Entwurf als App des Pagers, im Thread des Kommentars, auf den er antwortet, oder an der Diskussion selbst. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die geantwortet wird, mit einem neuen Entwurf im selben Thema, während ein Text, den Dennis selbst geschrieben hat, der Entwurf bleibt. Wenn Dennis auf GitHub selbst antwortet, jemand eine Antwort markiert oder die Diskussion geschlossen wird, ist die Sache erledigt: Ihre Knöpfe gehen, und ihr Thema bekommt einen Haken.
+    accDescr: Jemand anderes als der Maintainer oder ein Bot eröffnet eine Diskussion oder kommentiert eine. Eine Diskussion des Maintainers und eine mit gewählter Antwort enden hier. Sonst zeigt der Pager sie in ihrem Thema und bittet das Steuer-Repository sofort um einen Entwurf, den Claude in der Stimme des Maintainers schreibt. Der Entwurf kommt mit Senden, Bearbeiten und Ignorieren. Senden postet genau diesen Entwurf als App des Pagers, im Thread des Kommentars, auf den er antwortet, oder an der Diskussion selbst. Ein neuer Kommentar von jemand anderem wird zur Nachricht, auf die geantwortet wird, mit einem neuen Entwurf im selben Thema, während ein Text, den der Maintainer selbst geschrieben hat, der Entwurf bleibt. Wenn der Maintainer auf GitHub selbst antwortet, jemand eine Antwort markiert oder die Diskussion geschlossen wird, ist die Sache erledigt: Ihre Knöpfe gehen, und ihr Thema bekommt einen Haken.
 
     asked["`**💬** Jemand anderes eröffnet eine Diskussion oder kommentiert eine`"]
-    quiet["`Eine Diskussion von Dennis, oder eine mit gewählter Antwort: Nichts passiert`"]
+    quiet["`Eine Diskussion des Maintainers, oder eine mit gewählter Antwort: Nichts passiert`"]
     shown["Der Pager zeigt sie in ihrem Thema und bittet das Steuer-Repository um einen Entwurf"]
-    draft["`**✍️** Claude entwirft eine Antwort in Dennis' Stimme: ✅ Senden, ✏️ Bearbeiten, ✖ Ignorieren`"]
-    press["Dennis drückt ✅ Senden, oder bearbeitet den Entwurf vorher: Sein eigener Text bleibt der Entwurf"]
+    draft["`**✍️** Claude entwirft eine Antwort in der Stimme des Maintainers: ✅ Senden, ✏️ Bearbeiten, ✖ Ignorieren`"]
+    press["Der Maintainer drückt ✅ Senden, oder bearbeitet den Entwurf vorher: Sein eigener Text bleibt der Entwurf"]
     reply["`**✅** Die App postet genau diesen Entwurf, im Thread des Kommentars, auf den er antwortet`"]
-    ended["`**✅** Dennis antwortet auf GitHub, eine Antwort wird markiert, oder die Diskussion schließt: Die Sache ist erledigt, ohne Knöpfe`"]
+    ended["`**✅** Der Maintainer antwortet auf GitHub, eine Antwort wird markiert, oder die Diskussion schließt: Die Sache ist erledigt, ohne Knöpfe`"]
 
-    asked -- "von Dennis, oder beantwortet" --> quiet
+    asked -- "vom Maintainer, oder beantwortet" --> quiet
     asked -- "von jemand anderem" --> shown --> draft --> press --> reply
     reply -- "ein neuer Kommentar von jemand anderem: ein neuer Entwurf, im selben Thema" --> shown
     draft -- "auf GitHub erledigt" --> ended

@@ -1,21 +1,21 @@
-# Dennis Otto Pager
+# Repo Pager
 
-[![CI](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dennis-Otto/dennis-otto-pager/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Dennis-Otto/dennis-otto-pager/badge)](https://scorecard.dev/viewer/?uri=github.com/Dennis-Otto/dennis-otto-pager)
+[![CI](https://github.com/Dennis-Otto/repo-pager/actions/workflows/ci.yml/badge.svg)](https://github.com/Dennis-Otto/repo-pager/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Dennis-Otto/repo-pager/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dennis-Otto/repo-pager/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Dennis-Otto/repo-pager/badge)](https://scorecard.dev/viewer/?uri=github.com/Dennis-Otto/repo-pager)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16429/badge)](https://www.bestpractices.dev/projects/16429)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/16429/baseline)](https://www.bestpractices.dev/projects/16429)
-[![REUSE](https://api.reuse.software/badge/github.com/Dennis-Otto/dennis-otto-pager)](https://api.reuse.software/info/github.com/Dennis-Otto/dennis-otto-pager)
+[![REUSE](https://api.reuse.software/badge/github.com/Dennis-Otto/repo-pager)](https://api.reuse.software/info/github.com/Dennis-Otto/repo-pager)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-website-526cfe?logo=materialformkdocs&logoColor=white)](https://dennis-otto.github.io/dennis-otto-pager/)
+[![Documentation](https://img.shields.io/badge/docs-website-526cfe?logo=materialformkdocs&logoColor=white)](https://dennis-otto.github.io/repo-pager/)
 [![issues: triaged by issue assistant](https://img.shields.io/badge/issues-triaged%20by%20issue%20assistant-blue)](https://dennis-otto.github.io/issue-assistant/)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Dennis-Otto)
 
 A Telegram bot on a Cloudflare Worker that tells its maintainer only what needs them in their GitHub repositories, and acts on it with a button.
 
-The documentation is on the [website](https://dennis-otto.github.io/dennis-otto-pager/). Deutsch: [README.de.md](README.de.md).
+The documentation is on the [website](https://dennis-otto.github.io/repo-pager/). Deutsch: [README.de.md](README.de.md).
 
-<sub>💛 If Dennis Otto Pager is useful to you, you can [support its development](https://github.com/sponsors/Dennis-Otto).</sub>
+<sub>💛 If Repo Pager is useful to you, you can [support its development](https://github.com/sponsors/Dennis-Otto).</sub>
 
 ## What it does
 
@@ -49,11 +49,11 @@ Your own agents ask through the pager too, such as an orchestrator that works th
 
 With Telegram's threads turned on for the bot, **each thing gets a topic of its own**, such as *🚨 repo-blueprint needs you* or *📦 repo-blueprint 1.11.1*: its message with the buttons comes first, and its drafts, the answer of 🛠 **Start fix**, the prompt of ✏️ **Edit** and the answers to what you ask in it follow there. A question in the topic of a thing goes to the control repository with that thing, so *why?* is enough. A thing that is done gets ✅ in front of its topic, which stays as its history, and the list of topics is the overview. Delete a topic once you are done with it: the next message of its thing, such as new pictures of a release, opens a new topic, with the thing's own message first. A topic that you open yourself, and General, start a conversation of their own, and each answer stays in the thread of the text that it answers. Without topics, everything stays in the main view, as before.
 
-The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de` for this pager, and English when it is empty. Every text that it sends follows it, the buttons and `/help` included, and so do the answers of the control repository; a draft of a reply keeps the language of its issue or pull request, and what comes from GitHub, such as a title, stays as it is.
+The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de` for the maintainer's own pager, and English when it is empty. Every text that it sends follows it, the buttons and `/help` included, and so do the answers of the control repository; a draft of a reply keeps the language of its issue or pull request, and what comes from GitHub, such as a title, stays as it is.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/diagrams/how-the-pager-works.dark.svg">
-  <img src="docs/images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs Dennis; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with Dennis's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.">
+  <img src="docs/images/diagrams/how-the-pager-works.svg" alt="How the pager works: GitHub sends the events of the GitHub App to the Worker on Cloudflare, signed with the secret of its webhook. The rules decide what needs the maintainer; everything else ends there. What counts becomes one message in Telegram, edited in place as it changes, with buttons. A button runs an action of the allowlist on GitHub, such as merging a green release. Drafts, fixes and free text go to the workflow of the private control repository, which runs Claude Code with the maintainer's subscription and sends its answer back, signed, as a draft, a note or a proposal that a button has to approve.">
 </picture>
 
 [How it works](docs/how-it-works.md) lists the rules, the buttons and what the control repository sends back.
@@ -68,7 +68,9 @@ The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de`
 
 ## Set up
 
-The pager runs on the free plans of Cloudflare and Telegram. [Set up](docs/setup.md) walks through each step in its order: the bot at @BotFather, the Worker on Cloudflare, the GitHub App from its manifest, the secrets and the webhook of Telegram. To run it on your machine, at <http://localhost:8787>, with the secrets of `.dev.vars` (see `.dev.vars.example`):
+Repo Pager is self-hosted: everyone who uses it runs an instance of their own, with their own bot, Worker, GitHub App and private control repository. There is no shared app to install, so that your tokens and the events of your repositories stay yours, and each pager serves the one chat of its maintainer; `wrangler.jsonc` holds the values of an instance, which your copy sets for yours.
+
+The pager runs on the free plans of Cloudflare and Telegram. [Set up](docs/setup.md) walks through each step in its order: your copy of this repository, the bot at @BotFather, the Worker on Cloudflare, the GitHub App from its manifest, the secrets and the webhook of Telegram. To run it on your machine, at <http://localhost:8787>, with the secrets of `.dev.vars` (see `.dev.vars.example`):
 
 ```sh
 npm ci --ignore-scripts

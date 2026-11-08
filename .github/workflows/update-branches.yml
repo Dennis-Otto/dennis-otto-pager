@@ -53,7 +53,7 @@ on:
   # request whose fix passed its checks: every merge into main is a push of the
   # release app or of a person, and GitHub runs schedules as it can, often hours late.
   schedule:
-    - cron: "28 */6 * * *"
+    - cron: "7 */6 * * *"
   workflow_dispatch:
 
 permissions: {}

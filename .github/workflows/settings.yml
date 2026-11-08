@@ -36,7 +36,7 @@ on:
       - blueprint/github.py
       - blueprint/settings.py
   schedule:
-    - cron: "23 6 * * 0"
+    - cron: "2 6 * * 4"
   workflow_dispatch:
 
 permissions: {}

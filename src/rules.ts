@@ -150,6 +150,12 @@ export type Signal = Where &
         /** The id of the comment that the reply answers; none for the discussion itself. */
         comment?: string;
       }
+    | {
+        type: "discussion-done";
+        number: number;
+        /** Why it needs no reply of the pager any more, as GitHub saw it. */
+        reason: DiscussionEnd;
+      }
     | ({ type: "failing" | "still-failing" } & Failure)
     | { type: "recovered"; key: string }
     | {
@@ -179,6 +185,19 @@ export type Signal = Where &
   );
 
 export type Outcome = { signal: Signal } | { ignored: string };
+
+/**
+ * How a discussion was dealt with on GitHub itself: the maintainer replied there,
+ * someone chose an answer, or it was closed or deleted.
+ */
+export type DiscussionEnd = "replied" | "answered" | "closed" | "deleted";
+
+/** The actions of a discussion event that end the wait for a reply. */
+const DISCUSSION_ENDS: ReadonlySet<string> = new Set([
+  "answered",
+  "closed",
+  "deleted",
+]);
 
 /** Whether an account is a bot: GitHub's type, or the suffix of an app's login. */
 export function isBot(account: Account | undefined): boolean {
@@ -441,7 +460,9 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
  * A discussion, or a comment on one, that someone else wrote: a contribution whose
  * reply goes into its thread. A discussion of the maintainer stays theirs, comments
  * and all, since GitHub tells its author of each comment itself, and one of Q&A
- * whose answer was chosen needs no reply any more.
+ * whose answer was chosen needs no reply any more. A reply of the maintainer on
+ * GitHub itself, a chosen answer, and a discussion closed or deleted end the wait
+ * for a reply of the pager.
  */
 function discussion(
   payload: Payload,
@@ -451,12 +472,18 @@ function discussion(
 ): Outcome {
   const found = payload.discussion;
   const what = comment === null ? "a discussion" : "a discussion comment";
+  if (comment === null && DISCUSSION_ENDS.has(payload.action ?? "")) {
+    return ended(at, found, maintainer, payload.action as DiscussionEnd);
+  }
   if (payload.action !== "created") {
     return { ignored: `${what} ${payload.action}` };
   }
   const author = comment === null ? found?.user : comment?.user;
   if (isMaintainer(author, maintainer)) {
-    return { ignored: "written by the maintainer" };
+    // A discussion of the maintainer is theirs; their comment is a reply on GitHub.
+    return comment === null
+      ? { ignored: "written by the maintainer" }
+      : ended(at, found, maintainer, "replied");
   }
   if (isBot(author)) {
     return { ignored: "written by a bot" };
@@ -478,6 +505,26 @@ function discussion(
       author: author?.login ?? "",
       node: found?.node_id ?? "",
       ...(reply === undefined ? {} : { comment: reply }),
+    },
+  };
+}
+
+/** A discussion that GitHub dealt with: its thing needs no reply of the pager any more. */
+function ended(
+  at: Where,
+  found: Payload["discussion"],
+  maintainer: string,
+  reason: DiscussionEnd,
+): Outcome {
+  if (isMaintainer(found?.user, maintainer)) {
+    return { ignored: "a discussion of the maintainer" };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "discussion-done",
+      number: found?.number ?? 0,
+      reason,
     },
   };
 }

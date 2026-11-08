@@ -486,6 +486,25 @@ export async function handleControl(
     await show(context, item, ends);
     return new Response("noted");
   }
+  if (
+    item.kind === "contribution" &&
+    item.state === "draft" &&
+    item.ownDraft === true
+  ) {
+    // The maintainer wrote the draft himself while this job ran: his text stays
+    // the reply. The draft of the job only goes into the thing's topic, to read,
+    // and the failure of a job that he needs no more says nothing.
+    if (message.type === "draft") {
+      await context.telegram.say(
+        context.t("message.otherDraft", {
+          thing: html(`${item.repo}#${item.number}`),
+          draft: html(message.text, MAX_DRAFT),
+        }),
+        item.topic?.thread ?? null,
+      );
+    }
+    return new Response("kept");
+  }
   if (item.kind === "contribution" && item.discussion?.redraft === true) {
     // A newer comment came while this job ran: its draft, or its failure,
     // belongs to an older comment, so it is dropped, and the draft for the

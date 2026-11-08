@@ -102,6 +102,12 @@ async function edited(
   item.draftVersion += 1;
   item.state = "draft";
   item.note = null;
+  // The draft is the maintainer's own now: no draft of the control repository
+  // replaces it, not even that of a job which still runs, such as one for a newer
+  // comment of a discussion, so the pager waits for none.
+  item.ownDraft = true;
+  delete item.jobStarted;
+  delete item.discussion?.redraft;
   await show(context, item, true);
   await context.telegram.remove(message.message_id);
   return "draft edited";

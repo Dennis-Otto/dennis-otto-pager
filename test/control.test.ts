@@ -229,6 +229,64 @@ describe("the draft of an older comment of a discussion", () => {
   });
 });
 
+describe("a draft that the maintainer wrote himself", () => {
+  const own: Contribution = {
+    ...contribution,
+    url: "https://github.com/Dennis-Otto/demo/discussions/12#discussioncomment-8",
+    state: "draft",
+    draft: "My own words.",
+    draftVersion: 3,
+    ownDraft: true,
+    discussion: { node: "D_1", comment: "DC_8" },
+    topic: { thread: 900, name: "💬 demo#12 It breaks" },
+  };
+
+  it("stays the reply: a draft of a job that still ran only goes into its topic, to read", async () => {
+    const w = await world();
+    await w.context.store.put(own);
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers <b>DC_8</b>" }),
+    ).toEqual({ status: 200, text: "kept" });
+    expect(await w.context.store.get(ID)).toEqual(own);
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(w.net.telegram("sendMessage")[0]?.body).toMatchObject({
+      text: "🤖 <b>Another draft came</b> for Dennis-Otto/demo#12, but your own text stays the reply. Only for you to read:\n<blockquote>Answers &lt;b&gt;DC_8&lt;/b&gt;</blockquote>",
+      message_thread_id: 900,
+      reply_markup: { inline_keyboard: [] },
+    });
+    // Its message, with ✅ Send of the maintainer's text, stays as it is.
+    expect(w.net.telegram("editMessageText")).toHaveLength(0);
+    expect(w.net.telegram("deleteMessage")).toHaveLength(0);
+    // A failure of the job, also of one for an older comment, says nothing.
+    await w.context.store.put({
+      ...own,
+      topic: null,
+      discussion: { node: "D_1", comment: "DC_8", redraft: true },
+    });
+    expect(
+      await send(w, { type: "failed", item: ID, text: "The job failed" }),
+    ).toEqual({ status: 200, text: "kept" });
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    // Without a topic, the draft goes into the main view.
+    expect(
+      await send(w, { type: "draft", item: ID, text: "Answers DC_8" }),
+    ).toEqual({ status: 200, text: "kept" });
+    expect(w.net.telegram("sendMessage")[1]?.body).not.toHaveProperty(
+      "message_thread_id",
+    );
+  });
+
+  it("is no reason to show a draft once the reply went", async () => {
+    const w = await world();
+    await w.context.store.put({ ...own, state: "sent" });
+    expect(
+      (await send(w, { type: "draft", item: ID, text: "Again" })).status,
+    ).toBe(409);
+    expect(w.net.telegram("sendMessage")).toHaveLength(0);
+  });
+});
+
 describe("the answers of Claude", () => {
   const usage = { turns: 3, seconds: 41 };
   const opus = { model: "claude-opus-5-5", tokens: 48213 };

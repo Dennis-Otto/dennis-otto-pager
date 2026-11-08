@@ -1,6 +1,6 @@
 # A discussion gets its draft at once, and its reply comes from the app
 
-- Status: accepted
+- Status: accepted, amended by [0009](0009-a-discussion-that-github-dealt-with-is-done-and-an-own-draft-stays.md): a discussion that GitHub dealt with is done, and a draft of the maintainer's own stays
 - Date: 2026-11-07
 
 ## Context

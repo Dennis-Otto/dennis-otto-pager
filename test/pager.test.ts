@@ -207,6 +207,117 @@ describe("discussions", () => {
     ).toEqual([100]);
   });
 
+  it("keep the maintainer's own draft for a new comment, and ask for none", async () => {
+    const w = await chat();
+    await apply(w.context, opened);
+    const id = await itemId(keys.contribution(REPO, 31));
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "draft",
+      draft: "My own words.",
+      draftVersion: 3,
+      ownDraft: true,
+    });
+    expect(await apply(w.context, commented)).toBe(
+      "discussion shown anew, with the maintainer's own draft",
+    );
+    expect(w.net.github("/dispatches")).toHaveLength(1);
+    expect(await thing(w)).toMatchObject({
+      state: "draft",
+      draft: "My own words.",
+      // It answers the new comment now: no button of the old message sends it.
+      draftVersion: 4,
+      ownDraft: true,
+      url: commented.url,
+      author: "hubot",
+      discussion: { node: "D_1", comment: "DC_7" },
+      note: "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
+      messageId: 101,
+    });
+    expect(
+      w.net.telegram("deleteMessage").map((c) => c.body.message_id),
+    ).toEqual([100]);
+    const message = w.net.telegram("sendMessage")[1]?.body;
+    expect(message.message_thread_id).toBe(900);
+    expect(message.text).toContain("<blockquote>My own words.</blockquote>");
+    expect(message.reply_markup.inline_keyboard).toEqual([
+      [
+        { text: "✅ Send", callback_data: `send:${id}:4` },
+        { text: "✏️ Edit", callback_data: `edit:${id}` },
+      ],
+      [{ text: "✖ Ignore", callback_data: `ignore:${id}` }],
+    ]);
+  });
+
+  it("close once GitHub dealt with them, and say why, in place", async () => {
+    const notes = {
+      replied: "💬 You replied on GitHub, so the pager sends nothing.",
+      answered: "✅ An answer was marked on GitHub.",
+      closed: "Closed on GitHub.",
+      deleted: "Deleted on GitHub.",
+    } as const;
+    for (const [reason, note] of Object.entries(notes)) {
+      const w = await chat();
+      await apply(w.context, opened);
+      await apply(w.context, commented);
+      await w.context.store.put({
+        ...(await thing(w)),
+        draft: "Read the README.",
+      });
+      const done: Signal = {
+        ...at,
+        type: "discussion-done",
+        number: 31,
+        reason: reason as keyof typeof notes,
+      };
+      expect(await apply(w.context, done)).toBe(`discussion done: ${reason}`);
+      const closed = await thing(w);
+      expect(closed).toMatchObject({ state: "done", note, messageId: 101 });
+      // Nothing waits for its job any more, nor for the draft of the newest comment.
+      expect(closed).not.toHaveProperty("jobStarted");
+      expect(closed.discussion).toEqual({ node: "D_1", comment: "DC_7" });
+      // Its buttons go and its draft with them, in place, which notifies nobody.
+      const edited = w.net.telegram("editMessageText").at(-1)?.body;
+      expect(edited).toMatchObject({
+        message_id: 101,
+        reply_markup: { inline_keyboard: [] },
+      });
+      expect(edited.text).toContain("✅ Done.");
+      expect(edited.text).toContain(`<i>${note}</i>`);
+      expect(edited.text).not.toContain("Read the README.");
+      expect(w.net.telegram("sendMessage")).toHaveLength(2);
+      expect(w.net.telegram("editForumTopic").at(-1)?.body.name).toBe(
+        "✅ 💬 demo#31 How do I start?",
+      );
+      // A thing that is closed already stays as it is.
+      const calls = w.net.calls.length;
+      expect(await apply(w.context, done)).toBe("no open discussion shown");
+      expect(w.net.calls).toHaveLength(calls);
+    }
+  });
+
+  it("know no end of a discussion that they never showed, nor of an issue", async () => {
+    const w = await chat();
+    const done: Signal = {
+      ...at,
+      type: "discussion-done",
+      number: 31,
+      reason: "replied",
+    };
+    expect(await apply(w.context, done)).toBe("no open discussion shown");
+    await apply(w.context, {
+      ...at,
+      type: "contribution",
+      number: 31,
+      pull: false,
+      title: "It breaks",
+      url: "https://github.com/Dennis-Otto/demo/issues/31",
+      author: "octocat",
+    });
+    expect(await apply(w.context, done)).toBe("no open discussion shown");
+    expect(await thing(w)).toMatchObject({ state: "new" });
+  });
+
   it("stay ignored once they were ignored", async () => {
     const w = await chat();
     await apply(w.context, opened);

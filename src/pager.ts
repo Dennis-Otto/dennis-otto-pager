@@ -18,6 +18,7 @@ import {
 } from "./pictures.ts";
 import { html, type PicturesView, picturesText, render } from "./render.ts";
 import {
+  type DiscussionEnd,
   picturesBlocker,
   releaseBlocker,
   releaseVersion,
@@ -270,7 +271,8 @@ async function removeEntry(
  * new comment becomes the message that the reply answers: a thing that is still
  * open gets a new message for it, which replaces the old one, and one whose reply
  * went opens again in its topic, where the old message stays as its history. An
- * ignored discussion stays ignored.
+ * ignored discussion stays ignored, and a draft that the maintainer wrote himself
+ * stays the reply.
  */
 async function discussion(
   context: Context,
@@ -302,6 +304,18 @@ async function discussion(
     messageId: open ? known.messageId : null,
     topic: known?.topic ?? null,
   };
+  if (open && known.ownDraft === true) {
+    // The maintainer wrote the draft himself: it stays the reply, now to this
+    // comment, and no job drafts another one. The version counts on all the same,
+    // since the draft answers another comment now.
+    item.state = "draft";
+    item.draft = known.draft;
+    item.draftVersion += 1;
+    item.ownDraft = true;
+    item.note = context.t("note.ownDraft");
+    await show(context, item, true);
+    return "discussion shown anew, with the maintainer's own draft";
+  }
   if (open && known.state === "drafting" && known.discussion !== undefined) {
     // The job for the draft of an older comment is still running, and the
     // control repository runs one job per thing at a time: its draft is dropped
@@ -319,6 +333,42 @@ async function discussion(
   await show(context, item, open);
   const outcome = known === null ? "discussion shown" : "discussion shown anew";
   return failed === null ? outcome : `${outcome}, without a draft`;
+}
+
+/** The note of each end of a discussion on GitHub, which says why its thing is done. */
+const ENDS = {
+  replied: "note.repliedOnGitHub",
+  answered: "note.answerChosen",
+  closed: "note.discussionClosed",
+  deleted: "note.discussionDeleted",
+} as const satisfies Record<DiscussionEnd, string>;
+
+/**
+ * A discussion that GitHub dealt with, such as with a reply of the maintainer
+ * there: its open thing is done, as pictures are once their pull request closed.
+ * Its buttons go, its topic gets ✅, and its message says why, in place. A job
+ * that still drafts for it finds it done, and its draft isn't shown.
+ */
+async function discussionDone(
+  context: Context,
+  signal: Extract<Signal, { type: "discussion-done" }>,
+): Promise<string> {
+  const known = await context.store.get(
+    await itemId(keys.contribution(signal.repo, signal.number)),
+  );
+  if (
+    known?.kind !== "contribution" ||
+    known.discussion === undefined ||
+    isClosed(known)
+  ) {
+    return "no open discussion shown";
+  }
+  known.state = "done";
+  known.note = context.t(ENDS[signal.reason]);
+  delete known.jobStarted;
+  delete known.discussion.redraft;
+  await show(context, known);
+  return `discussion done: ${signal.reason}`;
 }
 
 async function releaseItem(
@@ -663,6 +713,8 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
     }
     case "discussion":
       return discussion(context, signal);
+    case "discussion-done":
+      return discussionDone(context, signal);
     case "failing":
     case "still-failing":
       return addEntry(

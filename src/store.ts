@@ -63,11 +63,12 @@ export interface Discussion {
 
 /**
  * An issue, a pull request or a discussion that someone other than the maintainer
- * opened, or the newest comment of someone else on a discussion.
+ * opened, or the newest comment of someone else on a discussion. A discussion that
+ * GitHub dealt with itself, such as with a reply of the maintainer there, is done.
  */
 export interface Contribution extends Base {
   kind: "contribution";
-  state: "new" | "drafting" | "draft" | "sent" | "ignored";
+  state: "new" | "drafting" | "draft" | "sent" | "done" | "ignored";
   number: number;
   pull: boolean;
   title: string;
@@ -77,6 +78,11 @@ export interface Contribution extends Base {
   draft: string | null;
   /** Counts the drafts, so that "Send" posts the one that its message showed. */
   draftVersion: number;
+  /**
+   * Set once the draft is the maintainer's own, written with ✏️ Edit: no draft of
+   * the control repository replaces it, and a new comment on a discussion keeps it.
+   */
+  ownDraft?: true;
   /** The discussion of a contribution that is one; none for an issue or a pull request. */
   discussion?: Discussion;
 }

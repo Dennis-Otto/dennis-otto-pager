@@ -1,3 +1,0 @@
-### Features
-
-- The pager follows the comments of an issue or a pull request of someone else. A new comment of someone else edits the message of its thing to name the comment, and one notice in its topic tells you, once for a few quick comments; a draft that you asked for is written again for the comment, and your own text with ✏️ Edit stays your draft. Once its reply went, the thing opens again with ✍️ Draft a reply, and an issue from before the pager comes as a new thing. Your own comment on GitHub, and the issue or the pull request closed or merged, make the thing done, without buttons, so ✅ Send can't post a second answer. The comments need the event *Issue comment*, which you tick in the settings of the app.

@@ -7,6 +7,7 @@
  * visual change.
  */
 import { keyboard } from "./buttons.ts";
+import { type ReleaseNotes, releaseNotes } from "./content.ts";
 import { type GitHub, GitHubError } from "./github.ts";
 import {
   ARTIFACT,
@@ -199,6 +200,19 @@ function base(id: string, repo: string, installation: number) {
   };
 }
 
+/** The start of what a signal's issue, pull request, discussion or comment says, as a field of its thing. */
+function excerptOf(signal: { excerpt?: string }): { excerpt?: string } {
+  return signal.excerpt === undefined ? {} : { excerpt: signal.excerpt };
+}
+
+/** Whether two notes of a release are the same, such as before and after an edit of its title alone. */
+function sameNotes(
+  one: ReleaseNotes | undefined,
+  other: ReleaseNotes | undefined,
+): boolean {
+  return JSON.stringify(one) === JSON.stringify(other);
+}
+
 /** Whether two entries of a bundle show the same. */
 function sameEntry(one: Entry, other: Entry): boolean {
   return (
@@ -317,6 +331,7 @@ async function discussion(
     title: signal.title,
     url: signal.url,
     author: signal.author,
+    ...excerptOf(signal),
     draft: null,
     // Counts on, so that no button of an older draft sends the next one.
     draftVersion: known?.draftVersion ?? 0,
@@ -497,6 +512,7 @@ async function comment(
       title: signal.title,
       url: signal.url,
       author: signal.author,
+      ...excerptOf(signal),
       draft: null,
       // Counts on, so that no button of an older draft sends the next one.
       draftVersion: known?.draftVersion ?? 0,
@@ -510,6 +526,9 @@ async function comment(
   known.title = signal.title;
   known.url = signal.url;
   known.author = signal.author;
+  // The message quotes the comment now, which its reply answers.
+  delete known.excerpt;
+  Object.assign(known, excerptOf(signal));
   known.comment = { id: signal.comment, noticed: quiet ? last : now };
   known.note = null;
   // The comment needs the maintainer now, not once "Later" brings it back.
@@ -791,6 +810,7 @@ async function releaseCheck(
     }
     const version = releaseVersion(String(pull.title)) as string;
     const sha = pull.head?.sha ?? "";
+    const notes = releaseNotes(pull.body, version);
     const known = await releaseItem(context, signal.repo);
     const same = known !== null && known.version === version ? known : null;
     // A new version of a release that is still shown, such as 0.10.0 after a feat
@@ -803,7 +823,10 @@ async function releaseCheck(
     }
     if (
       same !== null &&
-      (isClosed(same) || (same.state === "ready" && same.sha === sha))
+      (isClosed(same) ||
+        (same.state === "ready" &&
+          same.sha === sha &&
+          sameNotes(same.notes, notes)))
     ) {
       outcomes.push(`#${number} shown already`);
       continue;
@@ -820,6 +843,7 @@ async function releaseCheck(
       version,
       sha,
       url: pull.html_url ?? "",
+      ...(notes === undefined ? {} : { notes }),
       // The same release, ready again after an update, keeps its message; a new
       // version keeps the topic of the one that it replaces, renamed.
       messageId: same?.messageId ?? replaced?.messageId ?? null,
@@ -866,6 +890,7 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
         title: signal.title,
         url: signal.url,
         author: signal.author,
+        ...excerptOf(signal),
         draft: null,
         draftVersion: 0,
       });

@@ -5,10 +5,11 @@
  *
  * Everything that an issue, a pull request or a discussion says is data: these
  * rules read the kind of an event, its author, its branch and its state, and pass
- * titles on only to be shown, escaped. What they hand on to be read, such as the label of an entry
+ * titles and the start of a text on only to be shown, escaped. What they hand on to be read, such as the label of an entry
  * or why a release may not merge, is a phrase of src/texts.ts without a language:
  * the pager words it in the language of its settings.
  */
+import { excerpt } from "./content.ts";
 import type { Phrase } from "./texts.ts";
 
 /** The conclusions of a check or a workflow that count as a failure. */
@@ -61,10 +62,11 @@ export interface Payload {
   pull_request?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     user?: Account;
     merged?: boolean;
-    head?: { ref?: string; sha?: string };
+    head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   };
   check_run?: {
     name?: string;
@@ -104,6 +106,7 @@ export interface Payload {
   discussion?: {
     number?: number;
     title?: string;
+    body?: string | null;
     html_url?: string;
     /** The id of the discussion in the GraphQL API of GitHub, which a reply names. */
     node_id?: string;
@@ -117,6 +120,7 @@ export interface Payload {
     id?: number;
     node_id?: string;
     html_url?: string;
+    body?: string | null;
     user?: Account;
   };
 }
@@ -134,17 +138,28 @@ interface Failure {
   run?: number;
 }
 
+/** The start of what an issue, a pull request, a discussion or a comment says, if anything. */
+interface Said {
+  excerpt?: string;
+}
+
+/** The start of the text of a body, as a field of a signal: none when the body says nothing. */
+function said(body: string | null | undefined): Said {
+  const start = excerpt(body);
+  return start === undefined ? {} : { excerpt: start };
+}
+
 export type Signal = Where &
   (
-    | {
+    | ({
         type: "contribution";
         number: number;
         pull: boolean;
         title: string;
         url: string;
         author: string;
-      }
-    | {
+      } & Said)
+    | ({
         type: "discussion";
         number: number;
         title: string;
@@ -155,14 +170,14 @@ export type Signal = Where &
         node: string;
         /** The id of the comment that the reply answers; none for the discussion itself. */
         comment?: string;
-      }
+      } & Said)
     | {
         type: "discussion-done";
         number: number;
         /** Why it needs no reply of the pager any more, as GitHub saw it. */
         reason: DiscussionEnd;
       }
-    | {
+    | ({
         type: "comment";
         number: number;
         pull: boolean;
@@ -172,7 +187,7 @@ export type Signal = Where &
         author: string;
         /** The id of the comment in the REST API of GitHub. */
         comment: number;
-      }
+      } & Said)
     | {
         type: "contribution-done";
         number: number;
@@ -259,7 +274,7 @@ export interface PullRequestState {
   draft?: boolean;
   user?: Account;
   head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
-  base?: { ref?: string };
+  base?: { ref?: string; repo?: { full_name?: string } };
 }
 
 /**
@@ -291,8 +306,10 @@ export function picturesBlocker(
 
 /**
  * Why a release pull request may not merge yet, or null when it may: it is open,
- * from a branch of release-please into the default branch, not a draft, and GitHub
- * calls it clean, so every required check passed and the branch is up to date.
+ * from a branch of release-please of the repository itself into the default branch,
+ * not a draft, and GitHub calls it clean, so every required check passed and the
+ * branch is up to date. A fork may name its branch like release-please, but what it
+ * holds is someone else's code, never a release.
  */
 export function releaseBlocker(
   pull: PullRequestState,
@@ -303,6 +320,9 @@ export function releaseBlocker(
   }
   if (!(pull.head?.ref ?? "").startsWith(RELEASE_BRANCH)) {
     return { key: "blocker.branch" };
+  }
+  if (pull.head?.repo?.full_name !== pull.base?.repo?.full_name) {
+    return { key: "blocker.fork" };
   }
   if (pull.base?.ref !== defaultBranch) {
     return { key: "blocker.base", values: { branch: defaultBranch } };
@@ -469,6 +489,7 @@ function contribution(
       title: thing?.title ?? "",
       url: thing?.html_url ?? "",
       author: author?.login ?? "",
+      ...said(thing?.body),
     },
   };
 }
@@ -489,6 +510,15 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
     }
     if (payload.action === "closed" && pull?.merged === true) {
       return { signal: { ...at, type: "release-merged", number } };
+    }
+    // A new title or new notes, such as notes changed by hand before the merge:
+    // the pager reads the pull request again, as when its checks finish. Only for
+    // a branch of the repository itself: a fork may name its branch like that.
+    if (payload.action === "edited") {
+      if (pull?.head?.repo?.full_name !== at.repo) {
+        return { ignored: "a release pull request of a fork" };
+      }
+      return { signal: { ...at, type: "release-check", numbers: [number] } };
     }
     return { ignored: `a release pull request ${payload.action}` };
   }
@@ -565,6 +595,7 @@ function discussion(
       author: author?.login ?? "",
       node: found?.node_id ?? "",
       ...(reply === undefined ? {} : { comment: reply }),
+      ...said(comment === null ? found?.body : comment?.body),
     },
   };
 }
@@ -611,6 +642,7 @@ function issueComment(
       url: comment?.html_url ?? "",
       author: comment?.user?.login ?? "",
       comment: id,
+      ...said(comment?.body),
     },
   };
 }

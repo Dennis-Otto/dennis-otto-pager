@@ -3,6 +3,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+import { MAX_EXCERPT } from "../src/content.ts";
 import {
   checkRunOf,
   classify,
@@ -148,6 +149,48 @@ describe("contributions from outside", () => {
     ).toEqual({ ignored: "a pull request edited" });
   });
 
+  it("passes on the start of what an issue or a pull request says, without the hints of its form", () => {
+    const body =
+      "<!-- Describe the bug. -->\r\nIt breaks <b>here</b>.\r\n\r\n\r\n\r\nSee the log.";
+    expect(
+      classify(
+        "issues",
+        event({ action: "opened", issue: { ...issue, body } }),
+        ME,
+      ),
+    ).toMatchObject({
+      signal: {
+        type: "contribution",
+        excerpt: "It breaks <b>here</b>.\n\nSee the log.",
+      },
+    });
+    expect(
+      classify(
+        "pull_request",
+        event({
+          action: "opened",
+          pull_request: { ...issue, body: "x".repeat(MAX_EXCERPT + 1) },
+        }),
+        ME,
+      ),
+    ).toMatchObject({
+      signal: {
+        type: "contribution",
+        excerpt: `${"x".repeat(MAX_EXCERPT - 1)}…`,
+      },
+    });
+    // A body that says nothing, or none, passes nothing on.
+    for (const empty of [null, "", "<!-- only hints -->"]) {
+      const outcome = classify(
+        "issues",
+        event({ action: "opened", issue: { ...issue, body: empty } }),
+        ME,
+      );
+      expect(outcome).toMatchObject({ signal: { type: "contribution" } });
+      expect(outcome).not.toHaveProperty("signal.excerpt");
+    }
+  });
+
   it("takes an issue without its fields as empty", () => {
     expect(
       classify("issues", event({ action: "opened", issue: {} }), ME),
@@ -202,6 +245,18 @@ describe("comments on issues and pull requests from outside", () => {
         comment: 99,
       },
     });
+  });
+
+  it("passes on the start of the comment, not of its issue", () => {
+    expect(
+      commented({
+        issue: { ...issue, body: "The issue" },
+        comment: { ...comment, body: "The comment" },
+      }),
+    ).toMatchObject({ signal: { type: "comment", excerpt: "The comment" } });
+    expect(
+      commented({ issue: { ...issue, body: "The issue" } }),
+    ).not.toHaveProperty("signal.excerpt");
   });
 
   it("knows a comment on a pull request by the pull request of its issue", () => {
@@ -372,6 +427,30 @@ describe("discussions from outside", () => {
         node: "D_kwDOA",
         comment: "DC_kwDOB",
       },
+    });
+  });
+
+  it("passes on the start of the discussion, or of the comment that the reply answers", () => {
+    const said = { ...discussion, body: "How do I start?" };
+    expect(
+      classify(
+        "discussion",
+        event({ action: "created", discussion: said }),
+        ME,
+      ),
+    ).toMatchObject({ signal: { excerpt: "How do I start?" } });
+    expect(
+      classify(
+        "discussion_comment",
+        event({
+          action: "created",
+          discussion: said,
+          comment: { ...comment, body: "Read the README" },
+        }),
+        ME,
+      ),
+    ).toMatchObject({
+      signal: { comment: "DC_kwDOB", excerpt: "Read the README" },
     });
   });
 
@@ -926,7 +1005,11 @@ describe("releases", () => {
     const pull = {
       number: 30,
       merged: true,
-      head: { ref: "release-please--branches--main", sha: "abc" },
+      head: {
+        ref: "release-please--branches--main",
+        sha: "abc",
+        repo: { full_name: "Dennis-Otto/demo" },
+      },
     };
     expect(
       classify(
@@ -951,6 +1034,29 @@ describe("releases", () => {
         ME,
       ),
     ).toEqual({ ignored: "a release pull request closed" });
+    // New notes or a new title: the pager reads the pull request again.
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "edited", pull_request: pull }),
+        ME,
+      ),
+    ).toEqual({ signal: { ...at, type: "release-check", numbers: [30] } });
+    // A fork may name its branch like release-please: its edit is no release.
+    const { repo: _repo, ...nowhere } = pull.head;
+    for (const head of [
+      { ...pull.head, repo: { full_name: "mallory/demo" } },
+      { ...pull.head, repo: null },
+      nowhere,
+    ]) {
+      expect(
+        classify(
+          "pull_request",
+          event({ action: "edited", pull_request: { ...pull, head } }),
+          ME,
+        ),
+      ).toEqual({ ignored: "a release pull request of a fork" });
+    }
     expect(
       classify(
         "pull_request",
@@ -1002,10 +1108,18 @@ describe("releases", () => {
       title: "chore: release 1.2.3",
       mergeable_state: "clean",
       draft: false,
-      head: { ref: "release-please--branches--main" },
-      base: { ref: "main" },
+      head: {
+        ref: "release-please--branches--main",
+        repo: { full_name: "Dennis-Otto/demo" },
+      },
+      base: { ref: "main", repo: { full_name: "Dennis-Otto/demo" } },
     };
     expect(why(ready, "main")).toBeNull();
+    for (const repo of [{ full_name: "mallory/demo" }, null]) {
+      expect(why({ ...ready, head: { ...ready.head, repo } }, "main")).toBe(
+        "it comes from a fork",
+      );
+    }
     expect(why({ ...ready, state: "closed" }, "main")).toBe("it isn't open");
     expect(why({ ...ready, head: { ref: "feat/x" } }, "main")).toBe(
       "it isn't a release pull request",
@@ -1013,9 +1127,9 @@ describe("releases", () => {
     expect(why({ ...ready, head: {} }, "main")).toBe(
       "it isn't a release pull request",
     );
-    expect(why({ ...ready, base: { ref: "next" } }, "main")).toBe(
-      "it doesn't go into main",
-    );
+    expect(
+      why({ ...ready, base: { ...ready.base, ref: "next" } }, "main"),
+    ).toBe("it doesn't go into main");
     expect(why({ ...ready, title: "chore: tidy" }, "main")).toBe(
       "its title names no release",
     );

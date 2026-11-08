@@ -7,6 +7,7 @@
  * without topics, or a topic that Telegram refuses, keeps the thing in the main view,
  * as before topics.
  */
+import { cut } from "./content.ts";
 import type { Context } from "./pager.ts";
 import { render } from "./render.ts";
 import { type Item, isClosed, type Kind, type Topic } from "./store.ts";
@@ -41,21 +42,6 @@ export const REPORT_COLOR = TOPIC_COLORS.green;
  */
 export function isDone(item: Item): boolean {
   return isClosed(item) || (item.kind === "release" && item.state === "merged");
-}
-
-/** A text of at most max characters of UTF-16, cut between two characters, with … at the end. */
-export function cut(text: string, max: number): string {
-  if (text.length <= max) {
-    return text;
-  }
-  let kept = "";
-  for (const character of text) {
-    if (kept.length + character.length > max - 1) {
-      break;
-    }
-    kept += character;
-  }
-  return `${kept}…`;
 }
 
 /** What a thing is, as the name of its topic says it, with its repository without the owner. */
@@ -273,6 +259,19 @@ export function about(item: Item, now: number, t: Texts): About {
     links: links
       .filter((url) => url.startsWith("https://github.com/"))
       .slice(0, MAX_LINKS),
-    text: cut(render(item, now, t), MAX_ABOUT),
+    text: cut(render(unquoted(item), now, t), MAX_ABOUT),
   };
+}
+
+/**
+ * A thing without the start of what its issue, pull request, discussion or comment
+ * says: the pager sends no text of GitHub to the control repository, which reads
+ * it from GitHub itself, as data, when a job needs it.
+ */
+function unquoted(item: Item): Item {
+  if (item.kind !== "contribution") {
+    return item;
+  }
+  const { excerpt: _excerpt, ...rest } = item;
+  return rest;
 }

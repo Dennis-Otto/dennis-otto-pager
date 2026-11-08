@@ -3,6 +3,7 @@
  * their own where the chat has topics, and their state in Workers KV: as little as
  * possible, nothing secret, and a closed thing expires after 30 days.
  */
+import type { ReleaseNotes } from "./content.ts";
 import { sha256Hex } from "./crypto.ts";
 import type { Thread } from "./telegram.ts";
 
@@ -95,6 +96,12 @@ export interface Contribution extends Base {
   /** The issue, the pull request, the discussion or the comment that the reply answers. */
   url: string;
   author: string;
+  /**
+   * The start of what the issue, the pull request, the discussion or the comment
+   * that the reply answers says, as excerpt() of src/content.ts keeps it; none
+   * when its text is empty.
+   */
+  excerpt?: string;
   draft: string | null;
   /** Counts the drafts, so that "Send" posts the one that its message showed. */
   draftVersion: number;
@@ -141,6 +148,8 @@ export interface Release extends Base {
   version: string;
   sha: string;
   url: string;
+  /** What the release brings, from the body of its pull request; none when the body has no notes. */
+  notes?: ReleaseNotes;
   /** The head of the pull request whose pictures of the visual check went into its topic. */
   album?: string;
 }

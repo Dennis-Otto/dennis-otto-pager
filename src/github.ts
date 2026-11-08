@@ -114,12 +114,17 @@ export interface PullRequest {
   number: number;
   state?: string;
   title?: string;
+  /** The description, which holds the notes of a release pull request. */
+  body?: string | null;
   draft?: boolean;
   mergeable_state?: string;
   html_url?: string;
   user?: { login?: string; type?: string };
   head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
-  base?: { ref?: string; repo?: { default_branch?: string } };
+  base?: {
+    ref?: string;
+    repo?: { full_name?: string; default_branch?: string };
+  };
 }
 
 /** An artifact of a run of GitHub Actions: its id, its name and its size in bytes. */

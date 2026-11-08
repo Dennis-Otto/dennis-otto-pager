@@ -64,6 +64,8 @@ const en = {
   "message.more": "… and {count} more",
   "message.rerunning": "🔁 running again…",
   "message.release": "📦 <b>Release {version}</b> of {repo}: {link}",
+  "message.breaking":
+    "⚠️ <b>Breaking changes</b>: read the notes before you merge.",
   "message.ready": 'Every check is green, and "Merge" publishes it.',
   "message.published": "✅ Published.",
   "message.back": "⏰ Back in {hours} h.",
@@ -101,6 +103,7 @@ const en = {
 
   "blocker.closed": "it isn't open",
   "blocker.branch": "it isn't a release pull request",
+  "blocker.fork": "it comes from a fork",
   "blocker.base": "it doesn't go into {branch}",
   "blocker.title": "its title names no release",
   "blocker.draft": "it is a draft",
@@ -301,6 +304,8 @@ const de: Catalog = {
   "message.more": "… und {count} weitere",
   "message.rerunning": "🔁 läuft erneut …",
   "message.release": "📦 <b>Release {version}</b> von {repo}: {link}",
+  "message.breaking":
+    "⚠️ <b>Inkompatible Änderungen</b>: lies die Versionshinweise, bevor du mergst.",
   "message.ready": "Alle Checks sind grün, und „Mergen“ veröffentlicht es.",
   "message.published": "✅ Veröffentlicht.",
   "message.back": "⏰ Zurück in {hours} Std.",
@@ -338,6 +343,7 @@ const de: Catalog = {
 
   "blocker.closed": "er ist nicht offen",
   "blocker.branch": "er ist kein Release-Pull-Request",
+  "blocker.fork": "er kommt aus einem Fork",
   "blocker.base": "er geht nicht in {branch}",
   "blocker.title": "sein Titel nennt kein Release",
   "blocker.draft": "er ist ein Entwurf",

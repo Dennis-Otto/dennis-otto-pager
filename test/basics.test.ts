@@ -393,6 +393,12 @@ describe("the text of a message", () => {
     expect(
       visible('<a href="https://github.com/">a &amp; b</a> &lt;&gt;&quot;'),
     ).toBe(9);
+    // A sign of & alone counts as itself, and a text of many < at once.
+    expect(visible("a & b &amp")).toBe(10);
+    const begin = Date.now();
+    expect(visible("<".repeat(200_000))).toBe(0);
+    expect(visible("&".repeat(200_000))).toBe(200_000);
+    expect(Date.now() - begin).toBeLessThan(1000);
     fc.assert(
       fc.property(
         fc.string(),

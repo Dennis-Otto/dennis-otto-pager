@@ -50,13 +50,30 @@ const MAX_NOTE = 500;
 /** The fewest characters of the start of a text that are worth a quote; with less room, the message shows none. */
 const MIN_EXCERPT = 100;
 
+/** The entities that html() writes, each of which Telegram counts as one character. */
+const ENTITIES = ["&amp;", "&lt;", "&gt;", "&quot;"];
+
 /**
  * How many characters Telegram counts in a text of its HTML: a tag counts none, and
- * an entity one, since html() leaves no other < or & in a text.
+ * an entity one, since html() leaves no other < or & in a text. It only counts, in
+ * one pass, so that no text can make it slow.
  */
 export function visible(text: string): number {
-  return text.replace(/<[^>]*>/g, "").replace(/&(?:amp|lt|gt|quot);/g, "&")
-    .length;
+  let count = 0;
+  let tag = false;
+  for (let at = 0; at < text.length; at += 1) {
+    const character = text[at];
+    if (tag || character === "<") {
+      tag = character !== ">";
+      continue;
+    }
+    if (character === "&") {
+      const entity = ENTITIES.find((each) => text.startsWith(each, at));
+      at += (entity?.length ?? 1) - 1;
+    }
+    count += 1;
+  }
+  return count;
 }
 
 /** The most entries that a bundle lists, and the most characters they take. */

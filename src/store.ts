@@ -133,6 +133,45 @@ export interface Alarm extends Base {
   entries: Entry[];
 }
 
+/** A job of a run that failed, by its name and the address of its log. */
+export interface Job {
+  name: string;
+  url: string;
+}
+
+/**
+ * A workflow that fails on the default branch of a repository, any workflow but
+ * those of a release, which the alarm has: one thing per workflow, which counts
+ * the runs that failed since it last passed. The failure of a first attempt waits
+ * for its rerun, as the bot of the checks of the blueprint makes one, unseen,
+ * until WAIT of src/pager.ts is over: the schedule shows it then, unless a
+ * rerun runs or passed.
+ */
+export interface Workflow extends Base {
+  kind: "workflow";
+  /** waiting: failed, not shown yet; rerunning: 🔁 Rerun ran its failed jobs again. */
+  state: "waiting" | "failing" | "rerunning" | "recovered" | "ignored";
+  /** The file of the workflow, such as .github/workflows/docs.yml, which keys the thing. */
+  path: string;
+  name: string;
+  /** The default branch of the repository, which its runs ran on. */
+  branch: string;
+  /** The newest run of the workflow on the branch that the thing knows, failed or passed. */
+  run: number;
+  /** The newest attempt of that run that the thing knows. */
+  attempt: number;
+  /** The address of the attempt that failed last. */
+  url: string;
+  /** The jobs that failed in it, as many as the message names; none when they can't be read. */
+  jobs: Job[];
+  /** How many runs failed since the workflow last passed. */
+  count: number;
+  /** When the first of them failed, in milliseconds since 1970. */
+  since: number;
+  /** When the last of them failed. */
+  last: number;
+}
+
 /** The code-scanning alerts of severity high or critical of a repository, bundled. */
 export interface Alert extends Base {
   kind: "alert";
@@ -231,6 +270,7 @@ export const MAX_ANSWER = 1000;
 export type Item =
   | Contribution
   | Alarm
+  | Workflow
   | Alert
   | Release
   | Pictures
@@ -279,12 +319,14 @@ export const DELIVERY_ENTRY = "delivery:";
 
 /**
  * The key of each kind of thing: one thing per issue, pull request or discussion,
- * whose numbers GitHub counts together, one bundle per repository, the
- * pictures of one pull request, and one question of an agent per id.
+ * whose numbers GitHub counts together, one bundle per repository, one thing
+ * per workflow of a repository, the pictures of one pull request, and one
+ * question of an agent per id.
  */
 export const keys = {
   contribution: (repo: string, number: number) => `c:${repo}#${number}`,
   alarm: (repo: string) => `a:${repo}`,
+  workflow: (repo: string, path: string) => `w:${repo}:${path}`,
   alert: (repo: string) => `s:${repo}`,
   release: (repo: string) => `r:${repo}`,
   pictures: (repo: string, number: number) => `p:${repo}#${number}`,

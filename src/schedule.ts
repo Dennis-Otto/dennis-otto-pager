@@ -3,10 +3,12 @@
  * comes back as a new message when its time is up, a thing whose job of the
  * control repository didn't answer in time gets its buttons back, a text of the
  * maintainer whose answer didn't come in time gets its 😢, the reminder of each
- * token of the maintainer comes three weeks before it expires (src/tokens.ts), and
- * an event of GitHub that the pager failed to handle comes again
- * (src/deliveries.ts). A run that comes to its end says so in the storage of the
- * Durable Object, for the check of the pager's health (src/health.ts).
+ * token of the maintainer comes three weeks before it expires (src/tokens.ts), a
+ * workflow that failed on the default branch and whose rerun didn't help shows
+ * (src/workflows.ts), and an event of GitHub that the pager failed to handle
+ * comes again (src/deliveries.ts). A run that comes to its end says so in the
+ * storage of the Durable Object, for the check of the pager's health
+ * (src/health.ts).
  */
 import { failedEvents } from "./deliveries.ts";
 import { RAN } from "./health.ts";
@@ -14,6 +16,7 @@ import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
 import { remindTokens } from "./tokens.ts";
+import { canSettle, settle } from "./workflows.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -50,6 +53,18 @@ async function bringBack(context: Context, due: string[]): Promise<string[]> {
     const item = await context.store.get(id);
     if (item === null) {
       // Expired between the list and the read.
+      continue;
+    }
+    if (item.kind === "workflow") {
+      // A failure that waited for its rerun, unless an event showed or ended it
+      // since the list; one that no calls are left for waits for the next run.
+      if (
+        item.state === "waiting" &&
+        canSettle(context) &&
+        (await settle(context, item))
+      ) {
+        done.push(id);
+      }
       continue;
     }
     item.snoozedUntil = null;

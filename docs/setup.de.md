@@ -83,8 +83,8 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |
-| Actions | Read and write | Ein Release-Workflow, der scheitert; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet; die Bilder eines Visual Checks |
-| Checks | Read | Ein Pflicht-Check, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
+| Actions | Read and write | Ein Workflow, der auf `main` scheitert, und die Jobs, die in ihm scheiterten; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet; die Bilder eines Visual Checks |
+| Checks | Read | Ein Pflicht-Check einer anderen App als GitHub Actions, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
 | Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
 | Discussions | Read and write | Eine neue Diskussion oder ein Kommentar zu einer; ✅ Senden einer Antwort in einer Diskussion, als App |
@@ -139,4 +139,5 @@ Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass
 - **Der Zustand des Pagers:** Der Workflow *Health* des Steuer-Repositorys fragt den Pager einmal am Tag, wie es ihm geht, wie [So arbeitet er](how-it-works.md#wenn-der-pager-kaputtgeht) beschreibt, was etwa eine Minute seiner Actions-Minuten kostet. Sein Lauf scheitert, wenn der Zeitplan steht, Telegram den Bot ablehnt oder sein Webhook am letzten Tag einen Fehler gemeldet hat, GitHub die App ablehnt oder ein Token innerhalb einer Woche abläuft; GitHub benachrichtigt dich dann von sich aus über den gescheiterten Lauf, auch wenn Telegram oder der Worker kaputt ist. Starte ihn von Hand im Actions-Tab, um den Pager nach einer Änderung zu prüfen.
 - **Ein Geheimnis ist durchgesickert:** Setz ein neues mit `npx wrangler secret put NAME`; für die App erzeuge in ihren Einstellungen einen neuen privaten Schlüssel und setz `GITHUB_APP_PRIVATE_KEY`; für den Bot `/revoke` bei @BotFather, dann `TELEGRAM_BOT_TOKEN` und Schritt 5 noch einmal.
 - **Wie lange „Später“ wartet**, steht in `LATER_HOURS` in `wrangler.jsonc`.
+- **Die Mails von GitHub Actions** können aus sein, sobald der Pager jeden [Workflow meldet, der auf `main` scheitert](how-it-works.md#ein-workflow-der-auf-main-scheitert): In den Einstellungen deines Kontos auf GitHub, unter *Notifications*, *System*, *Actions*, nimm den Haken bei *Email* heraus. Lass *Web and Mobile* an, wenn du sie auch in GitHub sehen willst. Ein Lauf eines Pull Requests zeigt sich weiter im Pull Request.
 - **Die Sprache** des Pagers steht in `LANGUAGE` in `wrangler.jsonc`: `de` für Deutsch, `en` oder leer für Englisch. Sie bestimmt jeden Text, den der Pager schickt, und der Worker gibt sie jedem Job an das Steuer-Repository mit, dessen Antworten ihr folgen. Eine Nachricht, die der Pager schon gezeigt hat, nimmt die neuen Worte, sobald sich ihre Sache ändert. Nach einer Änderung stell den Worker neu bereit, wie [Releases and Cloudflare](releases.md) beschreibt.

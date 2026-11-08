@@ -15,6 +15,7 @@ import type {
   Item,
   Release,
   Reminder,
+  Workflow,
 } from "./store.ts";
 
 export interface Reply {
@@ -128,6 +129,29 @@ async function rerun(context: Context, item: Alarm): Promise<Reply> {
   return refused(
     context.t(running ? "answer.rerunRunning" : "answer.rerunPassed"),
   );
+}
+
+/**
+ * Run the failed jobs of the newest run that a workflow knows again, after the
+ * same look at the run as for an alarm. The message says that they run, until the
+ * run fails again, which edits it, or passes, which turns it ✅.
+ */
+async function rerunWorkflow(context: Context, item: Workflow): Promise<Reply> {
+  const run = await context.github.workflowRun(
+    item.installation,
+    item.repo,
+    item.run,
+  );
+  if (run.status !== "completed") {
+    return refused(context.t("answer.rerunRunning"));
+  }
+  if (PASSED.has(run.conclusion ?? "")) {
+    return refused(context.t("answer.rerunPassed"));
+  }
+  await context.github.rerunFailedJobs(item.installation, item.repo, item.run);
+  item.state = "rerunning";
+  await show(context, item);
+  return done(context.t("answer.rerunWorkflow"));
 }
 
 async function draft(context: Context, item: Contribution): Promise<Reply> {
@@ -267,7 +291,9 @@ export async function press(
       case "fix":
         return await fix(context, item as Alarm | Alert);
       case "rerun":
-        return await rerun(context, item as Alarm);
+        return item.kind === "workflow"
+          ? await rerunWorkflow(context, item)
+          : await rerun(context, item as Alarm);
       case "draft":
         return await draft(context, item as Contribution);
       case "assistant":

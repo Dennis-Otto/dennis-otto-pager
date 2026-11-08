@@ -19,3 +19,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0011](0011-a-comment-on-an-issue-or-a-pull-request-edits-its-thing-and-notifies-once.md) | A comment on an issue or a pull request edits its thing, and notifies once | accepted |
 | [0012](0012-the-schedule-has-github-deliver-a-failed-event-again.md) | The schedule has GitHub deliver a failed event again, and every signal may come twice | accepted |
 | [0013](0013-the-control-repository-checks-the-health-of-the-pager-once-a-day.md) | The control repository checks the health of the pager once a day, and GitHub names the day of its tokens | accepted |
+| [0014](0014-a-workflow-that-fails-on-main-pages-once-after-its-rerun.md) | A workflow that fails on main pages once, after its rerun | accepted |

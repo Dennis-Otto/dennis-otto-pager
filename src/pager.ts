@@ -9,7 +9,12 @@
 import { keyboard } from "./buttons.ts";
 import { type ReleaseNotes, releaseNotes } from "./content.ts";
 import type { Local } from "./context.ts";
-import { type GitHub, GitHubError } from "./github.ts";
+import {
+  type GitHub,
+  GitHubError,
+  type RunJob,
+  type WorkflowRun,
+} from "./github.ts";
 import {
   ARTIFACT,
   type Artifact,
@@ -29,6 +34,8 @@ import {
 import {
   type ContributionEnd,
   type DiscussionEnd,
+  FAILED,
+  finishedRun,
   picturesBlocker,
   releaseBlocker,
   releaseVersion,
@@ -46,10 +53,12 @@ import {
   type Item,
   isClosed,
   itemId,
+  type Job,
   keys,
   type Pictures,
   type Release,
   type Store,
+  type Workflow,
 } from "./store.ts";
 import {
   type Photo,
@@ -888,6 +897,193 @@ async function releaseState(
   return outcome;
 }
 
+/**
+ * How long the failure of a first attempt of a workflow waits for a rerun before
+ * it shows, in milliseconds. The bot of the checks of the blueprint runs the
+ * failed jobs of the tests and of a release once more within minutes, and a rerun
+ * that passes needs no page: the schedule, every 15 minutes, shows the failure 10
+ * to 25 minutes after it, unless a rerun runs or passed by then.
+ */
+export const WAIT = 10 * 60_000;
+
+/** The most jobs that failed that the message of a workflow names. */
+export const MAX_JOBS = 5;
+
+type Ran = Extract<Signal, { type: "workflow" }>;
+
+/** Whether a run, by its id and its attempt, is newer than the one that a workflow knows. */
+function isNewer(signal: Ran, known: Workflow): boolean {
+  return (
+    signal.run > known.run ||
+    (signal.run === known.run && signal.attempt > known.attempt)
+  );
+}
+
+/** The jobs of an attempt of a run, or null when GitHub doesn't list them. */
+async function jobsOf(context: Context, signal: Ran): Promise<RunJob[] | null> {
+  try {
+    return await context.github.jobs(
+      signal.installation,
+      signal.repo,
+      signal.run,
+      signal.attempt,
+    );
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    console.error("The jobs of a run can't be read:", error.message);
+    return null;
+  }
+}
+
+/**
+ * A run of a workflow that failed on the default branch. The first failure since
+ * the workflow last passed opens its thing: at once when it is a rerun that
+ * failed too, and otherwise unseen, until WAIT is over and the schedule shows it.
+ * Each later failure edits the message in place, with how often and when it
+ * failed, and a failed rerun of a thing that waits shows it at once, which
+ * notifies. An ignored workflow stays quiet until it passes, and a run that the
+ * thing knows, or an older one, changes nothing.
+ */
+async function workflowFailed(context: Context, signal: Ran): Promise<string> {
+  const id = await itemId(keys.workflow(signal.repo, signal.path));
+  const known = (await context.store.get(id)) as Workflow | null;
+  if (known !== null && !isNewer(signal, known)) {
+    return "workflow knows the run";
+  }
+  if (known?.state === "ignored") {
+    return "workflow ignored";
+  }
+  const now = context.now();
+  const fresh = known === null || isClosed(known);
+  const item: Workflow = fresh
+    ? {
+        ...base(id, signal.repo, signal.installation),
+        kind: "workflow",
+        state: "waiting",
+        path: signal.path,
+        name: signal.name,
+        branch: signal.branch,
+        run: signal.run,
+        attempt: signal.attempt,
+        url: signal.url,
+        jobs: [],
+        count: 0,
+        since: now,
+        last: now,
+        snoozedUntil: now + WAIT,
+        // A workflow that fails again keeps its topic, as a bundle does.
+        topic: known?.topic ?? null,
+      }
+    : known;
+  if (fresh || signal.run > item.run) {
+    item.count += 1;
+  }
+  const failed: Job[] = ((await jobsOf(context, signal)) ?? [])
+    .filter((job) => FAILED.has(job.conclusion))
+    .slice(0, MAX_JOBS)
+    .map(({ name, url }) => ({ name, url }));
+  Object.assign(item, {
+    name: signal.name,
+    run: signal.run,
+    attempt: signal.attempt,
+    url: signal.url,
+    jobs: failed,
+    last: now,
+  });
+  const waiting = item.state === "waiting";
+  if (waiting && signal.attempt === 1) {
+    await context.store.put(item);
+    return "workflow waiting";
+  }
+  item.state = "failing";
+  item.snoozedUntil = null;
+  await show(context, item);
+  return waiting ? "workflow failing" : "workflow updated";
+}
+
+/**
+ * A run of a workflow that passed on the default branch: it ends the thing of the
+ * workflow when it is a rerun of the run that failed, or a newer run in which no
+ * job that failed ran without passing. A newer run that skipped such a job, as a
+ * workflow of bots that runs one job per event does, ends nothing; a job that it
+ * doesn't list at all is gone from the workflow. A thing that waits ends unseen,
+ * and an ignored one is green again.
+ */
+async function workflowPassed(context: Context, signal: Ran): Promise<string> {
+  const id = await itemId(keys.workflow(signal.repo, signal.path));
+  const known = (await context.store.get(id)) as Workflow | null;
+  if (known === null || known.state === "recovered") {
+    return "no failing workflow";
+  }
+  if (!isNewer(signal, known)) {
+    return "workflow knows the run";
+  }
+  if (signal.run > known.run && known.jobs.length > 0) {
+    const jobs = await jobsOf(context, signal);
+    // A run whose jobs can't be read can't tell: the thing stays as it is.
+    const again =
+      jobs === null ||
+      known.jobs.some((job) =>
+        jobs.some(
+          (each) => each.name === job.name && each.conclusion !== "success",
+        ),
+      );
+    if (again) {
+      return "workflow still failing";
+    }
+  }
+  const waiting = known.state === "waiting";
+  Object.assign(known, {
+    state: "recovered",
+    run: signal.run,
+    attempt: signal.attempt,
+    snoozedUntil: null,
+  });
+  if (waiting) {
+    await context.store.put(known);
+    return "workflow passed before it showed";
+  }
+  await show(context, known);
+  return "workflow recovered";
+}
+
+/**
+ * An issue of the bot-health bot about a workflow that fails on the default
+ * branch: the pager reads the run that it names and takes it as the end of that
+ * run, so that a failure whose event came changes nothing, and one that the pager
+ * missed pages now. Without a run that it can read, the issue is an entry of the
+ * alarm, as before the pager paged workflows.
+ */
+async function health(
+  context: Context,
+  signal: Extract<Signal, { type: "health" }>,
+): Promise<string> {
+  const { repo, installation } = signal;
+  let run: WorkflowRun | null = null;
+  if (signal.run !== undefined) {
+    try {
+      run = await context.github.workflowRun(installation, repo, signal.run);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) {
+        throw error;
+      }
+      console.error(
+        "The run of an issue of the bot-health bot can't be read:",
+        error.message,
+      );
+    }
+  }
+  if (run === null) {
+    return apply(context, { repo, installation, ...signal.fallback });
+  }
+  const outcome = finishedRun(run, { repo, installation }, signal.branch);
+  return "signal" in outcome
+    ? apply(context, outcome.signal)
+    : `the run of the issue: ${outcome.ignored}`;
+}
+
 /** What a signal does to the things of the maintainer; returns what happened. */
 export async function apply(context: Context, signal: Signal): Promise<string> {
   switch (signal.type) {
@@ -956,9 +1152,14 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
           branch: signal.branch,
         }),
         url: signal.url,
-        ...(signal.run === undefined ? {} : { run: signal.run }),
       });
     }
+    case "workflow":
+      return signal.failed
+        ? workflowFailed(context, signal)
+        : workflowPassed(context, signal);
+    case "health":
+      return health(context, signal);
     case "alert-open":
       return addEntry(context, "alert", signal.repo, signal.installation, {
         key: signal.key,

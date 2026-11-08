@@ -100,7 +100,7 @@ Der Workflow des privaten Repositorys `Dennis-Otto/dennis-otto-pager-control` f�
 | --- | --- | --- |
 | `pager-draft` | ✍️ Antwort entwerfen, und eine Diskussion oder ein Kommentar zu einer, sobald er kommt | `item`, `repo`, `number`, `pull`, `language`; bei einer Diskussion auch `discussion`: `true` und `comment`, die GraphQL-ID des Kommentars, auf den die Antwort antwortet, falls es einen gibt |
 | `pager-fix` | 🛠 Fix starten | `item`, `repo`, `kind` (`alarm` oder `alert`), `entries` mit `label` und `url`, `language`. Die `url` eines gescheiterten Release-Laufs nennt seinen Versuch, etwa `…/actions/runs/3/attempts/2`, damit der Fix die Jobs dieses Versuchs liest und nicht die einer Wiederholung, die noch läuft |
-| `pager-text` | Ein Text, der auf keine Rückfrage antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
+| `pager-text` | Ein Text, der auf keine Rückfrage und keine [offene Frage eines Agenten](#fragen-und-berichte-deiner-agenten) antwortet | `text`, `message` (seine ID im Chat), `reply`: die ersten 1000 Zeichen der Nachricht, auf die der Text antwortet, falls es eine gibt, und `thing`: die Sache, aus deren Thema der Text kam, falls es eine gibt; `language` |
 
 `language` ist `LANGUAGE` des Workers, `en` oder `de`: Darin antwortet das Steuer-Repository dem Maintainer, die Notiz eines Fixes und der Grund eines gescheiterten Jobs eingeschlossen, während ein Antwortentwurf in der Sprache seines Issues oder Pull Requests bleibt.
 

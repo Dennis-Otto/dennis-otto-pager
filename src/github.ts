@@ -179,7 +179,7 @@ export const ANSWERS = "pager-answers";
 /** The one file of the branch of the answers when the pager makes it. */
 const ANSWERS_README = `# The answers of the pager
 
-Each file \`answers/<id>.json\` is the answer of the maintainer to the question \`<id>\` of one of their agents, saved by the GitHub App of the pager when its button was pressed. The pager's documentation describes how an agent asks and reads: https://dennis-otto.github.io/dennis-otto-pager/how-it-works.html
+Each file \`answers/<id>.json\` is the answer of the maintainer to the question \`<id>\` of one of their agents, saved by the GitHub App of the pager when its button was pressed or the maintainer wrote the answer in its topic. The pager's documentation describes how an agent asks and reads: https://dennis-otto.github.io/dennis-otto-pager/how-it-works.html
 `;
 
 /** The thread of a comment of a discussion: that of its parent, for a reply. */

@@ -157,11 +157,20 @@ function named(state: Item["state"]): state is Named {
 /** What a contribution is: an issue, a pull request, a discussion or a comment on one. */
 function contributionHead(
   item: Contribution,
-): "message.issue" | "message.pull" | "message.discussion" | "message.comment" {
+):
+  | "message.issue"
+  | "message.pull"
+  | "message.discussion"
+  | "message.comment"
+  | "message.issueComment"
+  | "message.pullComment" {
   if (item.discussion !== undefined) {
     return item.discussion.comment === undefined
       ? "message.discussion"
       : "message.comment";
+  }
+  if (item.comment !== undefined) {
+    return item.pull ? "message.pullComment" : "message.issueComment";
   }
   return item.pull ? "message.pull" : "message.issue";
 }

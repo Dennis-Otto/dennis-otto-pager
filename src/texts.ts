@@ -48,6 +48,11 @@ const en = {
     "💬 <b>New discussion</b> in {repo} by <b>{author}</b>\n{link}",
   "message.comment":
     "💬 <b>New comment</b> on a discussion in {repo} by <b>{author}</b>\n{link}",
+  "message.issueComment":
+    "💬 <b>New comment</b> on an issue in {repo} by <b>{author}</b>\n{link}",
+  "message.pullComment":
+    "💬 <b>New comment</b> on a pull request in {repo} by <b>{author}</b>\n{link}",
+  "message.newComment": "💬 <b>{author}</b> commented: {link}",
   "message.draft":
     '<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>{draft}</blockquote>',
   "message.reply":
@@ -142,7 +147,7 @@ const en = {
   "note.repliedOnGitHub":
     "💬 You replied on GitHub, so the pager sends nothing.",
   "note.answerChosen": "✅ An answer was marked on GitHub.",
-  "note.discussionClosed": "Closed on GitHub.",
+  "note.closedOnGitHub": "Closed on GitHub.",
   "note.discussionDeleted": "Deleted on GitHub.",
   "note.ownDraft":
     "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
@@ -280,6 +285,11 @@ const de: Catalog = {
     "💬 <b>Neue Diskussion</b> in {repo} von <b>{author}</b>\n{link}",
   "message.comment":
     "💬 <b>Neuer Kommentar</b> zu einer Diskussion in {repo} von <b>{author}</b>\n{link}",
+  "message.issueComment":
+    "💬 <b>Neuer Kommentar</b> zu einem Issue in {repo} von <b>{author}</b>\n{link}",
+  "message.pullComment":
+    "💬 <b>Neuer Kommentar</b> zu einem Pull Request in {repo} von <b>{author}</b>\n{link}",
+  "message.newComment": "💬 <b>{author}</b> hat kommentiert: {link}",
   "message.draft":
     "<b>Entwurf einer Antwort</b>, den „Senden“ genau so in deinem Namen postet:\n<blockquote>{draft}</blockquote>",
   "message.reply":
@@ -375,7 +385,7 @@ const de: Catalog = {
   "note.repliedOnGitHub":
     "💬 Du hast auf GitHub geantwortet, also sendet der Pager nichts.",
   "note.answerChosen": "✅ Auf GitHub wurde eine Antwort markiert.",
-  "note.discussionClosed": "Auf GitHub geschlossen.",
+  "note.closedOnGitHub": "Auf GitHub geschlossen.",
   "note.discussionDeleted": "Auf GitHub gelöscht.",
   "note.ownDraft":
     "✏️ Ein neuer Kommentar kam, und dein eigener Text bleibt der Entwurf: Sende ihn, oder bearbeite ihn für den neuen Kommentar.",

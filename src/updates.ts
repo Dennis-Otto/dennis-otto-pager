@@ -11,7 +11,7 @@ import { parsePress } from "./buttons.ts";
 import { GitHubError } from "./github.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
-import { type Decision, type Item, MAX_ANSWER } from "./store.ts";
+import { answering, type Decision, type Item, MAX_ANSWER } from "./store.ts";
 import { REACTIONS, threadOf } from "./telegram.ts";
 import { about } from "./topics.ts";
 
@@ -110,7 +110,7 @@ async function edited(
   // comment of a discussion, so the pager waits for none.
   item.ownDraft = true;
   delete item.jobStarted;
-  delete item.discussion?.redraft;
+  delete answering(item)?.redraft;
   await show(context, item, true);
   await context.telegram.remove(message.message_id);
   return "draft edited";

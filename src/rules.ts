@@ -111,8 +111,14 @@ export interface Payload {
     /** The address of the answer of a discussion of Q&A, once someone chose one. */
     answer_html_url?: string | null;
   };
-  /** The comment of a discussion_comment event. */
-  comment?: { node_id?: string; html_url?: string; user?: Account };
+  /** The comment of a discussion_comment or an issue_comment event. */
+  comment?: {
+    /** The id of an issue comment in the REST API of GitHub. */
+    id?: number;
+    node_id?: string;
+    html_url?: string;
+    user?: Account;
+  };
 }
 
 interface Where {
@@ -156,6 +162,23 @@ export type Signal = Where &
         /** Why it needs no reply of the pager any more, as GitHub saw it. */
         reason: DiscussionEnd;
       }
+    | {
+        type: "comment";
+        number: number;
+        pull: boolean;
+        title: string;
+        /** The comment, which the reply answers. */
+        url: string;
+        author: string;
+        /** The id of the comment in the REST API of GitHub. */
+        comment: number;
+      }
+    | {
+        type: "contribution-done";
+        number: number;
+        /** Why it needs no reply of the pager any more, as GitHub saw it. */
+        reason: ContributionEnd;
+      }
     | ({ type: "failing" | "still-failing" } & Failure)
     | { type: "recovered"; key: string }
     | {
@@ -191,6 +214,12 @@ export type Outcome = { signal: Signal } | { ignored: string };
  * someone chose an answer, or it was closed or deleted.
  */
 export type DiscussionEnd = "replied" | "answered" | "closed" | "deleted";
+
+/**
+ * How an issue or a pull request of someone else was dealt with on GitHub itself:
+ * the maintainer commented there, or it was closed, or merged.
+ */
+export type ContributionEnd = "replied" | "closed" | "merged";
 
 /** The actions of a discussion event that end the wait for a reply. */
 const DISCUSSION_ENDS: ReadonlySet<string> = new Set([
@@ -305,7 +334,7 @@ function where(payload: Payload, maintainer: string): Where | string {
   return { repo, installation };
 }
 
-/** The id of a run of GitHub Actions, when it is one. */
+/** The id of a run of GitHub Actions, or of a comment, when it is one: a positive whole number. */
 function runId(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && (value as number) > 0
     ? (value as number)
@@ -386,10 +415,36 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
     }
     return { ignored: `the ${payload.action} of a bot-failure issue` };
   }
+  // The end of an issue of someone else ends its thing.
+  if (payload.action === "closed") {
+    return isOwn(issue, maintainer)
+      ? { ignored: "an issue of the maintainer or of a bot closed" }
+      : contributionDone(at, number, "closed");
+  }
   if (payload.action !== "opened") {
     return { ignored: `an issue ${payload.action}` };
   }
   return contribution(at, issue, false, maintainer);
+}
+
+/** Whether an issue or a pull request is one of the maintainer or of a bot, which makes no thing. */
+function isOwn(
+  thing: Payload["issue"] | Payload["pull_request"],
+  maintainer: string,
+): boolean {
+  return isMaintainer(thing?.user, maintainer) || isBot(thing?.user);
+}
+
+/**
+ * An issue or a pull request of someone else that GitHub dealt with: its thing
+ * needs no reply of the pager any more.
+ */
+function contributionDone(
+  at: Where,
+  number: number,
+  reason: ContributionEnd,
+): Outcome {
+  return { signal: { ...at, type: "contribution-done", number, reason } };
 }
 
 function contribution(
@@ -437,9 +492,10 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
     }
     return { ignored: `a release pull request ${payload.action}` };
   }
-  // The end of a pull request of the maintainer or of a bot ends its pictures.
+  // The end of a pull request of the maintainer or of a bot ends its pictures,
+  // that of someone else its thing.
   if (payload.action === "closed") {
-    return isMaintainer(pull?.user, maintainer) || isBot(pull?.user)
+    return isOwn(pull, maintainer)
       ? {
           signal: {
             ...at,
@@ -448,7 +504,11 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
             merged: pull?.merged === true,
           },
         }
-      : { ignored: "a pull request of someone else closed" };
+      : contributionDone(
+          at,
+          number,
+          pull?.merged === true ? "merged" : "closed",
+        );
   }
   if (payload.action !== "opened") {
     return { ignored: `a pull request ${payload.action}` };
@@ -505,6 +565,52 @@ function discussion(
       author: author?.login ?? "",
       node: found?.node_id ?? "",
       ...(reply === undefined ? {} : { comment: reply }),
+    },
+  };
+}
+
+/**
+ * A comment on an issue or a pull request of someone else, the thing of a
+ * contribution: a comment of someone else is the newest message, which the reply
+ * answers, and one of the maintainer is his reply on GitHub itself, which ends
+ * the wait for one of the pager. An issue or a pull request of the maintainer or
+ * of a bot stays theirs, comments and all, as a discussion of the maintainer does,
+ * and a comment of a bot, such as one of the issue assistant, means nothing.
+ */
+function issueComment(
+  payload: Payload,
+  at: Where,
+  maintainer: string,
+): Outcome {
+  const issue = payload.issue;
+  const comment = payload.comment;
+  if (payload.action !== "created") {
+    return { ignored: `an issue comment ${payload.action}` };
+  }
+  if (isOwn(issue, maintainer)) {
+    return { ignored: "a comment on an issue of the maintainer or of a bot" };
+  }
+  if (isBot(comment?.user)) {
+    return { ignored: "written by a bot" };
+  }
+  const number = issue?.number ?? 0;
+  if (isMaintainer(comment?.user, maintainer)) {
+    return contributionDone(at, number, "replied");
+  }
+  const id = runId(comment?.id);
+  if (id === undefined) {
+    return { ignored: "a comment without its id" };
+  }
+  return {
+    signal: {
+      ...at,
+      type: "comment",
+      number,
+      pull: issue?.pull_request !== undefined,
+      title: issue?.title ?? "",
+      url: comment?.html_url ?? "",
+      author: comment?.user?.login ?? "",
+      comment: id,
     },
   };
 }
@@ -722,6 +828,8 @@ export function classify(
       return discussion(payload, at, maintainer, null);
     case "discussion_comment":
       return discussion(payload, at, maintainer, payload.comment);
+    case "issue_comment":
+      return issueComment(payload, at, maintainer);
     case "check_run":
       return checkRun(payload, at);
     case "check_suite":

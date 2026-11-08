@@ -2,7 +2,7 @@
 // thing changes, bundles per repository, and the steps of a release.
 import { describe, expect, it } from "vitest";
 
-import { apply, show } from "../src/pager.ts";
+import { apply, QUIET, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
 import { type Contribution, type Item, itemId, keys } from "../src/store.ts";
 import {
@@ -364,6 +364,405 @@ describe("discussions", () => {
       () => new Response("{", { status: 200 }),
     );
     await expect(apply(w.context, commented)).rejects.toThrow(SyntaxError);
+  });
+});
+
+describe("comments on issues and pull requests", () => {
+  const ISSUE = "https://github.com/Dennis-Otto/demo/issues/12";
+  const opened: Signal = {
+    ...at,
+    type: "contribution",
+    number: 12,
+    pull: false,
+    title: "It breaks",
+    url: ISSUE,
+    author: "octocat",
+  };
+  const commented = (
+    comment = 99,
+    author = "hubot",
+  ): Extract<Signal, { type: "comment" }> => ({
+    ...at,
+    type: "comment",
+    number: 12,
+    pull: false,
+    title: "It breaks",
+    url: `${ISSUE}#issuecomment-${comment}`,
+    author,
+    comment,
+  });
+
+  /** A world whose chat has topics, and whose control repository takes the drafts. */
+  async function chat(): Promise<World> {
+    const w = await world();
+    withTopics(w.net);
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    return w;
+  }
+
+  const thing = async (w: World) =>
+    (await stored(w, keys.contribution(REPO, 12))) as Contribution;
+
+  /** A world with the issue shown, in its topic 900, as message 100. */
+  async function shown(): Promise<World> {
+    const w = await chat();
+    await apply(w.context, opened);
+    return w;
+  }
+
+  it("edit the message of an open thing in place, and notify once in its topic", async () => {
+    const w = await shown();
+    expect(await apply(w.context, commented())).toBe("comment shown in place");
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      url: `${ISSUE}#issuecomment-99`,
+      author: "hubot",
+      comment: { id: 99, noticed: START },
+      messageId: 100,
+    });
+    const edited = w.net.telegram("editMessageText")[0]?.body;
+    expect(edited.message_id).toBe(100);
+    expect(edited.text).toContain(
+      "💬 <b>New comment</b> on an issue in <a href=",
+    );
+    expect(edited.text).toContain("by <b>hubot</b>");
+    expect(edited.text).toContain(
+      `<a href="${ISSUE}#issuecomment-99">#12 It breaks</a>`,
+    );
+    // The buttons stay those of a new issue.
+    expect(
+      edited.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toEqual([
+      "✍️ Draft a reply",
+      "🤖 Assistant again",
+      "⏰ Later",
+      "✖ Ignore",
+    ]);
+    // The edit notifies nobody: one message below it in the topic does.
+    const [, notice] = w.net.telegram("sendMessage");
+    expect(notice?.body).toMatchObject({
+      text: `💬 <b>hubot</b> commented: <a href="${ISSUE}#issuecomment-99">#12 It breaks</a>`,
+      message_thread_id: 900,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+  });
+
+  it("notify once for a few quick comments, and again once it was quiet for a while", async () => {
+    const w = await shown();
+    await apply(w.context, commented(99));
+    w.clock.now = START + QUIET - 1;
+    expect(await apply(w.context, commented(100, "octocat"))).toBe(
+      "comment shown in place, quietly",
+    );
+    expect(await thing(w)).toMatchObject({
+      author: "octocat",
+      comment: { id: 100, noticed: START },
+    });
+    expect(w.net.telegram("editMessageText")).toHaveLength(2);
+    expect(w.net.telegram("editMessageText")[1]?.body.text).toContain(
+      "by <b>octocat</b>",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    w.clock.now = START + QUIET * 2;
+    expect(await apply(w.context, commented(101))).toBe(
+      "comment shown in place",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(3);
+    expect((await thing(w)).comment).toEqual({
+      id: 101,
+      noticed: START + QUIET * 2,
+    });
+  });
+
+  it("change nothing for the same comment twice", async () => {
+    const w = await shown();
+    await apply(w.context, commented());
+    const calls = w.net.calls.length;
+    expect(await apply(w.context, commented())).toBe("comment shown already");
+    expect(w.net.calls).toHaveLength(calls);
+    // The same holds for a thing that the comment made or opened again.
+    const fresh = await chat();
+    expect(await apply(fresh.context, commented())).toBe("comment shown");
+    const made = fresh.net.calls.length;
+    expect(await apply(fresh.context, commented())).toBe(
+      "comment shown already",
+    );
+    expect(fresh.net.calls).toHaveLength(made);
+  });
+
+  it("make a new thing of an issue that the pager never showed, or whose record expired", async () => {
+    const w = await chat();
+    expect(
+      await apply(w.context, { ...commented(), pull: true, title: "Fix it" }),
+    ).toBe("comment shown");
+    const id = await itemId(keys.contribution(REPO, 12));
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      pull: true,
+      draft: null,
+      draftVersion: 0,
+      comment: { id: 99, noticed: START },
+      messageId: 100,
+      topic: { thread: 900, name: "🙋 demo#12 Fix it" },
+    });
+    const message = w.net.telegram("sendMessage")[0]?.body;
+    expect(message.text).toContain(
+      "💬 <b>New comment</b> on a pull request in",
+    );
+    // The new message notifies by itself; the issue assistant answers no pull request.
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(message.reply_markup.inline_keyboard).toEqual([
+      [
+        { text: "✍️ Draft a reply", callback_data: `draft:${id}` },
+        { text: "⏰ Later", callback_data: `later:${id}` },
+      ],
+      [{ text: "✖ Ignore", callback_data: `ignore:${id}` }],
+    ]);
+  });
+
+  it("open a thing again in its topic once its reply went, or GitHub dealt with it", async () => {
+    for (const state of ["sent", "done"] as const) {
+      const w = await shown();
+      await w.context.store.put({
+        ...(await thing(w)),
+        state,
+        draft: "Fixed in 1.2.",
+        draftVersion: 2,
+        topic: { thread: 900, name: "✅ 🙋 demo#12 It breaks" },
+      });
+      expect(await apply(w.context, commented())).toBe("comment shown anew");
+      expect(await thing(w)).toMatchObject({
+        state: "new",
+        draft: null,
+        // No button of the old draft sends the next one.
+        draftVersion: 2,
+        note: null,
+        url: `${ISSUE}#issuecomment-99`,
+        comment: { id: 99, noticed: START },
+        messageId: 101,
+        topic: { thread: 900, name: "🙋 demo#12 It breaks" },
+      });
+      // The old message stays as history, and the new one notifies, in the same topic.
+      expect(w.net.telegram("deleteMessage")).toHaveLength(0);
+      expect(w.net.telegram("sendMessage")).toHaveLength(2);
+      expect(w.net.telegram("sendMessage")[1]?.body).toMatchObject({
+        text: expect.stringContaining("💬 <b>New comment</b> on an issue in"),
+        message_thread_id: 900,
+      });
+      expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+      expect(w.net.telegram("editForumTopic").at(-1)?.body.name).toBe(
+        "🙋 demo#12 It breaks",
+      );
+    }
+  });
+
+  it("stay ignored once they were ignored", async () => {
+    const w = await shown();
+    await w.context.store.put({ ...(await thing(w)), state: "ignored" });
+    const calls = w.net.calls.length;
+    expect(await apply(w.context, commented())).toBe("comment ignored");
+    expect(w.net.calls).toHaveLength(calls);
+  });
+
+  it("bring back a thing put off with Later", async () => {
+    const w = await shown();
+    await w.context.store.put({
+      ...(await thing(w)),
+      snoozedUntil: START + 3_600_000,
+      note: "🤖 The issue assistant answers again.",
+    });
+    await apply(w.context, commented());
+    expect(await thing(w)).toMatchObject({ snoozedUntil: null, note: null });
+    expect(w.net.telegram("editMessageText")[0]?.body.text).not.toContain(
+      "assistant",
+    );
+  });
+
+  it("wait with the draft of a new comment while the draft of an older message is written", async () => {
+    const w = await shown();
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "drafting",
+      jobStarted: START,
+    });
+    w.clock.now = START + 60_000;
+    expect(await apply(w.context, commented())).toBe(
+      "comment shown in place, its draft waits for the older one",
+    );
+    // The control repository runs one job per thing at a time: the next one is
+    // asked for once the draft of the older message comes, and is dropped.
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(await thing(w)).toMatchObject({
+      state: "drafting",
+      jobStarted: START + 60_000,
+      comment: { id: 99, noticed: START + 60_000, redraft: true },
+      messageId: 100,
+    });
+  });
+
+  it("ask again for a draft that answers an older message", async () => {
+    const w = await shown();
+    const id = await itemId(keys.contribution(REPO, 12));
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "draft",
+      draft: "Which version?",
+      draftVersion: 1,
+    });
+    expect(await apply(w.context, commented())).toBe(
+      "comment shown in place, drafted again",
+    );
+    expect(w.net.github("/dispatches")[0]?.body).toEqual({
+      event_type: "pager-draft",
+      client_payload: {
+        item: id,
+        repo: REPO,
+        number: 12,
+        pull: false,
+        issueComment: 99,
+        language: "en",
+      },
+    });
+    const drafting = await thing(w);
+    expect(drafting).toMatchObject({
+      state: "drafting",
+      draft: null,
+      draftVersion: 2,
+      jobStarted: START,
+      comment: { id: 99, noticed: START },
+    });
+    expect(drafting.comment).not.toHaveProperty("redraft");
+    const edited = w.net.telegram("editMessageText")[0]?.body;
+    expect(edited.text).not.toContain("Which version?");
+    expect(edited.text).toContain("✍️ The control repository drafts a reply…");
+  });
+
+  it("come without a draft, and say why, when the control repository can't take it", async () => {
+    const w = await world();
+    await apply(w.context, opened);
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "draft",
+      draft: "Which version?",
+      draftVersion: 1,
+    });
+    expect(await apply(w.context, commented())).toBe(
+      "comment shown in place, without a draft",
+    );
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      draft: null,
+      draftVersion: 2,
+      note: expect.stringContaining("isn't installed on Dennis-Otto/control"),
+    });
+    // In a chat without topics, the notice answers the message of the thing.
+    expect(w.net.telegram("sendMessage")[1]?.body).toMatchObject({
+      text: expect.stringContaining("<b>hubot</b> commented"),
+      reply_parameters: { message_id: 100 },
+    });
+  });
+
+  it("keep the maintainer's own draft for a new comment, and ask for none", async () => {
+    const w = await shown();
+    const id = await itemId(keys.contribution(REPO, 12));
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "draft",
+      draft: "My own words.",
+      draftVersion: 3,
+      ownDraft: true,
+    });
+    expect(await apply(w.context, commented())).toBe(
+      "comment shown in place, with the maintainer's own draft",
+    );
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(await thing(w)).toMatchObject({
+      state: "draft",
+      draft: "My own words.",
+      draftVersion: 4,
+      ownDraft: true,
+      note: "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
+    });
+    const edited = w.net.telegram("editMessageText")[0]?.body;
+    expect(edited.text).toContain("<blockquote>My own words.</blockquote>");
+    expect(edited.reply_markup.inline_keyboard[0][0]).toEqual({
+      text: "✅ Send",
+      callback_data: `send:${id}:4`,
+    });
+  });
+
+  it("close once GitHub dealt with them, and say why, in place", async () => {
+    const notes = {
+      replied: "💬 You replied on GitHub, so the pager sends nothing.",
+      closed: "Closed on GitHub.",
+      merged: "🔀 Merged.",
+    } as const;
+    for (const [reason, note] of Object.entries(notes)) {
+      const w = await shown();
+      await apply(w.context, commented());
+      await w.context.store.put({
+        ...(await thing(w)),
+        state: "drafting",
+        jobStarted: START,
+        comment: { id: 99, noticed: START, redraft: true },
+      });
+      const done: Signal = {
+        ...at,
+        type: "contribution-done",
+        number: 12,
+        reason: reason as keyof typeof notes,
+      };
+      expect(await apply(w.context, done)).toBe(`contribution done: ${reason}`);
+      const closed = await thing(w);
+      expect(closed).toMatchObject({ state: "done", note, messageId: 100 });
+      // Nothing waits for its job any more, nor for the draft of the newest comment.
+      expect(closed).not.toHaveProperty("jobStarted");
+      expect(closed.comment).toEqual({ id: 99, noticed: START });
+      const edited = w.net.telegram("editMessageText").at(-1)?.body;
+      expect(edited).toMatchObject({
+        message_id: 100,
+        reply_markup: { inline_keyboard: [] },
+      });
+      expect(edited.text).toContain("✅ Done.");
+      expect(edited.text).toContain(`<i>${note}</i>`);
+      // In place, which notifies nobody: the issue and the notice of the comment.
+      expect(w.net.telegram("sendMessage")).toHaveLength(2);
+      expect(w.net.telegram("editForumTopic").at(-1)?.body.name).toBe(
+        "✅ 🙋 demo#12 It breaks",
+      );
+      const calls = w.net.calls.length;
+      expect(await apply(w.context, done)).toBe("no open contribution shown");
+      expect(w.net.calls).toHaveLength(calls);
+    }
+  });
+
+  it("know no end of an issue that they never showed, nor of a discussion", async () => {
+    const w = await chat();
+    const done: Signal = {
+      ...at,
+      type: "contribution-done",
+      number: 12,
+      reason: "closed",
+    };
+    expect(await apply(w.context, done)).toBe("no open contribution shown");
+    await apply(w.context, {
+      ...at,
+      type: "discussion",
+      number: 12,
+      title: "How do I start?",
+      url: "https://github.com/Dennis-Otto/demo/discussions/12",
+      author: "octocat",
+      node: "D_1",
+    });
+    expect(await apply(w.context, done)).toBe("no open contribution shown");
+    expect(await thing(w)).toMatchObject({ state: "drafting" });
   });
 });
 

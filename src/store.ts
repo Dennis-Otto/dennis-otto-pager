@@ -62,9 +62,29 @@ export interface Discussion {
 }
 
 /**
+ * The newest comment of someone else on an issue or a pull request, which the
+ * reply answers. A reply to an issue or a pull request is a comment of its own, so
+ * the comment is what the draft answers, not where the reply goes.
+ */
+export interface IssueComment {
+  /** The id of the comment in the REST API of GitHub. */
+  id: number;
+  /**
+   * When a comment last notified the maintainer, in milliseconds since 1970: the
+   * comments that follow within QUIET of src/pager.ts edit the message alone.
+   */
+  noticed: number;
+  /**
+   * Set when a comment came while the draft of an older message was still being
+   * written: that draft is dropped when it comes, and the next one is asked for.
+   */
+  redraft?: boolean;
+}
+
+/**
  * An issue, a pull request or a discussion that someone other than the maintainer
- * opened, or the newest comment of someone else on a discussion. A discussion that
- * GitHub dealt with itself, such as with a reply of the maintainer there, is done.
+ * opened, or the newest comment of someone else on one. One that GitHub dealt
+ * with itself, such as with a reply of the maintainer there, is done.
  */
 export interface Contribution extends Base {
   kind: "contribution";
@@ -85,6 +105,18 @@ export interface Contribution extends Base {
   ownDraft?: true;
   /** The discussion of a contribution that is one; none for an issue or a pull request. */
   discussion?: Discussion;
+  /** The newest comment of someone else on an issue or a pull request; none for a discussion. */
+  comment?: IssueComment;
+}
+
+/**
+ * What the reply of a contribution answers, which may wait for the draft of a newer
+ * message: its discussion, or the newest comment on its issue or pull request.
+ */
+export function answering(
+  item: Contribution,
+): Discussion | IssueComment | undefined {
+  return item.discussion ?? item.comment;
 }
 
 /** What fails on the default branch of a repository, bundled. */

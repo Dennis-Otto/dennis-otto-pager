@@ -142,13 +142,6 @@ describe("contributions from outside", () => {
     expect(
       classify(
         "pull_request",
-        event({ action: "closed", pull_request: issue }),
-        ME,
-      ),
-    ).toEqual({ ignored: "a pull request of someone else closed" });
-    expect(
-      classify(
-        "pull_request",
         event({ action: "edited", pull_request: issue }),
         ME,
       ),
@@ -169,6 +162,164 @@ describe("contributions from outside", () => {
         author: "",
       },
     });
+  });
+});
+
+describe("comments on issues and pull requests from outside", () => {
+  const issue = {
+    number: 12,
+    title: "It breaks <b>",
+    html_url: "https://github.com/Dennis-Otto/demo/issues/12",
+    user: stranger,
+    state: "open",
+  };
+  const comment = {
+    id: 99,
+    node_id: "IC_kwDOC",
+    html_url: "https://github.com/Dennis-Otto/demo/issues/12#issuecomment-99",
+    user: { login: "hubot", type: "User" },
+  };
+  const commented = (extra: Payload = {}) =>
+    classify(
+      "issue_comment",
+      event({ action: "created", issue, comment, ...extra }),
+      ME,
+    );
+  const done = (reason: string, number = 12) => ({
+    signal: { ...at, type: "contribution-done", number, reason },
+  });
+
+  it("pages for a comment of someone else on an issue of someone else, which the reply answers", () => {
+    expect(commented()).toEqual({
+      signal: {
+        ...at,
+        type: "comment",
+        number: 12,
+        pull: false,
+        title: "It breaks <b>",
+        url: comment.html_url,
+        author: "hubot",
+        comment: 99,
+      },
+    });
+  });
+
+  it("knows a comment on a pull request by the pull request of its issue", () => {
+    expect(
+      commented({ issue: { ...issue, pull_request: { url: "x" } } }),
+    ).toMatchObject({ signal: { type: "comment", number: 12, pull: true } });
+  });
+
+  it("pages for a comment on a closed issue as well, since it may need an answer", () => {
+    expect(commented({ issue: { ...issue, state: "closed" } })).toMatchObject({
+      signal: { type: "comment", comment: 99 },
+    });
+  });
+
+  it("ends the wait for a reply when the maintainer answered on GitHub itself", () => {
+    expect(
+      commented({ comment: { ...comment, user: { login: "dennis-otto" } } }),
+    ).toEqual(done("replied"));
+  });
+
+  it("stays quiet for a bot, and for an issue or a pull request of the maintainer or of a bot", () => {
+    // Such as the issue assistant, or the bot that reports a failure.
+    expect(
+      commented({
+        comment: { ...comment, user: { login: "issue-assistant[bot]" } },
+      }),
+    ).toEqual({ ignored: "written by a bot" });
+    for (const user of [{ login: ME }, bot]) {
+      for (const author of [comment.user, { login: ME }]) {
+        expect(
+          commented({
+            issue: { ...issue, user },
+            comment: { ...comment, user: author },
+          }),
+        ).toEqual({
+          ignored: "a comment on an issue of the maintainer or of a bot",
+        });
+      }
+    }
+  });
+
+  it("stays quiet for a comment that was edited or deleted", () => {
+    for (const action of ["edited", "deleted"]) {
+      expect(
+        classify("issue_comment", event({ action, issue, comment }), ME),
+      ).toEqual({ ignored: `an issue comment ${action}` });
+    }
+  });
+
+  it("drops a comment without its id, which the pager needs to know it again", () => {
+    const { id: _id, ...nameless } = comment;
+    for (const without of [
+      nameless,
+      { ...comment, id: 0 },
+      { ...comment, id: -3 },
+      { ...comment, id: 1.5 },
+    ]) {
+      expect(commented({ comment: without })).toEqual({
+        ignored: "a comment without its id",
+      });
+    }
+  });
+
+  it("takes an issue and a comment without their other fields as empty", () => {
+    expect(
+      classify(
+        "issue_comment",
+        event({ action: "created", comment: { id: 5 } }),
+        ME,
+      ),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "comment",
+        number: 0,
+        pull: false,
+        title: "",
+        url: "",
+        author: "",
+        comment: 5,
+      },
+    });
+  });
+
+  it("ends the wait for a reply once an issue or a pull request of someone else closed", () => {
+    expect(classify("issues", event({ action: "closed", issue }), ME)).toEqual(
+      done("closed"),
+    );
+    const pull = { ...issue, head: { ref: "fix" } };
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "closed", pull_request: pull }),
+        ME,
+      ),
+    ).toEqual(done("closed"));
+    expect(
+      classify(
+        "pull_request",
+        event({ action: "closed", pull_request: { ...pull, merged: true } }),
+        ME,
+      ),
+    ).toEqual(done("merged"));
+    expect(
+      classify("issues", event({ action: "closed", issue: {} }), ME),
+    ).toEqual(done("closed", 0));
+  });
+
+  it("knows no end of an issue of the maintainer or of a bot, which made no thing", () => {
+    for (const user of [{ login: ME }, bot]) {
+      expect(
+        classify(
+          "issues",
+          event({ action: "closed", issue: { ...issue, user } }),
+          ME,
+        ),
+      ).toEqual({ ignored: "an issue of the maintainer or of a bot closed" });
+    }
   });
 });
 
@@ -1186,6 +1337,7 @@ describe("any payload", () => {
       "pull_request",
       "discussion",
       "discussion_comment",
+      "issue_comment",
       "check_run",
       "check_suite",
       "workflow_run",

@@ -1,0 +1,3 @@
+### Features
+
+- An event of GitHub that the pager failed to handle, such as in a short outage of Telegram, comes again by itself: GitHub never delivers a failed webhook again on its own, so every 15 minutes the pager has it delivered again, three attempts in all. An event whose attempts all fail shows once in the alarm of the control repository, *🚨 An event of GitHub fails: pull_request.opened*, with a link to the recent deliveries on the app's Advanced page, and an attempt that passes later takes it out. A discussion or a comment that comes twice no longer sends its message again or asks for a second draft. It needs no new permission and no new secret.

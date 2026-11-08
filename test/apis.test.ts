@@ -143,6 +143,80 @@ describe("the GitHub App", () => {
     );
   });
 
+  it("signs one JWT for the calls of seven minutes, and a new one after", async () => {
+    const net = new Net().on("GET", /installation$/, () => json({ id: 77 }));
+    const clock = { now: START };
+    const api = new GitHub(
+      "12345",
+      (await appKey()).pem,
+      null,
+      net.fetch,
+      () => clock.now,
+    );
+    await api.installation("Dennis-Otto/control");
+    clock.now = START + 7 * 60_000 - 1;
+    await api.installation("Dennis-Otto/control");
+    clock.now = START + 7 * 60_000;
+    await api.installation("Dennis-Otto/control");
+    const [first, second, third] = net.calls.map(
+      (call) => call.headers.authorization,
+    );
+    expect(second).toBe(first);
+    expect(third).not.toBe(first);
+    expect(third).toMatch(/^Bearer ey/);
+  });
+
+  it("lists the deliveries of its webhook page by page, and delivers one again", async () => {
+    const next =
+      '<https://api.github.com/app/hook/deliveries?per_page=100&cursor=v1_9%2B1>; rel="next"';
+    const net = new Net()
+      .on("GET", "/app/hook/deliveries?per_page=100", () =>
+        Response.json([{ id: 2, guid: "g" }], { headers: { link: next } }),
+      )
+      .on("GET", "/app/hook/deliveries?per_page=100&cursor=v1_9%2B1", () =>
+        json([{ id: 1, guid: "g" }]),
+      )
+      .on("POST", "/app/hook/deliveries/2/attempts", () => json({}, 202))
+      .on("POST", "/app/hook/deliveries/1/attempts", () =>
+        json({ message: "Validation Failed" }, 422),
+      );
+    const api = await github(net);
+    expect(await api.deliveries(null)).toEqual({
+      deliveries: [{ id: 2, guid: "g" }],
+      cursor: "v1_9+1",
+    });
+    expect(await api.deliveries("v1_9+1")).toEqual({
+      deliveries: [{ id: 1, guid: "g" }],
+      cursor: null,
+    });
+    await api.redeliver(2);
+    await expect(api.redeliver(1)).rejects.toThrow(
+      "GitHub answered 422: Validation Failed",
+    );
+    expect(net.calls.map((call) => call.headers.authorization)).toEqual(
+      Array(4).fill(net.calls[0]?.headers.authorization),
+    );
+  });
+
+  it("names the page of its settings, under its owner", async () => {
+    const owners = [
+      [{ login: "Dennis-Otto", type: "User" }, "https://github.com/settings"],
+      [
+        { login: "acme", type: "Organization" },
+        "https://github.com/organizations/acme/settings",
+      ],
+      [null, "https://github.com/settings"],
+    ] as const;
+    for (const [owner, settings] of owners) {
+      const net = new Net().on("GET", "/app", () =>
+        json({ slug: "pager", owner }),
+      );
+      expect(await (await github(net)).appSettings()).toBe(
+        `${settings}/apps/pager`,
+      );
+    }
+  });
+
   it("merges by squash, only at the head that was shown", async () => {
     const net = new Net().on("PUT", "/pulls/30/merge", () =>
       json({ merged: true }),

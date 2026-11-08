@@ -1,0 +1,32 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Wenn ein Ereignis von GitHub scheitert
+    accDescr: GitHub stellt dem Pager ein Ereignis zu, und seine Verarbeitung scheitert, etwa bei einem Ausfall von Telegram, sodass der Pager 500 antwortet, oder keine Antwort kommt rechtzeitig. GitHub stellt es von sich aus nie noch einmal zu. Alle 15 Minuten liest der Zeitplan die Zustellungen des Webhooks der App der letzten drei Stunden und lässt GitHub das Ereignis noch einmal zustellen, bis zu drei Versuche insgesamt und zehn Ereignisse pro Lauf. Ein Versuch, der gelingt, beendet es, und da jedes Signal nichts ändert, wenn es zweimal kommt, ist eine erneute Zustellung sicher. Scheitert auch der dritte Versuch, bekommt der Alarm des Steuer-Repositorys einen Eintrag, Ein Ereignis von GitHub scheitert, verlinkt auf die letzten Zustellungen auf der Seite Advanced der App. Dennis kann es dort noch einmal zustellen, und ein Versuch, der gelingt, nimmt den Eintrag heraus.
+
+    event["GitHub stellt dem Pager ein Ereignis zu"]
+    failed["`**❌** Seine Verarbeitung scheitert: Der Pager antwortet 500, oder keine Antwort kommt rechtzeitig`"]
+    schedule["Alle 15 Minuten liest der Zeitplan die Zustellungen der letzten drei Stunden"]
+    again["`**🔁** GitHub stellt es noch einmal zu: drei Versuche insgesamt, zehn Ereignisse pro Lauf`"]
+    passed["`**✅** Ein Versuch gelingt; dasselbe Signal zweimal ändert nichts`"]
+    alarm["`**🚨** Der dritte Versuch scheitert: ein Eintrag im Alarm des Steuer-Repositorys, verlinkt auf die Seite Advanced der App`"]
+    redeliver["Dennis stellt es auf der Seite Advanced noch einmal zu"]
+
+    event --> failed --> schedule --> again
+    again -- "es gelingt" --> passed
+    again -- "es scheitert wieder" --> schedule
+    schedule -- "drei Versuche gescheitert" --> alarm
+    alarm --> redeliver
+    redeliver -- "es gelingt: Der Eintrag verschwindet" --> passed
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    classDef warn fill:#dc26262e,stroke:#dc2626,stroke-width:2px
+    class redeliver you
+    class event,schedule,again bot
+    class passed done
+    class failed,alarm warn

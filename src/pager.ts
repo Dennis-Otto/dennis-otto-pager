@@ -71,6 +71,8 @@ export interface Context {
   sleep: (milliseconds: number) => Promise<void>;
   /** Run a change of the state after every change before it, as src/serial.ts does. */
   exclusive: <T>(work: () => Promise<T>) => Promise<T>;
+  /** How many calls to Telegram and GitHub this request or run made so far. */
+  subrequests: () => number;
 }
 
 /** The words of the log, which stays in English. */
@@ -305,8 +307,8 @@ async function removeEntry(
  * new comment becomes the message that the reply answers: a thing that is still
  * open gets a new message for it, which replaces the old one, and one whose reply
  * went opens again in its topic, where the old message stays as its history. An
- * ignored discussion stays ignored, and a draft that the maintainer wrote himself
- * stays the reply.
+ * ignored discussion stays ignored, a draft that the maintainer wrote himself
+ * stays the reply, and the same comment twice changes nothing.
  */
 async function discussion(
   context: Context,
@@ -316,6 +318,16 @@ async function discussion(
   const known = (await context.store.get(id)) as Contribution | null;
   if (known?.state === "ignored") {
     return "discussion ignored";
+  }
+  // GitHub delivers an event again when asked to, and the schedule asks for one
+  // whose answer failed: the same comment, or the discussion itself after any of
+  // its comments, which all come after it, changes nothing.
+  const shown = known?.discussion;
+  if (
+    shown?.node === signal.node &&
+    (signal.comment === undefined || signal.comment === shown.comment)
+  ) {
+    return "discussion shown already";
   }
   const open = known !== null && !isClosed(known);
   const thread: Discussion = {
@@ -969,7 +981,11 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       });
     case "release-merged":
       return releaseState(context, signal.repo, (item) => {
-        if (item.number !== signal.number || isClosed(item)) {
+        if (
+          item.number !== signal.number ||
+          item.state === "merged" ||
+          isClosed(item)
+        ) {
           return null;
         }
         item.state = "merged";

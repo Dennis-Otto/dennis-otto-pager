@@ -17,6 +17,7 @@ import {
 } from "../src/store.ts";
 import {
   base,
+  DELIVERIES,
   json,
   REPO,
   START,
@@ -1058,7 +1059,7 @@ describe("the schedule", () => {
     await w.context.store.put(gone);
     vi.spyOn(w.context.store, "get").mockResolvedValueOnce(null);
     expect(await runSchedule(w.context)).toEqual([]);
-    expect(w.net.calls).toHaveLength(0);
+    expect(w.net.calls.map((call) => call.url)).toEqual([DELIVERIES]);
     vi.restoreAllMocks();
   });
 
@@ -1172,7 +1173,7 @@ describe("the schedule", () => {
         .mockResolvedValueOnce({ ...contribution });
       w.clock.now = START + 2 * ANSWER_WITHIN;
       expect(await runSchedule(w.context)).toEqual([]);
-      expect(w.net.calls).toHaveLength(0);
+      expect(w.net.calls.map((call) => call.url)).toEqual([DELIVERIES]);
       vi.restoreAllMocks();
     });
   });

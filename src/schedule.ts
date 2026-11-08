@@ -2,9 +2,11 @@
  * The schedule of the Worker, every 15 minutes: a thing that "Later" put aside
  * comes back as a new message when its time is up, a thing whose job of the
  * control repository didn't answer in time gets its buttons back, a text of the
- * maintainer whose answer didn't come in time gets its 😢, and the reminder of the
- * token of Claude comes three weeks before it expires.
+ * maintainer whose answer didn't come in time gets its 😢, the reminder of the
+ * token of Claude comes three weeks before it expires, and an event of GitHub that
+ * the pager failed to handle comes again (src/deliveries.ts).
  */
+import { failedEvents } from "./deliveries.ts";
 import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item, itemId, keys } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
@@ -129,7 +131,12 @@ async function remind(context: Context): Promise<string | null> {
   return id;
 }
 
-/** One run of the schedule; returns the ids of the things that it showed. */
+/**
+ * One run of the schedule; returns the ids of the things that it showed. The
+ * events that failed come last: they take the calls to the network that the steps
+ * before them left, and the requests of the events that GitHub delivers again wait
+ * only for the little that the run does after it asked for them.
+ */
 export async function runSchedule(context: Context): Promise<string[]> {
   const pending = await context.store.pending(
     context.now(),
@@ -141,5 +148,8 @@ export async function runSchedule(context: Context): Promise<string[]> {
   ];
   await giveUp(context);
   const reminder = await remind(context);
-  return reminder === null ? shown : [...shown, reminder];
+  if (reminder !== null) {
+    shown.push(reminder);
+  }
+  return [...shown, ...(await failedEvents(context))];
 }

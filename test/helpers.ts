@@ -13,6 +13,9 @@ import type { Fetch } from "../src/telegram.ts";
 
 export const CHAT = 4242;
 export const START = Date.parse("2026-11-04T08:00:00Z");
+/** The first page of the deliveries of the app's webhook, which each run of the schedule reads. */
+export const DELIVERIES =
+  "https://api.github.com/app/hook/deliveries?per_page=100";
 
 export interface Call {
   method: string;
@@ -49,7 +52,10 @@ function recorded(body: RequestInit["body"]): any {
   return text === "" ? undefined : JSON.parse(text);
 }
 
-/** The simulated network: Telegram answers ok, GitHub hands out tokens. */
+/**
+ * The simulated network: Telegram answers ok, GitHub hands out tokens and lists no
+ * delivery of the webhook.
+ */
 export class Net {
   calls: Call[] = [];
   private handlers: Handler[] = [];
@@ -87,6 +93,9 @@ export class Net {
         ? { message_id: this.nextMessage++ }
         : true;
       return json({ ok: true, result });
+    }
+    if (url === DELIVERIES) {
+      return json([]);
     }
     if (url.endsWith("/access_tokens")) {
       return json({

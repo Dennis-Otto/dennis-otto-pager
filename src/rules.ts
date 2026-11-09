@@ -184,12 +184,16 @@ export interface Where {
   installation: number;
 }
 
-/** What fails: an entry of the alarm, and the run of GitHub Actions that it names, if any. */
+/**
+ * What fails: an entry of the alarm, the run of GitHub Actions that it names, if
+ * any, and whether it asks for an upload that only a person can make.
+ */
 interface Failure {
   key: string;
   label: Phrase;
   url: string;
   run?: number;
+  upload?: true;
 }
 
 /** The start of what an issue, a pull request, a discussion or a comment says, if anything. */
@@ -541,16 +545,19 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
   const number = issue?.number ?? 0;
   if (labels(payload).includes(BOT_FAILURE) && isBot(issue?.user)) {
     const run = healthRun(issue?.body);
+    const upload = asksForUpload(issue?.body);
     const failure: Failure = {
       key: `issue:${number}`,
       // The issue of the social preview fails nothing, so its entry says what to
       // do; it keeps the link of the issue, which holds the picture to save and the
-      // way to the settings of the repository, where only a person can upload it.
-      label: asksForUpload(issue?.body)
+      // way to the settings of the repository, where only a person can upload it,
+      // and its mark keeps 🛠 Start fix away from it.
+      label: upload
         ? { key: "entry.preview" }
         : { key: "entry.bot", values: { title: issue?.title ?? "" } },
       url: issue?.html_url ?? "",
       ...withRun(run),
+      ...(upload ? { upload: true } : {}),
     };
     // Each new failure of its bot edits the open issue, with the run that failed
     // now. The pager reads that run and takes it as the event of its workflow,

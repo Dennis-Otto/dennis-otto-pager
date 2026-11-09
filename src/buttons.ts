@@ -10,6 +10,7 @@ import {
   type Contribution,
   DELIVERY_ENTRY,
   type Decision,
+  type Entry,
   type Item,
   SECRET_ENTRY,
 } from "./store.ts";
@@ -56,12 +57,18 @@ function contribution(item: Contribution): Action[] {
   }
 }
 
-/** Whether a bundle has entries, and the key of each starts with start. */
-function onlyOf(item: Alarm | Alert, start: string): boolean {
-  return (
-    item.entries.length > 0 &&
-    item.entries.every((entry) => entry.key.startsWith(start))
-  );
+/**
+ * Whether 🛠 Start fix has nothing for Claude in an entry of a bundle. In an alarm:
+ * an event of GitHub that failed, since Claude sees neither the deliveries on the
+ * app's Advanced page nor the logs of the Worker, and the upload of the social
+ * preview, which only a person can make, since no API offers it. In a security
+ * message: a secret that leaked, which is revoked where it was issued, which no
+ * change of the code does, and Claude sees no alert of secret scanning.
+ */
+function nothingToFix(item: Alarm | Alert, entry: Entry): boolean {
+  return item.kind === "alarm"
+    ? entry.key.startsWith(DELIVERY_ENTRY) || entry.upload === true
+    : entry.key.startsWith(SECRET_ENTRY);
 }
 
 /** The actions of an alarm or of the security message of a repository in its current state. */
@@ -69,12 +76,12 @@ function bundle(item: Alarm | Alert): Action[] {
   switch (item.state) {
     case "open":
       // 🔁 Rerun where an entry of an alarm names a run that failed: it costs no
-      // run of Claude. An alarm of events of GitHub that failed alone gets no 🛠
-      // Start fix: Claude sees neither the deliveries on the app's Advanced page
-      // nor the logs of the Worker. Nor does a security message of secrets
-      // alone: a secret that leaked is revoked where it was issued, which no
-      // change of the code does, and Claude sees no alert of secret scanning.
-      if (onlyOf(item, item.kind === "alarm" ? DELIVERY_ENTRY : SECRET_ENTRY)) {
+      // run of Claude. A bundle whose entries all leave Claude nothing to fix
+      // gets no 🛠 Start fix.
+      if (
+        item.entries.length > 0 &&
+        item.entries.every((entry) => nothingToFix(item, entry))
+      ) {
         return ["later", "ignore"];
       }
       return item.kind === "alarm" &&

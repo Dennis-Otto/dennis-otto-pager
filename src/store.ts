@@ -17,6 +17,11 @@ export interface Entry {
   run?: number;
   /** 🔁 Rerun started its failed jobs again; the next failure or pass of the entry ends it. */
   rerun?: true;
+  /**
+   * The entry asks for an upload that only a person can make, that of the social
+   * preview, which no API offers: 🛠 Start fix leaves it out.
+   */
+  upload?: true;
 }
 
 /** The topic of the chat that a thing has: its thread, and the name that it shows now. */
@@ -422,6 +427,39 @@ interface Marks {
   remind?: number;
 }
 
+/**
+ * The labels that pagers up to 0.8.1 gave the entry of the issue of the bot-health
+ * bot that asks for an upload of the social preview, before such an entry had its
+ * mark, in English and in German: as a bot that fails up to 0.8.0, with the title
+ * that the bot gives the issue (PREVIEW_TITLE of the blueprint's bot_health.py),
+ * and by what to do in 0.8.1. Each comes from that one issue alone, and they stay
+ * as those pagers wrote them, whatever the catalogs say now.
+ */
+const UPLOAD_LABELS: ReadonlySet<string> = new Set([
+  "A bot fails: Upload the new social preview",
+  "Ein Bot scheitert: Upload the new social preview",
+  "🖼 Upload the new social preview",
+  "🖼 Lade die neue Social Preview hoch",
+]);
+
+/**
+ * A thing as the pager keeps it now. An entry of an alarm that asks for the upload
+ * of the social preview, kept before such an entry had its mark, gets the mark by
+ * its label, so that the alarm offers no 🛠 Start fix from its next read on; its
+ * record keeps the mark from the next write of the thing, and a read alone writes
+ * nothing.
+ */
+function current(item: Item): Item {
+  if (item.kind === "alarm") {
+    for (const entry of item.entries) {
+      if (UPLOAD_LABELS.has(entry.label)) {
+        entry.upload = true;
+      }
+    }
+  }
+  return item;
+}
+
 export class Store {
   private readonly kv: KVNamespace;
 
@@ -430,7 +468,8 @@ export class Store {
   }
 
   async get(id: string): Promise<Item | null> {
-    return this.kv.get<Item>(`item:${id}`, "json");
+    const item = await this.kv.get<Item>(`item:${id}`, "json");
+    return item === null ? null : current(item);
   }
 
   /**

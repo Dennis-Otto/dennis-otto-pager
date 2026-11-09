@@ -1,7 +1,10 @@
 // What each signal does to the messages: a new one for a new thing, an edit as the
 // thing changes, bundles per repository, and the steps of a release.
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
+import { press } from "../src/actions.ts";
+import { allowed } from "../src/buttons.ts";
 import { MAX_EXCERPT, NOTES_MARK } from "../src/content.ts";
 import { apply, QUIET, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
@@ -14,6 +17,7 @@ import {
   type Release,
 } from "../src/store.ts";
 import {
+  base,
   json,
   REPO,
   START,
@@ -1072,6 +1076,112 @@ describe("the alarm of a repository", () => {
       "lint fails on main",
     );
     expect(await apply(w.context, check("lint", false))).toBe("alarm closed");
+  });
+
+  it("offers no Start fix for the upload of the social preview, which only a person can make, and leaves it out of a fix", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    const issue = `https://github.com/${REPO}/issues/123`;
+    const upload: Signal = {
+      ...at,
+      type: "failing",
+      key: "issue:123",
+      label: { key: "entry.preview" },
+      url: issue,
+      upload: true,
+    };
+    expect(await apply(w.context, upload)).toBe("alarm opened");
+    expect(((await stored(w, keys.alarm(REPO))) as Alarm).entries).toEqual([
+      {
+        key: "issue:123",
+        label: "🖼 Upload the new social preview",
+        url: issue,
+        upload: true,
+      },
+    ]);
+    expect(
+      w.net
+        .telegram("sendMessage")[0]
+        ?.body.reply_markup.inline_keyboard.flat()
+        .map((button: { text: string }) => button.text),
+    ).toEqual(["⏰ Later", "✖ Ignore"]);
+    expect(await apply(w.context, { ...upload, type: "still-failing" })).toBe(
+      "alarm unchanged",
+    );
+    // A bot that fails as well brings 🛠 Start fix back, which sends that bot alone.
+    await apply(w.context, failing("issue:5", "CI fails on main"));
+    const both = (await stored(w, keys.alarm(REPO))) as Alarm;
+    expect(allowed(both)).toEqual(["fix", "later", "ignore"]);
+    await press(w.context, both, { action: "fix", id: both.id, version: null });
+    expect(w.net.github("/dispatches")[0]?.body.client_payload.entries).toEqual(
+      [{ label: "A bot fails: CI fails on main", url: "https://github.com/x" }],
+    );
+    // The bot closes its issue once GitHub shows the picture: the entry leaves.
+    expect(
+      await apply(w.context, { ...at, type: "recovered", key: "issue:123" }),
+    ).toBe("alarm updated");
+    expect(
+      ((await stored(w, keys.alarm(REPO))) as Alarm).entries,
+    ).toMatchObject([{ key: "issue:5" }]);
+  });
+
+  it("marks the entry of an upload that it kept before the mark, by the label that it gave it", async () => {
+    const w = await world();
+    const id = await itemId(keys.alarm(REPO));
+    const entry = (number: number, label: string) => ({
+      key: `issue:${number}`,
+      label,
+      url: `https://github.com/${REPO}/issues/${number}`,
+    });
+    // The entries of the social preview as pagers kept them up to 0.8.1, in
+    // English and in German: since 0.8.1 by what to do, before as a bot that fails.
+    const kept: Alarm = {
+      ...base(id),
+      kind: "alarm",
+      state: "open",
+      entries: [
+        entry(1, "🖼 Upload the new social preview"),
+        entry(2, "🖼 Lade die neue Social Preview hoch"),
+        entry(3, "A bot fails: Upload the new social preview"),
+        entry(4, "Ein Bot scheitert: Upload the new social preview"),
+      ],
+    };
+    await w.context.store.put(kept);
+    const read = (await w.context.store.get(id)) as Alarm;
+    expect(read.entries.map((each) => each.upload)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect(allowed(read)).toEqual(["later", "ignore"]);
+    // Every other entry stays as it was, and with it 🛠 Start fix.
+    const other = entry(5, "A bot fails: CI fails on main");
+    await w.context.store.put({ ...kept, entries: [...kept.entries, other] });
+    const mixed = (await w.context.store.get(id)) as Alarm;
+    expect(mixed.entries[4]).toEqual(other);
+    expect(allowed(mixed)).toEqual(["fix", "later", "ignore"]);
+    // The closing of an issue takes its entry out by its key, as before, and the
+    // record keeps the mark from its next write on.
+    expect(
+      await apply(w.context, { ...at, type: "recovered", key: "issue:5" }),
+    ).toBe("alarm updated");
+    expect(await env.PAGER.get(`item:${id}`, "json")).toMatchObject({
+      entries: [1, 2, 3, 4].map((number) => ({
+        key: `issue:${number}`,
+        upload: true,
+      })),
+    });
+    const message = w.net.telegram("editMessageText")[0]?.body;
+    expect(
+      message.reply_markup.inline_keyboard
+        .flat()
+        .map((button: { text: string }) => button.text),
+    ).toEqual(["⏰ Later", "✖ Ignore"]);
   });
 });
 

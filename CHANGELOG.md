@@ -9,10 +9,9 @@ requests when there is none.
 
 ## [0.8.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.0...v0.8.1) (2026-11-09)
 
-
 ### Bug fixes
 
-* the reminder to upload a new social preview no longer says that a bot fails ([#125](https://github.com/Dennis-Otto/repo-pager/issues/125)) ([66b78ea](https://github.com/Dennis-Otto/repo-pager/commit/66b78ea33014b6efeaddd0d3a44268528b7e8777))
+- The issue of the bot-health bot that asks for an upload of the new social preview no longer reaches you as *A bot fails: Upload the new social preview*, since nothing fails: the alarm says *🖼 Upload the new social preview*, in German *🖼 Lade die neue Social Preview hoch*, and links the issue with the picture and the way to the settings of the repository.
 
 ## [0.8.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.7.0...v0.8.0) (2026-11-08)
 

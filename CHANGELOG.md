@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.8.2](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.1...v0.8.2) (2026-11-09)
+
+
+### Bug fixes
+
+* the alarm of a social preview to upload no longer offers Start fix ([#133](https://github.com/Dennis-Otto/repo-pager/issues/133)) ([1ddb226](https://github.com/Dennis-Otto/repo-pager/commit/1ddb2268c266fe9888493fbca141f85a04b2952f))
+
 ## [0.8.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.0...v0.8.1) (2026-11-09)
 
 ### Bug fixes

@@ -109,6 +109,7 @@ const en = {
   "caption.deleted": "🗑 Deleted: {path}",
 
   "entry.bot": "A bot fails: {title}",
+  "entry.preview": "🖼 Upload the new social preview",
   "entry.release": "The release fails: {name}",
   "entry.check": "{name} fails on {branch}",
   "entry.delivery": "An event of GitHub fails: {event}",
@@ -398,6 +399,7 @@ const de: Catalog = {
   "caption.deleted": "🗑 Gelöscht: {path}",
 
   "entry.bot": "Ein Bot scheitert: {title}",
+  "entry.preview": "🖼 Lade die neue Social Preview hoch",
   "entry.release": "Das Release scheitert: {name}",
   "entry.check": "{name} scheitert auf {branch}",
   "entry.delivery": "Ein Ereignis von GitHub scheitert: {event}",

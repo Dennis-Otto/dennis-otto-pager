@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_EXCERPT } from "../src/content.ts";
 import {
+  asksForUpload,
   checkRunOf,
   classify,
   finishedRun,
@@ -749,6 +750,80 @@ describe("main failing", () => {
     expect(
       classify("issues", event({ action: "edited", issue: closed }), ME),
     ).toEqual({ ignored: "the edited of a bot-failure issue" });
+  });
+
+  it("words the issue that asks for an upload of the social preview as what to do, not as a bot that fails", () => {
+    // The bot keeps this issue open while GitHub shows another picture than the
+    // committed one, which only a person can upload: it names no run, and nothing fails.
+    const issue = {
+      number: 123,
+      title: "Upload the new social preview",
+      body: '<!-- bot-health {"key": "social-preview", "sha256": "ab-\\u002dcd"} -->\nGitHub shows a card of its own.',
+      state: "open",
+      html_url: "https://github.com/Dennis-Otto/demo/issues/123",
+      user: bot,
+      labels: [{ name: "bot-failure" }],
+    };
+    const upload = {
+      key: "issue:123",
+      label: { key: "entry.preview" },
+      url: issue.html_url,
+    };
+    expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
+      signal: {
+        ...at,
+        type: "health",
+        branch: "main",
+        fallback: { type: "failing", ...upload },
+      },
+    });
+    // A new picture edits the issue, and the bot closes it once GitHub shows it.
+    expect(
+      classify("issues", event({ action: "edited", issue }), ME),
+    ).toMatchObject({
+      signal: { fallback: { type: "still-failing", ...upload } },
+    });
+    expect(classify("issues", event({ action: "closed", issue }), ME)).toEqual({
+      signal: { ...at, type: "recovered", key: "issue:123" },
+    });
+    // The marker decides, not the title: another key is a bot that fails.
+    const renovate = {
+      ...issue,
+      title: "Renovate logs problems",
+      body: '<!-- bot-health {"key": "renovate", "quiet": 0} -->',
+    };
+    expect(
+      classify("issues", event({ action: "opened", issue: renovate }), ME),
+    ).toMatchObject({
+      signal: {
+        fallback: {
+          label: {
+            key: "entry.bot",
+            values: { title: "Renovate logs problems" },
+          },
+        },
+      },
+    });
+  });
+
+  it("knows the issue of the social preview only by the key in a marker of the bot-health bot", () => {
+    expect(asksForUpload('<!-- bot-health {"key": "social-preview"} -->')).toBe(
+      true,
+    );
+    for (const body of [
+      undefined,
+      null,
+      "",
+      "social-preview",
+      '<!-- bot-health {"key": "renovate"} -->',
+      '<!-- bot-health {"key": ".github/workflows/ci.yml", "run": 7} -->',
+      '<!-- bot-health {"key": ["social-preview"]} -->',
+      '<!-- bot-health {"key": "social-preview"}',
+      "<!-- bot-health null -->",
+      '<!-- bot-health "social-preview" -->',
+    ]) {
+      expect(asksForUpload(body), String(body)).toBe(false);
+    }
   });
 
   it("reads a run only from a marker of the bot-health bot that names one", () => {

@@ -261,6 +261,28 @@ describe("the pager in German", () => {
     });
   });
 
+  it("asks for the upload of the social preview in each language, with the link of its issue, and calls nothing a failure", async () => {
+    expect(texts("en").phrase({ key: "entry.preview" })).toBe(
+      "🖼 Upload the new social preview",
+    );
+    const w = await german();
+    const url = `https://github.com/${REPO}/issues/123`;
+    await apply(w.context, {
+      repo: REPO,
+      installation: 9,
+      type: "failing",
+      key: "issue:123",
+      label: { key: "entry.preview" },
+      url,
+    });
+    const text = w.net.telegram("sendMessage")[0]?.body.text;
+    expect(text).toContain(`🚨 <b>${REPO} braucht dich</b>`);
+    expect(text).toContain(
+      `• <a href="${url}">🖼 Lade die neue Social Preview hoch</a>`,
+    );
+    expect(text).not.toContain("scheitert");
+  });
+
   it("shows the answers of the control repository with German buttons and usage", async () => {
     const w = await german();
     const id = await itemId(keys.contribution(REPO, 12));

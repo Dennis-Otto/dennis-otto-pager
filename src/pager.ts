@@ -231,13 +231,14 @@ function sameNotes(
   return JSON.stringify(one) === JSON.stringify(other);
 }
 
-/** Whether two entries of a bundle show the same. */
+/** Whether two entries of a bundle show the same, with the same buttons. */
 function sameEntry(one: Entry, other: Entry): boolean {
   return (
     one.label === other.label &&
     one.url === other.url &&
     one.run === other.run &&
-    one.rerun === other.rerun
+    one.rerun === other.rerun &&
+    one.upload === other.upload
   );
 }
 
@@ -1228,6 +1229,7 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
           label: context.t.phrase(signal.label),
           url: signal.url,
           ...(signal.run === undefined ? {} : { run: signal.run }),
+          ...(signal.upload === undefined ? {} : { upload: signal.upload }),
         },
         signal.type === "still-failing" ? "change" : null,
       );

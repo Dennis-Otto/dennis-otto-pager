@@ -793,6 +793,14 @@ describe("each signal applied twice", () => {
     label: { key: "entry.bot", values: { title } },
     url: "https://github.com/x",
   });
+  const upload = (type: "failing" | "still-failing"): Signal => ({
+    ...at,
+    type,
+    key: "issue:123",
+    label: { key: "entry.preview" },
+    url: `https://github.com/${REPO}/issues/123`,
+    upload: true,
+  });
   const alert = (key: string): Signal => ({
     ...at,
     type: "alert-open",
@@ -877,6 +885,12 @@ describe("each signal applied twice", () => {
       "still-failing",
       [failing("bot:1")],
       failing("bot:1", "again", "still-failing"),
+    ],
+    ["failing: an upload", [], upload("failing")],
+    [
+      "still-failing: an upload kept before its mark",
+      [failing("issue:123", "Upload the new social preview")],
+      upload("still-failing"),
     ],
     [
       "recovered",

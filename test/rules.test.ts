@@ -764,10 +764,13 @@ describe("main failing", () => {
       user: bot,
       labels: [{ name: "bot-failure" }],
     };
+    // Its entry keeps the key of the issue, whose closing takes it out, and is
+    // marked as an upload, which no 🛠 Start fix can make.
     const upload = {
       key: "issue:123",
       label: { key: "entry.preview" },
       url: issue.html_url,
+      upload: true,
     };
     expect(classify("issues", event({ action: "opened", issue }), ME)).toEqual({
       signal: {

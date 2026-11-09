@@ -74,9 +74,13 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
     repo: item.repo,
     kind: item.kind,
     // A secret that leaked is revoked where it was issued, which no change of the
-    // code does, and Claude sees no alert of secret scanning: it gets the rest.
+    // code does, and Claude sees no alert of secret scanning; only a person can
+    // upload the social preview, which no API offers: Claude gets the rest.
     entries: item.entries
-      .filter((entry) => !entry.key.startsWith(SECRET_ENTRY))
+      .filter(
+        (entry) =>
+          !entry.key.startsWith(SECRET_ENTRY) && entry.upload === undefined,
+      )
       .map(({ label, url }) => ({ label, url })),
   });
   if (failed !== null) {

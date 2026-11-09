@@ -209,6 +209,20 @@ describe("the buttons", () => {
         { ...base(ID), kind: "alarm", state: "open", entries: [] },
         ["fix", "later", "ignore"],
       ],
+      // Only a person can upload the social preview, and Claude sees no
+      // delivery of an event: neither gives 🛠 Start fix anything to do.
+      [
+        {
+          ...base(ID),
+          kind: "alarm",
+          state: "open",
+          entries: [
+            { key: "issue:123", label: "", url: "", upload: true },
+            { key: "delivery:abc", label: "", url: "" },
+          ],
+        },
+        ["later", "ignore"],
+      ],
       [
         { ...base(ID), kind: "alert", state: "fixing", entries: [] },
         ["later", "ignore"],

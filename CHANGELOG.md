@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.8.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.0...v0.8.1) (2026-11-09)
+
+
+### Bug fixes
+
+* the reminder to upload a new social preview no longer says that a bot fails ([#125](https://github.com/Dennis-Otto/repo-pager/issues/125)) ([66b78ea](https://github.com/Dennis-Otto/repo-pager/commit/66b78ea33014b6efeaddd0d3a44268528b7e8777))
+
 ## [0.8.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.7.0...v0.8.0) (2026-11-08)
 
 ### Features

@@ -30,6 +30,12 @@ export const RELEASE_WORKFLOWS = new Set([
 export const VISUAL_WORKFLOW = ".github/workflows/visual.yml";
 /** The label of the issues of the bot-health bot about a bot that fails on main. */
 export const BOT_FAILURE = "bot-failure";
+/**
+ * The key in the marker of the one issue of the bot-health bot that fails nothing,
+ * though it has the label bot-failure too: it asks for an upload of the social
+ * preview, which no API offers (decision 0132 of the blueprint).
+ */
+export const SOCIAL_PREVIEW = "social-preview";
 /** The severities of a code-scanning alert that page the maintainer. */
 export const SEVERE = new Set(["high", "critical"]);
 /** The severities that a reporter or the maintainer may give a vulnerability report. */
@@ -474,12 +480,12 @@ const HEALTH_START = "<!-- bot-health ";
 const HEALTH_END = " -->";
 
 /**
- * The run that an issue of the bot-health bot names: the newest that failed, which
- * the bot writes into the marker of its body, such as
- * <!-- bot-health {"attempt": 1, "run": 3, ...} -->, at each failure. Two searches
- * for text, not a regular expression, so that no body can make it slow.
+ * The state that an issue of the bot-health bot keeps in the marker of its body,
+ * such as <!-- bot-health {"attempt": 1, "run": 3, ...} -->; undefined without a
+ * marker whose JSON reads. Two searches for text, not a regular expression, so
+ * that no body can make it slow.
  */
-export function healthRun(body: string | null | undefined): number | undefined {
+function healthState(body: string | null | undefined): unknown {
   const text = body ?? "";
   const start = text.indexOf(HEALTH_START);
   const end =
@@ -488,13 +494,32 @@ export function healthRun(body: string | null | undefined): number | undefined {
     return undefined;
   }
   try {
-    const state: unknown = JSON.parse(
-      text.slice(start + HEALTH_START.length, end),
-    );
-    return runId((state as { run?: unknown } | null)?.run);
+    return JSON.parse(text.slice(start + HEALTH_START.length, end));
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The run that an issue of the bot-health bot names: the newest that failed, which
+ * the bot writes into the marker of its body at each failure.
+ */
+export function healthRun(body: string | null | undefined): number | undefined {
+  return runId(
+    (healthState(body) as { run?: unknown } | null | undefined)?.run,
+  );
+}
+
+/**
+ * Whether an issue of the bot-health bot is the one that asks for an upload of the
+ * social preview, by the key social-preview in its marker: GitHub shows another
+ * picture than the committed one, and only a person can upload it, so nothing fails.
+ */
+export function asksForUpload(body: string | null | undefined): boolean {
+  return (
+    (healthState(body) as { key?: unknown } | null | undefined)?.key ===
+    SOCIAL_PREVIEW
+  );
 }
 
 /** The job of a run of GitHub Actions, as the address of its check run names it. */
@@ -518,7 +543,12 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
     const run = healthRun(issue?.body);
     const failure: Failure = {
       key: `issue:${number}`,
-      label: { key: "entry.bot", values: { title: issue?.title ?? "" } },
+      // The issue of the social preview fails nothing, so its entry says what to
+      // do; it keeps the link of the issue, which holds the picture to save and the
+      // way to the settings of the repository, where only a person can upload it.
+      label: asksForUpload(issue?.body)
+        ? { key: "entry.preview" }
+        : { key: "entry.bot", values: { title: issue?.title ?? "" } },
       url: issue?.html_url ?? "",
       ...withRun(run),
     };

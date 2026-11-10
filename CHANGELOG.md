@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.9.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.9.0...v0.9.1) (2026-11-10)
+
+
+### Bug fixes
+
+* the message of a failing workflow lands in its own topic ([#145](https://github.com/Dennis-Otto/repo-pager/issues/145)) ([b97678e](https://github.com/Dennis-Otto/repo-pager/commit/b97678e4686d4d750a2bfd518a418598b96fb1a1))
+
 ## [0.9.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.2...v0.9.0) (2026-11-10)
 
 ### Features

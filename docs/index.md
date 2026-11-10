@@ -14,7 +14,7 @@ The pager writes only when something needs its maintainer, never to say that all
 | ✅ Confirm | Runs the one action that an answer of the control repository proposes, such as a merge you asked about, or 🔁 Rerun after a fix found an outage of GitHub, while its thing still offers it |
 | ⏰ Later, ✖ Ignore | Brings the thing back after four hours, or closes it |
 
-The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for the maintainer's own pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository.
+The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for the maintainer's own pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository and the notes of a release, which the control repository translates.
 
 - [How it works](how-it-works.md): the rules of what counts, the buttons, the control repository, the questions and reports of your agents, and the state.
 - [Set up](setup.md): your own instance, since there is no shared app, with your copy, the bot, the Worker, the GitHub App, the secrets and the webhook, step by step.

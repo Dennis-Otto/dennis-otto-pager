@@ -21,6 +21,7 @@ import {
   type Workflow,
 } from "./store.ts";
 import type { Texts } from "./texts.ts";
+import { MAX_SHOWN_LINE, shownNotes } from "./translations.ts";
 
 /** A text escaped for the HTML of Telegram, and cut to at most max characters. */
 export function html(text: string, max = 300): string {
@@ -236,7 +237,7 @@ function quote(item: Contribution, room: number): string | null {
  * or an issue, such as #56, linked to it in the repository of the release.
  */
 function linked(text: string, repo: string): string {
-  return html(text).replace(
+  return html(text, MAX_SHOWN_LINE).replace(
     /(^|[\s(])#(\d{1,7})\b/g,
     (_, before: string, number: string) =>
       `${before}${link(`#${number}`, `https://github.com/${repo}/issues/${number}`)}`,
@@ -244,7 +245,8 @@ function linked(text: string, repo: string): string {
 }
 
 /**
- * The notes of a release: each heading in bold, each item after a bullet, and a
+ * The notes of a release, in the language of the pager once their translation
+ * came (src/translations.ts): each heading in bold, each item after a bullet, and a
  * link to the pull request for those that the message leaves out; null when the
  * notes have no line.
  */
@@ -253,7 +255,7 @@ function notesText(
   notes: ReleaseNotes,
   t: Texts,
 ): string | null {
-  const lines = notes.lines.map((line) => {
+  const lines = shownNotes(notes, item.translation, t).map((line) => {
     if ("heading" in line) {
       return `<b>${html(line.heading)}</b>`;
     }

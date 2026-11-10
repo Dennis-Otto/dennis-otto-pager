@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: A topic per thing
-    accDescr: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the answer of Fix, the prompt of Edit, what Later brings back and the answers to what the maintainer asks in the topic follow in it; their question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. When the maintainer deletes the topic, the next message of the thing opens a new one, with the thing's own message first. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before.
+    accDescr: A new thing, such as an alarm, a contribution or a release, opens a topic of its own in the chat, named after its repository and what it is. Its message with the buttons comes first, and its changes edit it there. Its drafts, the answer of Fix, the prompt of Edit, what Later brings back and the answers to what the maintainer asks in the topic follow in it; their question goes to the control repository together with the thing. Once the thing is done, its topic gets a check mark in front of its name and stays. When the maintainer deletes the topic, the next message of the thing opens a new one, with the thing's own message first. Without Threaded Mode, or when Telegram refuses the topic or a message in it, the thing goes on in the main view, as before. A refused topic pauses new topics for an hour, doubling up to four hours, and once the pause is over, the next change of an open thing moves it quietly into its own new topic.
 
     thing["A new thing: an alarm, a contribution, a release, code scanning"]
     open["`**createForumTopic** opens its topic, such as 🚨 demo needs you`"]
@@ -24,6 +24,7 @@ flowchart TB
     more -- "merged, green again, ignored" --> done
     done -- "done for the maintainer" --> gone
     open -- "no topics, or Telegram refuses" --> main
+    main -- "its next change, once Telegram opens topics again (after the pause)" --> open
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
     classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px

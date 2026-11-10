@@ -17,6 +17,7 @@ import { type Item, isClosed, type Kind, type Topic } from "./store.ts";
 import {
   type Keyboard,
   type Sent,
+  TelegramError,
   TOPIC_COLORS,
   type TopicColor,
 } from "./telegram.ts";
@@ -141,8 +142,12 @@ async function intoNewTopic(
     return null;
   }
   const thread = await context.telegram.openTopic(name, color);
+  if (thread === null) {
+    // A failure that passes, such as a 5xx, costs this one message and no pause.
+    return null;
+  }
   let message: number | null = null;
-  if (thread !== null) {
+  if (thread !== "refused") {
     try {
       message = await context.telegram.postInto(text, buttons, thread, silent);
     } catch (error) {
@@ -155,7 +160,7 @@ async function intoNewTopic(
       await context.telegram.removeTopic(thread);
     }
   }
-  if (thread === null || message === null) {
+  if (thread === "refused" || message === null) {
     const length =
       pause === null
         ? TOPIC_PAUSE
@@ -260,6 +265,28 @@ export async function moveIntoTopic(
 }
 
 /**
+ * Take the old message of a thing that moved into its topic out of the main view:
+ * delete it, or, since Telegram deletes no message older than 48 hours, show the
+ * thing there as it is now, without its buttons, which its message in the topic has.
+ */
+export async function leaveMainView(
+  context: Context,
+  old: number,
+  text: string,
+): Promise<void> {
+  if (await context.telegram.remove(old)) {
+    return;
+  }
+  try {
+    await context.telegram.edit(old, text, []);
+  } catch (error) {
+    if (!(error instanceof TelegramError)) {
+      throw error;
+    }
+  }
+}
+
+/**
  * Send a message below the message of a thing, such as the pictures of a release,
  * the notice of a new comment or a draft only to read: into the thing's topic, or
  * into the main view as a reply to its message when the thing has no topic and gets
@@ -303,7 +330,7 @@ export async function postBelow(
   }
   if (waiting !== null) {
     // Its message moved out of the main view.
-    await context.telegram.remove(waiting);
+    await leaveMainView(context, waiting, own);
   }
   // Its topic went with its message, and without a new one both go into the main view.
   item.messageId = moved ?? (await context.telegram.send(own, ownButtons));

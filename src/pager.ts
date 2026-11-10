@@ -8,7 +8,7 @@
  */
 import { keyboard } from "./buttons.ts";
 import { type ReleaseNotes, releaseNotes } from "./content.ts";
-import type { Local } from "./context.ts";
+import { describe, type Local } from "./context.ts";
 import {
   type GitHub,
   GitHubError,
@@ -69,7 +69,13 @@ import {
   type Thread,
 } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
-import { moveIntoTopic, postBelow, retitle, sendThing } from "./topics.ts";
+import {
+  leaveMainView,
+  moveIntoTopic,
+  postBelow,
+  retitle,
+  sendThing,
+} from "./topics.ts";
 import {
   NOTES_LANGUAGE,
   notesKey,
@@ -130,10 +136,19 @@ export async function show(
   const old = item.messageId;
   let shown = false;
   if (old !== null && !fresh) {
-    const moved = await moveIntoTopic(context, item, text, buttons);
+    let moved: number | null = null;
+    try {
+      moved = await moveIntoTopic(context, item, text, buttons);
+    } catch (error) {
+      // Such as too many requests at once: the edit in place shows the change, and
+      // the next change tries the move again.
+      console.warn(
+        `Telegram moves no message into a topic: ${describe(error)}; edited in place`,
+      );
+    }
     if (moved !== null) {
       item.messageId = moved;
-      await context.telegram.remove(old);
+      await leaveMainView(context, old, text);
     }
     shown = moved !== null || (await context.telegram.edit(old, text, buttons));
   }

@@ -29,6 +29,7 @@ import { texts } from "../src/texts.ts";
 import {
   about,
   isDone,
+  leaveMainView,
   MAX_ABOUT,
   MAX_LINKS,
   MAX_TOPIC_NAME,
@@ -1019,9 +1020,14 @@ describe("a topic that Telegram refuses", () => {
     expect(MAX_TOPIC_PAUSE).toBe(4 * TOPIC_PAUSE);
     expect(w.net.telegram("createForumTopic")).toHaveLength(5);
     // Workers KV forgets a pause after a day, so the next refusal pauses for an hour.
-    expect(
-      (await env.PAGER.list({ prefix: "pause:" })).keys[0]?.expiration,
-    ).toBeGreaterThan(0);
+    const day = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+    const expiration =
+      (await env.PAGER.list({ prefix: "pause:" })).keys[0]?.expiration ?? 0;
+    expect(expiration).toBeGreaterThan(day - 60);
+    expect(expiration).toBeLessThanOrEqual(day + 60);
+    await env.PAGER.delete("pause:topics");
+    await show(w.context, { ...workflow, messageId: 7 });
+    expect((await w.context.store.topicPause())?.length).toBe(TOPIC_PAUSE);
     warn.mockRestore();
   });
 
@@ -1035,6 +1041,123 @@ describe("a topic that Telegram refuses", () => {
       await postInNewTopic(w.context, "🧾 Run", REPORT_COLOR, "Done.", []),
     ).toEqual({ message: 100, topic: null });
     expect(w.net.telegram("createForumTopic")).toHaveLength(0);
+  });
+
+  it("pauses no new topics when Telegram fails for a moment", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    const failing = { on: true };
+    w.net.on("POST", /\/createForumTopic$/, () =>
+      failing.on
+        ? json(
+            {
+              ok: false,
+              error_code: 500,
+              description: "Internal Server Error",
+            },
+            500,
+          )
+        : undefined,
+    );
+    await show(w.context, structuredClone(workflow));
+    expect(sent(w)[0]).not.toHaveProperty("message_thread_id");
+    expect(await w.context.store.topicPause()).toBeNull();
+    // The next change asks for its topic again at once.
+    failing.on = false;
+    const again = await workflowOf(w);
+    again.count = 2;
+    await show(w.context, again);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    expect(await workflowOf(w)).toMatchObject({
+      messageId: 101,
+      topic: { thread: 900 },
+    });
+    warn.mockRestore();
+  });
+
+  it("edits a thing in place when the move into its topic fails, and tries again with the next change", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    const busy = { on: true };
+    w.net.on("POST", /\/sendMessage$/, (call) =>
+      busy.on && call.body.message_thread_id === 900
+        ? json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 30",
+              parameters: { retry_after: 30 },
+            },
+            429,
+          )
+        : undefined,
+    );
+    await show(w.context, { ...workflow, messageId: 7 });
+    expect(
+      w.net.telegram("editMessageText").map((c) => c.body.message_id),
+    ).toEqual([7]);
+    expect(w.net.telegram("deleteForumTopic")).toHaveLength(1);
+    expect(w.net.telegram("deleteMessage")).toHaveLength(0);
+    expect(await workflowOf(w)).toMatchObject({ messageId: 7, topic: null });
+    expect(await w.context.store.topicPause()).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram moves no message into a topic: Telegram sendMessage: Too Many Requests: retry after 30; edited in place",
+    );
+    busy.on = false;
+    await show(w.context, await workflowOf(w));
+    expect(await workflowOf(w)).toMatchObject({
+      messageId: 100,
+      topic: { thread: 901 },
+    });
+    warn.mockRestore();
+  });
+
+  it("keeps the old message without its buttons when Telegram deletes it no more", async () => {
+    // Telegram deletes no message older than 48 hours, as a thing that waited out
+    // the outage of new topics would have.
+    const tooOld = "Bad Request: message can't be deleted for everyone";
+    const w = await chat();
+    w.net.on("POST", /\/deleteMessage$/, refused(tooOld));
+    await show(w.context, { ...workflow, messageId: 7, count: 2 });
+    expect(sent(w).at(-1)).toMatchObject({
+      message_thread_id: 900,
+      disable_notification: true,
+    });
+    const edits = w.net.telegram("editMessageText").map((c) => c.body);
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({
+      message_id: 7,
+      text: sent(w).at(-1)?.text,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(await workflowOf(w)).toMatchObject({
+      messageId: 100,
+      topic: { thread: 900 },
+    });
+    // An edit that Telegram refuses as well leaves the old message as it is.
+    const stuck = await chat();
+    stuck.net
+      .on("POST", /\/deleteMessage$/, refused(tooOld))
+      .on(
+        "POST",
+        /\/editMessageText$/,
+        refused("Bad Request: MESSAGE_ID_INVALID"),
+      );
+    await show(stuck.context, { ...workflow, messageId: 7 });
+    expect(await workflowOf(stuck)).toMatchObject({
+      messageId: 100,
+      topic: { thread: 900 },
+    });
+    // A broken network is no refusal.
+    const broken = await chat();
+    broken.net
+      .on("POST", /\/deleteMessage$/, refused(tooOld))
+      .on("POST", /\/editMessageText$/, () => {
+        throw new TypeError("network");
+      });
+    await expect(leaveMainView(broken.context, 7, "x")).rejects.toThrow(
+      "network",
+    );
   });
 });
 

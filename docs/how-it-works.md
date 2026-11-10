@@ -348,10 +348,15 @@ Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createF
 Without topics, the pager writes into the main view, as before, and the thing works as it did:
 
 - `getMe` doesn't say `has_topics_enabled`, since Threaded Mode is off;
-- Telegram refuses `createForumTopic`;
+- Telegram refuses `createForumTopic`, as it did for every new topic of a private chat from 9 November 2026 with `BOT_TOPIC_WRONG_HOME` ([tdlib/telegram-bot-api#944](https://github.com/tdlib/telegram-bot-api/issues/944)), while it still left its notice *"…" was created* in the main view, with no topic behind it, and the topics from before kept working;
 - Telegram opens the topic but refuses the message in it with `message thread not found`, as a rollout of Telegram did in [tdlib/telegram-bot-api#847](https://github.com/tdlib/telegram-bot-api/issues/847): the pager deletes the empty topic again.
 
-That holds for the new topic of a thing whose topic the maintainer deleted as well: when Telegram refuses it, the thing goes on in the main view, and its next message asks for a topic again. So does a thing that the pager up to 0.7.0 left in the main view when its topic was gone, such as a release whose versions carried that over: its next message opens a topic of its own, with the thing's message first. Only a thing from before topics stays in the main view.
+No bot can put a message into a topic that Telegram doesn't open, so the pager does two things when it refuses one ([decision 0021](decisions/0021-a-thing-that-telegram-kept-out-of-a-topic-moves-into-it-with-its-next-change.md)):
+
+- **It pauses new topics.** For an hour, the pager asks Telegram for no new topic, so that a burst of new things leaves no burst of notices of topics that aren't there: a new thing, a report of a run and a message below a thing in the main view go there at once. Each refusal in a row doubles the pause, up to four hours, and the first topic that opens ends it.
+- **It moves the thing into its topic once Telegram opens topics again.** An open thing that waits in the main view, such as *🔴 Docker E2E fails on main* in the outage above, gets a topic of its own with its next change: its message goes into the new topic, quietly, as an edit does, and the one in the main view is deleted; a message below it, such as the pictures of a release, brings it there first. A thing that is done stays in the main view, edited in place.
+
+That holds for the new topic of a thing whose topic the maintainer deleted as well: when Telegram refuses it, the thing goes on in the main view, and its next message after the pause asks for a topic again. So does a thing that the pager up to 0.7.0 left in the main view when its topic was gone, such as a release whose versions carried that over: its next message opens a topic of its own, with the thing's message first. Only a thing from before topics stays in the main view.
 
 The prompt of ✏️ Edit then answers the message of its thing, so that it is clear what it is about, and a thing from before topics stays in the main view until it closes. Each of these cases logs a warning with Telegram's answer, never the name of the topic or a text.
 

@@ -6,7 +6,8 @@
  * its topic, which stays as its history: the maintainer deletes one by hand when he
  * is done with it, and the next message of the thing opens a new topic. A chat
  * without topics, or a topic that Telegram refuses, keeps the thing in the main view,
- * as before topics.
+ * as before topics; a refusal pauses new topics for a while, and an open thing that
+ * waits in the main view moves into a topic of its own with its next change.
  */
 import { keyboard } from "./buttons.ts";
 import { cut } from "./content.ts";
@@ -105,17 +106,112 @@ export function topicName(item: Item, t: Texts): string {
 }
 
 /**
+ * How long the pager asks Telegram for no new topic after it refused one, in
+ * milliseconds: an hour at first. Telegram may leave its notice that the topic was
+ * created in the main view even when it refuses it, as it did for every new topic
+ * of a private chat from 9 November 2026 (tdlib/telegram-bot-api#944), so each
+ * try in such an outage costs a notice that leads nowhere.
+ */
+export const TOPIC_PAUSE = 60 * 60 * 1000;
+
+/** The longest pause of new topics, up to which each refusal in a row doubles it: four hours. */
+export const MAX_TOPIC_PAUSE = 4 * TOPIC_PAUSE;
+
+/**
+ * Send the first message of a new topic, named and colored as given, which goes
+ * quietly when silent. Returns where it went, or null when there is no topic to
+ * be had: the chat has none, Telegram refused one within the pause, or refuses
+ * one now, which pauses new topics, or doesn't find the topic that it just opened,
+ * which is deleted again, so that no empty topic stays. The first topic that takes
+ * its message ends the pause.
+ */
+async function intoNewTopic(
+  context: Context,
+  name: string,
+  color: TopicColor,
+  text: string,
+  buttons: Keyboard,
+  silent = false,
+): Promise<{ message: number; thread: number } | null> {
+  if (!(await context.telegram.topics())) {
+    return null;
+  }
+  const pause = await context.store.topicPause();
+  if (pause !== null && context.now() < pause.until) {
+    return null;
+  }
+  const thread = await context.telegram.openTopic(name, color);
+  let message: number | null = null;
+  if (thread !== null) {
+    try {
+      message = await context.telegram.postInto(text, buttons, thread, silent);
+    } catch (error) {
+      // Such as too many requests at once: the topic took nothing, and the next
+      // signal of a thing opens it again.
+      await context.telegram.removeTopic(thread);
+      throw error;
+    }
+    if (message === null) {
+      await context.telegram.removeTopic(thread);
+    }
+  }
+  if (thread === null || message === null) {
+    const length =
+      pause === null
+        ? TOPIC_PAUSE
+        : Math.min(2 * pause.length, MAX_TOPIC_PAUSE);
+    await context.store.pauseTopics({ until: context.now() + length, length });
+    // The log names how long, never the name of the topic, which may quote a private repository.
+    console.warn(
+      `Telegram opens no topic: new messages go to the main view for ${length / 60_000} minutes`,
+    );
+    return null;
+  }
+  if (pause !== null) {
+    await context.store.resumeTopics();
+  }
+  return { message, thread };
+}
+
+/**
+ * Send a message of a thing that opens a new topic of the thing, named after it,
+ * which the thing keeps. Returns the id of the message, or null when there is no
+ * topic to be had, and the thing has none.
+ */
+async function intoThingTopic(
+  context: Context,
+  item: Item,
+  text: string,
+  buttons: Keyboard,
+  silent = false,
+): Promise<number | null> {
+  const name = topicName(item, context.t);
+  const sent = await intoNewTopic(
+    context,
+    name,
+    COLORS[item.kind],
+    text,
+    buttons,
+    silent,
+  );
+  if (sent === null) {
+    item.topic = null;
+    return null;
+  }
+  await context.store.link(sent.thread, item.id, isDone(item));
+  item.topic = { thread: sent.thread, name };
+  return sent.message;
+}
+
+/**
  * Send a new message of a thing: into its topic, which its first message opens, or
  * into the main view when the chat has no topics or Telegram refuses one. A topic
  * that the maintainer deleted is done for him, so the next message of its thing,
  * such as one whose message went with the topic or a bundle that opens again, opens
  * a new topic, which the thing keeps. So does a thing without a topic, such as one
- * whose topic Telegram refused, or one that an earlier version of the pager left in
- * the main view when its topic was gone: its next new message asks for a topic
- * again, and a chat without topics answers that without a call to Telegram. Only a
- * thing from before topics, which has no topic at all, stays in the main view. A
- * topic that the pager opened for this message and that took none is deleted again,
- * so that no empty topic stays. Returns the id of the message.
+ * whose topic Telegram refused: its next new message asks for a topic again, once
+ * the pause of new topics is over. Only a thing from before topics, which has no
+ * topic at all, stays in the main view. Returns the id of the message.
  */
 export async function sendThing(
   context: Context,
@@ -137,44 +233,30 @@ export async function sendThing(
     // A record from before topics has none at all, and stays in the main view.
     return context.telegram.send(text, buttons);
   }
-  return sendInNewTopic(context, item, text, buttons);
+  return (
+    (await intoThingTopic(context, item, text, buttons)) ??
+    context.telegram.send(text, buttons)
+  );
 }
 
 /**
- * Send a message of a thing that opens a new topic of the thing, named after it,
- * which the thing keeps, or into the main view when Telegram refuses one. Returns
- * the id of the message.
+ * Move the message of an open thing that waits in the main view for its topic, such
+ * as one whose topic Telegram refused, into a new topic of the thing, instead of an
+ * edit in place: quietly, as an edit is, and once the pause of new topics is over.
+ * The caller deletes its old message. A done thing, a thing in its topic and one
+ * from before topics stay where they are. Returns the id of the new message, or
+ * null when the thing stays, and its message is edited in place.
  */
-async function sendInNewTopic(
+export async function moveIntoTopic(
   context: Context,
   item: Item,
   text: string,
   buttons: Keyboard,
-): Promise<number> {
-  const name = topicName(item, context.t);
-  const thread = await context.telegram.openTopic(name, COLORS[item.kind]);
-  return sendInTopic(context, item, thread, name, text, buttons);
-}
-
-/**
- * Send a message of a thing into a topic that the pager just opened for it, named
- * after it, which the thing keeps, or into the main view without one. Returns the id
- * of the message.
- */
-async function sendInTopic(
-  context: Context,
-  item: Item,
-  thread: number | null,
-  name: string,
-  text: string,
-  buttons: Keyboard,
-): Promise<number> {
-  const opened = await postInTopic(context, thread, name, text, buttons);
-  if (opened.topic !== null) {
-    await context.store.link(opened.topic.thread, item.id, isDone(item));
+): Promise<number | null> {
+  if (item.topic !== null || isDone(item)) {
+    return null;
   }
-  item.topic = opened.topic;
-  return opened.message;
+  return intoThingTopic(context, item, text, buttons, true);
 }
 
 /**
@@ -184,11 +266,11 @@ async function sendInTopic(
  * none. When the maintainer deleted the topic, and the thing's message with it, the
  * thing opens a new one, as sendThing() does: its own message first, with its
  * buttons, and this one below it; the thing keeps the new topic and its new message.
- * So does a thing without a topic in a chat with topics, such as one that an earlier
- * version of the pager left in the main view when its topic was gone; a chat
- * without topics, a topic that Telegram refuses, and a thing from before topics keep
- * the message below the thing's message in the main view. Returns where the message
- * went, for an album that follows it.
+ * So does a thing that waits in the main view for its topic, such as one whose topic
+ * Telegram refused, whose message there is deleted once it moved; a chat without
+ * topics, a pause of new topics, a topic that Telegram refuses, and a thing from
+ * before topics keep the message below the thing's message in the main view.
+ * Returns where the message went, for an album that follows it.
  */
 export async function postBelow(
   context: Context,
@@ -210,21 +292,21 @@ export async function postBelow(
     // A record from before topics stays in the main view.
     return context.telegram.post(text, buttons, null, item.messageId);
   }
-  const name = topicName(item, context.t);
-  const thread = await context.telegram.openTopic(name, COLORS[item.kind]);
-  if (thread === null && topic === null) {
+  const waiting = topic === null ? item.messageId : null;
+  // The thing opens a new topic, as a new thing does, with its own message first.
+  const own = render(item, context.now(), context.t);
+  const ownButtons = keyboard(item, context.t);
+  const moved = await intoThingTopic(context, item, own, ownButtons);
+  if (moved === null && topic === null) {
     // No topic to be had, and the thing's message is still there: below it.
     return context.telegram.post(text, buttons, null, item.messageId);
   }
-  // The thing opens a new topic, as a new thing does, with its own message first.
-  item.messageId = await sendInTopic(
-    context,
-    item,
-    thread,
-    name,
-    render(item, context.now(), context.t),
-    keyboard(item, context.t),
-  );
+  if (waiting !== null) {
+    // Its message moved out of the main view.
+    await context.telegram.remove(waiting);
+  }
+  // Its topic went with its message, and without a new one both go into the main view.
+  item.messageId = moved ?? (await context.telegram.send(own, ownButtons));
   await context.store.put(item);
   return context.telegram.post(
     text,
@@ -235,10 +317,9 @@ export async function postBelow(
 }
 
 /**
- * Send a message that opens a topic of its own, such as the first of a thing or a
- * report of a run, or into the main view when the chat has no topics or Telegram
- * refuses one. A topic that took no message is deleted again, so that no empty
- * topic stays. Returns the id of the message and its topic.
+ * Send a message that opens a topic of its own, such as a report of a run, or into
+ * the main view when the chat has no topics, Telegram refuses one, or new topics
+ * pause. Returns the id of the message and its topic.
  */
 export async function postInNewTopic(
   context: Context,
@@ -247,40 +328,10 @@ export async function postInNewTopic(
   text: string,
   buttons: Keyboard,
 ): Promise<{ message: number; topic: Topic | null }> {
-  const thread = await context.telegram.openTopic(name, color);
-  return postInTopic(context, thread, name, text, buttons);
-}
-
-/**
- * Send a message into a topic that the pager just opened, named as given, or into
- * the main view without one. A topic that took no message is deleted again, so that
- * no empty topic stays. Returns the id of the message and its topic.
- */
-async function postInTopic(
-  context: Context,
-  thread: number | null,
-  name: string,
-  text: string,
-  buttons: Keyboard,
-): Promise<{ message: number; topic: Topic | null }> {
-  let sent: Sent;
-  try {
-    sent = await context.telegram.post(text, buttons, thread);
-  } catch (error) {
-    // Such as too many requests at once: the topic took nothing, and the next
-    // signal of a thing opens it again.
-    if (thread !== null) {
-      await context.telegram.removeTopic(thread);
-    }
-    throw error;
-  }
-  if (thread !== null && sent.thread === null) {
-    await context.telegram.removeTopic(thread);
-  }
-  return {
-    message: sent.message,
-    topic: thread === null || sent.thread === null ? null : { thread, name },
-  };
+  const sent = await intoNewTopic(context, name, color, text, buttons);
+  return sent === null
+    ? { message: await context.telegram.send(text, buttons), topic: null }
+    : { message: sent.message, topic: { thread: sent.thread, name } };
 }
 
 /**

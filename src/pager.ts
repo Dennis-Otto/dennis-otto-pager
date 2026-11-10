@@ -69,7 +69,7 @@ import {
   type Thread,
 } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
-import { postBelow, retitle, sendThing } from "./topics.ts";
+import { moveIntoTopic, postBelow, retitle, sendThing } from "./topics.ts";
 import {
   NOTES_LANGUAGE,
   notesKey,
@@ -115,7 +115,10 @@ const DAY = 24 * 60 * 60 * 1000;
  * Show a thing: edit its message, or send a new one when it has none, when it is
  * gone, or with fresh, which also deletes the old one, as "Later" does when its
  * time is up. A new message goes into the thing's topic, and its first one opens
- * that; the name of the topic follows the thing. Then keep its state.
+ * that; the name of the topic follows the thing. An open thing that waits in the
+ * main view for its topic, such as one whose topic Telegram refused, moves into a
+ * new topic instead of the edit, quietly, and its old message goes. Then keep its
+ * state.
  */
 export async function show(
   context: Context,
@@ -125,10 +128,15 @@ export async function show(
   const text = render(item, context.now(), context.t);
   const buttons = keyboard(item, context.t);
   const old = item.messageId;
-  const shown =
-    old !== null && !fresh
-      ? await context.telegram.edit(old, text, buttons)
-      : false;
+  let shown = false;
+  if (old !== null && !fresh) {
+    const moved = await moveIntoTopic(context, item, text, buttons);
+    if (moved !== null) {
+      item.messageId = moved;
+      await context.telegram.remove(old);
+    }
+    shown = moved !== null || (await context.telegram.edit(old, text, buttons));
+  }
   if (!shown) {
     item.messageId = await sendThing(context, item, text, buttons);
     if (old !== null && fresh) {

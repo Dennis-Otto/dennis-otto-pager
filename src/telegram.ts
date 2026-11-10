@@ -214,24 +214,27 @@ export class Telegram {
     text: string,
     keyboard: Keyboard,
     thread: Thread,
-    replyTo: number | null = null,
+    replyTo: number | null,
   ): Promise<Sent> {
     return this.deliver(this.message(text, keyboard), thread, replyTo);
   }
 
   /**
    * Send a message as send() does, but into the thread alone: when Telegram
-   * doesn't find the thread, nothing is sent, and it returns null.
+   * doesn't find the thread, nothing is sent, and it returns null. A silent one
+   * notifies nobody, such as a message that moves into its topic.
    */
   async postInto(
     text: string,
     keyboard: Keyboard,
     thread: number,
+    silent = false,
   ): Promise<number | null> {
     try {
       return await this.sendMessage({
         ...this.message(text, keyboard),
         message_thread_id: thread,
+        ...(silent ? { disable_notification: true } : {}),
       });
     } catch (error) {
       if (!threadNotFound(error)) {
@@ -523,7 +526,9 @@ export class Telegram {
   /**
    * Open a topic in the chat, with a name and the color of its icon. Returns its
    * thread, or null when the chat has no topics or Telegram refuses one: the thing
-   * then goes into the main view, as before topics.
+   * then goes into the main view, as before topics. Telegram may leave its notice
+   * that the topic was created in the main view even when it refuses it, as with
+   * BOT_TOPIC_WRONG_HOME since 9 November 2026 (tdlib/telegram-bot-api#944).
    */
   async openTopic(name: string, color: TopicColor): Promise<number | null> {
     if (!(await this.topics())) {

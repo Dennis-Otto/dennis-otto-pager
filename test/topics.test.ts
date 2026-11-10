@@ -22,6 +22,7 @@ import {
   keys,
   type Release,
   type Reminder,
+  type Workflow,
 } from "../src/store.ts";
 import { Telegram, TOPIC_COLORS } from "../src/telegram.ts";
 import { texts } from "../src/texts.ts";
@@ -31,6 +32,11 @@ import {
   MAX_ABOUT,
   MAX_LINKS,
   MAX_TOPIC_NAME,
+  MAX_TOPIC_PAUSE,
+  postBelow,
+  postInNewTopic,
+  REPORT_COLOR,
+  TOPIC_PAUSE,
   topicName,
 } from "../src/topics.ts";
 import { handleUpdate } from "../src/updates.ts";
@@ -782,8 +788,12 @@ describe("a topic that the maintainer deleted", () => {
     await show(w.context, await issueOf(w), true);
     expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
     expect(await issueOf(w)).toMatchObject({ messageId: 101, topic: null });
-    // Its next new message asks for a topic again, and stays in the main view
-    // while Telegram refuses one.
+    // Its next new message within the pause of new topics asks for none, and the
+    // first one after it asks again, and stays in the main view while Telegram
+    // refuses one.
+    await show(w.context, await issueOf(w), true);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    w.clock.now += TOPIC_PAUSE;
     await show(w.context, await issueOf(w), true);
     expect(w.net.telegram("createForumTopic")).toHaveLength(3);
     expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
@@ -791,6 +801,240 @@ describe("a topic that the maintainer deleted", () => {
       "Telegram createForumTopic: Bad Request: CHAT_NOT_FORUM; sent to the main view",
     );
     warn.mockRestore();
+  });
+});
+
+describe("a topic that Telegram refuses", () => {
+  // Telegram refused every new topic of a private chat from 9 November 2026 with
+  // BOT_TOPIC_WRONG_HOME, and still left its notice that the topic was created in
+  // the main view (tdlib/telegram-bot-api#944); the topics from before kept working.
+  const WRONG_HOME = "Bad Request: BOT_TOPIC_WRONG_HOME";
+
+  /** A chat with topics whose new topics Telegram refuses while outage.on holds. */
+  async function outage(): Promise<World & { outage: { on: boolean } }> {
+    const w = await chat();
+    const state = { on: true };
+    w.net.on("POST", /\/createForumTopic$/, () =>
+      state.on ? refused(WRONG_HOME)() : undefined,
+    );
+    return { ...w, outage: state };
+  }
+
+  const workflow: Workflow = {
+    ...base(ID),
+    messageId: null,
+    topic: null,
+    kind: "workflow",
+    state: "failing",
+    path: ".github/workflows/e2e.yml",
+    name: "Docker E2E",
+    branch: "main",
+    run: 7,
+    attempt: 1,
+    url: `https://github.com/${REPO}/actions/runs/7`,
+    jobs: [
+      {
+        name: "coming Nextcloud",
+        url: `https://github.com/${REPO}/actions/runs/7/job/70`,
+      },
+    ],
+    count: 1,
+    since: START,
+    last: START,
+  };
+
+  const workflowOf = async (w: World) =>
+    (await w.context.store.get(ID)) as Workflow;
+
+  it("moves a fresh thing that Telegram kept out of a topic into its topic with its next change", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await outage();
+    await show(w.context, structuredClone(workflow));
+    // The topic is refused: the message goes into the main view, as it must.
+    expect(names(w, "createForumTopic")).toEqual(["🔴 Docker E2E in demo"]);
+    expect(sent(w)[0]).not.toHaveProperty("message_thread_id");
+    expect(await workflowOf(w)).toMatchObject({ messageId: 100, topic: null });
+    expect(await w.context.store.topicPause()).toEqual({
+      until: START + TOPIC_PAUSE,
+      length: TOPIC_PAUSE,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      `Telegram createForumTopic: ${WRONG_HOME}; sent to the main view`,
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram opens no topic: new messages go to the main view for 60 minutes",
+    );
+    // Within the pause, a new thing asks for no topic, so that Telegram leaves no
+    // second notice of a topic that isn't there, and a change edits in place.
+    await apply(w.context, contribution);
+    const changed = await workflowOf(w);
+    changed.count = 2;
+    await show(w.context, changed);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+    expect(w.net.telegram("editMessageText").at(-1)?.body.message_id).toBe(100);
+    // Telegram opens topics again: the next change moves the message into its
+    // topic, quietly, and deletes the one in the main view.
+    w.outage.on = false;
+    w.clock.now += TOPIC_PAUSE;
+    const again = await workflowOf(w);
+    again.count = 3;
+    await show(w.context, again);
+    expect(names(w, "createForumTopic")).toEqual([
+      "🔴 Docker E2E in demo",
+      "🔴 Docker E2E in demo",
+    ]);
+    expect(sent(w).at(-1)).toMatchObject({
+      message_thread_id: 900,
+      disable_notification: true,
+    });
+    expect(w.net.telegram("deleteMessage").map((c) => c.body)).toEqual([
+      { chat_id: CHAT, message_id: 100 },
+    ]);
+    const moved = await workflowOf(w);
+    expect(moved).toMatchObject({
+      messageId: 102,
+      topic: { thread: 900, name: "🔴 Docker E2E in demo" },
+    });
+    expect((await w.context.store.byTopic(900))?.id).toBe(ID);
+    // The first topic that opens ends the pause.
+    expect(await w.context.store.topicPause()).toBeNull();
+    // From there on, everything of the thing stays in its topic.
+    moved.count = 4;
+    await show(w.context, moved);
+    expect(w.net.telegram("editMessageText").at(-1)?.body.message_id).toBe(102);
+    await show(w.context, await workflowOf(w), true);
+    expect(sent(w).at(-1)?.message_thread_id).toBe(900);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(2);
+    warn.mockRestore();
+  });
+
+  it("moves a thing whose deleted topic Telegram didn't replace into a new one with its next change", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    await apply(w.context, contribution);
+    withDeletedTopic(w.net, 900, [100]);
+    const refusing = { on: true };
+    w.net.on("POST", /\/createForumTopic$/, () =>
+      refusing.on ? refused(WRONG_HOME)() : undefined,
+    );
+    const issueOf = async () =>
+      (await stored(w, keys.contribution(REPO, 12))) as Item;
+    // Its message went with the topic, and Telegram refuses a new one.
+    const item = await issueOf();
+    item.note = "Something changed.";
+    await show(w.context, item);
+    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
+    expect(await issueOf()).toMatchObject({ messageId: 101, topic: null });
+    // Once topics open again, its next change moves it into a new topic.
+    refusing.on = false;
+    w.clock.now += TOPIC_PAUSE;
+    const next = await issueOf();
+    next.note = "Something else changed.";
+    await show(w.context, next);
+    expect(sent(w).at(-1)).toMatchObject({
+      message_thread_id: 901,
+      disable_notification: true,
+    });
+    expect(
+      w.net.telegram("deleteMessage").map((c) => c.body.message_id),
+    ).toEqual([101]);
+    expect(await issueOf()).toMatchObject({
+      messageId: 102,
+      topic: { thread: 901, name: "🙋 demo#12 It breaks" },
+    });
+    warn.mockRestore();
+  });
+
+  it("brings a thing that waits in the main view into its topic with the message below it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await outage();
+    await w.context.store.put({ ...release, topic: null });
+    const releaseOf = async () => (await w.context.store.get(ID)) as Release;
+    // In the pause, the message below goes below the thing's message in the main view.
+    await w.context.store.pauseTopics({
+      until: START + TOPIC_PAUSE,
+      length: TOPIC_PAUSE,
+    });
+    await postBelow(w.context, await releaseOf(), "Pictures");
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
+    expect(sent(w).at(-1)).toMatchObject({
+      text: "Pictures",
+      reply_parameters: { message_id: 7 },
+    });
+    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
+    // After it, the thing's own message moves into a new topic first, and the old
+    // one goes.
+    w.outage.on = false;
+    w.clock.now += TOPIC_PAUSE;
+    const went = await postBelow(w.context, await releaseOf(), "Pictures");
+    expect(sent(w).map((body) => body.message_thread_id)).toEqual([
+      undefined,
+      900,
+      900,
+    ]);
+    expect(
+      w.net.telegram("deleteMessage").map((c) => c.body.message_id),
+    ).toEqual([7]);
+    expect(went).toEqual({ message: 102, thread: 900 });
+    expect(await releaseOf()).toMatchObject({
+      messageId: 101,
+      topic: { thread: 900, name: "📦 demo 1.2.3" },
+    });
+    warn.mockRestore();
+  });
+
+  it("leaves a done thing and a thing from before topics in the main view, edited in place", async () => {
+    const w = await chat();
+    await show(w.context, { ...workflow, messageId: 7, state: "recovered" });
+    await show(w.context, { ...alarm });
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
+    expect(w.net.telegram("editMessageText")).toHaveLength(2);
+    expect(sent(w)).toEqual([]);
+  });
+
+  it("edits a thing in place when Telegram refuses the topic that it would move into", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await outage();
+    await show(w.context, { ...workflow, messageId: 7 });
+    expect(w.net.telegram("createForumTopic")).toHaveLength(1);
+    expect(sent(w)).toEqual([]);
+    expect(
+      w.net.telegram("editMessageText").map((c) => c.body.message_id),
+    ).toEqual([7]);
+    expect(await workflowOf(w)).toMatchObject({ messageId: 7, topic: null });
+    warn.mockRestore();
+  });
+
+  it("doubles the pause with each refusal in a row, up to four hours, and starts short after a day", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await outage();
+    const lengths: number[] = [];
+    for (let each = 0; each < 5; each++) {
+      await show(w.context, { ...workflow, messageId: 7 });
+      const pause = await w.context.store.topicPause();
+      lengths.push((pause?.length ?? 0) / TOPIC_PAUSE);
+      w.clock.now = pause?.until ?? w.clock.now;
+    }
+    expect(lengths).toEqual([1, 2, 4, 4, 4]);
+    expect(MAX_TOPIC_PAUSE).toBe(4 * TOPIC_PAUSE);
+    expect(w.net.telegram("createForumTopic")).toHaveLength(5);
+    // Workers KV forgets a pause after a day, so the next refusal pauses for an hour.
+    expect(
+      (await env.PAGER.list({ prefix: "pause:" })).keys[0]?.expiration,
+    ).toBeGreaterThan(0);
+    warn.mockRestore();
+  });
+
+  it("sends a report of a run into the main view while new topics pause", async () => {
+    const w = await chat();
+    await w.context.store.pauseTopics({
+      until: START + TOPIC_PAUSE,
+      length: TOPIC_PAUSE,
+    });
+    expect(
+      await postInNewTopic(w.context, "🧾 Run", REPORT_COLOR, "Done.", []),
+    ).toEqual({ message: 100, topic: null });
+    expect(w.net.telegram("createForumTopic")).toHaveLength(0);
   });
 });
 

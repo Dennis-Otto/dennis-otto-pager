@@ -37,7 +37,7 @@ import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { learnTokens, tokensOf } from "./tokens.ts";
 import { postBelow, postInNewTopic, REPORT_COLOR } from "./topics.ts";
-import { checked, notesKey } from "./translations.ts";
+import { checked, notesKey, translates } from "./translations.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
 
@@ -528,8 +528,9 @@ async function report(
 /**
  * The notes of a release in the language of the pager: they edit its message in
  * place, which notifies no one, once for the notes that the pager asked for. An
- * answer for notes that changed since, the same answer again and one that doesn't
- * fit the notes change nothing, and the message keeps what it shows.
+ * answer for notes that changed since, or into a language that the pager no longer
+ * speaks, the same answer again and one that doesn't fit the notes change nothing,
+ * and the message keeps what it shows.
  */
 async function translate(
   context: Context,
@@ -540,7 +541,10 @@ async function translate(
     return new Response("Not Found", { status: 404 });
   }
   const asked = item.translation;
-  if (asked?.of !== message.of || notesKey(item.notes) !== message.of) {
+  if (
+    !translates(asked, message.of, context.t.language) ||
+    notesKey(item.notes) !== message.of
+  ) {
     return new Response("Conflict", { status: 409 });
   }
   if (asked.lines !== undefined) {
@@ -550,7 +554,7 @@ async function translate(
   if (lines === null) {
     return new Response("Unprocessable Content", { status: 422 });
   }
-  item.translation = { of: message.of, lines };
+  item.translation = { ...asked, lines };
   await show(context, item);
   return new Response("translated");
 }

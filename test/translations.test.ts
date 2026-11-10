@@ -235,14 +235,30 @@ describe("the lines of a translation", () => {
       { item: "deps: one" },
       { text: "two" },
     ]);
-    expect(shownNotes(notes, { of: notesKey(notes) }, de)).toEqual(
-      shownNotes(notes, undefined, de),
-    );
     expect(
-      shownNotes(notes, { of: notesKey(NOTES), lines: ["eins", "zwei"] }, de),
+      shownNotes(notes, { of: notesKey(notes), language: "de" }, de),
     ).toEqual(shownNotes(notes, undefined, de));
     expect(
-      shownNotes(notes, { of: notesKey(notes), lines: ["eins", "zwei"] }, de),
+      shownNotes(
+        notes,
+        { of: notesKey(NOTES), language: "de", lines: ["eins", "zwei"] },
+        de,
+      ),
+    ).toEqual(shownNotes(notes, undefined, de));
+    // A pager that speaks English since shows the English, headings and items.
+    expect(
+      shownNotes(
+        notes,
+        { of: notesKey(notes), language: "de", lines: ["eins", "zwei"] },
+        en,
+      ),
+    ).toEqual(notes.lines);
+    expect(
+      shownNotes(
+        notes,
+        { of: notesKey(notes), language: "de", lines: ["eins", "zwei"] },
+        de,
+      ),
     ).toEqual([
       { heading: "Neue Funktionen" },
       { item: "deps: eins" },
@@ -299,7 +315,7 @@ describe("a release in a German pager", () => {
     expect(asked(w)).toHaveLength(1);
     expect((await w.context.store.get(id)) as Release).toMatchObject({
       sha: "def",
-      translation: { of, lines: GERMAN },
+      translation: { of, language: "de", lines: GERMAN },
     });
   });
 
@@ -379,6 +395,22 @@ describe("a release in a German pager", () => {
     await expect(apply(w.context, check)).rejects.toThrow(
       "Network connection lost",
     );
+    // GitHub delivers the event again: the message stays, and the ask goes again.
+    w.net.on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    expect(await apply(w.context, check)).toBe("#30 shown already");
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(asked(w)).toHaveLength(2);
+    expect(
+      ((await w.context.store.get(await itemId(keys.release(REPO)))) as Release)
+        .translation,
+    ).toEqual({ of: notesKey(NOTES), language: "de" });
+    // And no more once it went.
+    expect(await apply(w.context, check)).toBe("#30 shown already");
+    expect(asked(w)).toHaveLength(2);
   });
 });
 
@@ -392,7 +424,7 @@ describe("the answer with a translation", () => {
     sha: "abc",
     url: `https://github.com/${REPO}/pull/30`,
     notes: NOTES,
-    translation: { of: notesKey(NOTES) },
+    translation: { of: notesKey(NOTES), language: "de" },
   };
   const answer = {
     type: "translation",
@@ -445,6 +477,12 @@ describe("the answer with a translation", () => {
       notes: { ...NOTES, lines: NOTES.lines.slice(0, 3) },
     });
     expect((await send(w, answer)).status).toBe(409);
+    // Asked by the pager in another language than it speaks now.
+    await w.context.store.put({
+      ...release,
+      translation: { of: notesKey(NOTES), language: "en" },
+    });
+    expect((await send(w, answer)).status).toBe(409);
     expect(w.net.telegram("editMessageText")).toHaveLength(0);
   });
 
@@ -457,6 +495,6 @@ describe("the answer with a translation", () => {
     });
     expect(
       ((await w.context.store.get(release.id)) as Release).translation,
-    ).toEqual({ of: notesKey(NOTES) });
+    ).toEqual({ of: notesKey(NOTES), language: "de" });
   });
 });

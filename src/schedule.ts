@@ -13,7 +13,7 @@
  * Durable Object, for the check of the pager's health (src/health.ts).
  */
 import { remindAdvisories } from "./advisories.ts";
-import { failedEvents } from "./deliveries.ts";
+import { failedEvents, SUBREQUESTS } from "./deliveries.ts";
 import { RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item } from "./store.ts";
@@ -117,7 +117,8 @@ async function noAnswer(
 
 /**
  * Rename the topics that Telegram refused to rename, such as after a burst of
- * calls, at most MAX_RENAMES per run: a thing whose rename went through, or that
+ * calls, at most MAX_RENAMES per run and only while the run has calls to the
+ * network left, so that the rest waits for the next run: a thing whose rename went through, or that
  * needs none any more, is kept without its mark, and one that Telegram still
  * refuses stays as it is, without a write, until RENAME_FOR is over, when it keeps
  * the old name and the log says so.
@@ -128,6 +129,9 @@ async function renameAgain(
 ): Promise<string[]> {
   const renamed: string[] = [];
   for (const id of refused.slice(0, MAX_RENAMES)) {
+    if (context.subrequests() >= SUBREQUESTS) {
+      break;
+    }
     // The list may lag behind a write: only the record says whether it still waits.
     const item = await context.store.get(id);
     const since = item?.renameRefused;

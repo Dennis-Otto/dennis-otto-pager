@@ -75,6 +75,7 @@ import {
   notesKey,
   type Translation,
   toTranslate,
+  translates,
 } from "./translations.ts";
 
 export interface Context {
@@ -918,7 +919,7 @@ async function askForTranslation(
     return;
   }
   const of = notesKey(item.notes);
-  if (item.translation?.of === of) {
+  if (translates(item.translation, of, context.t.language)) {
     return;
   }
   // The log stays in English, without the words of the catalog that toControl() answers.
@@ -946,7 +947,7 @@ async function askForTranslation(
     );
     return;
   }
-  item.translation = { of };
+  item.translation = { of, language: context.t.language };
   await context.store.put(item);
 }
 
@@ -1005,6 +1006,9 @@ async function releaseCheck(
           same.sha === sha &&
           sameNotes(same.notes, notes)))
     ) {
+      // An ask for its translation that failed, such as on a broken network, goes
+      // again with the event that GitHub delivers again, or the next check.
+      await askForTranslation(context, same);
       outcomes.push(`#${number} shown already`);
       continue;
     }
@@ -1012,7 +1016,7 @@ async function releaseCheck(
     const key = notes === undefined ? null : notesKey(notes);
     const translation: Translation | undefined = [same, replaced]
       .map((release) => release?.translation)
-      .find((kept) => kept?.of === key);
+      .find((kept) => translates(kept, key, context.t.language));
     const item: Release = {
       ...base(
         await itemId(keys.release(signal.repo)),

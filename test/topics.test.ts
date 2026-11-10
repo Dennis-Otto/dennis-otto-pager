@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { cut } from "../src/content.ts";
 import { handleControl } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
+import { SUBREQUESTS } from "../src/deliveries.ts";
 import { apply, show } from "../src/pager.ts";
 import { render } from "../src/render.ts";
 import type { Signal } from "../src/rules.ts";
@@ -670,6 +671,25 @@ describe("without topics", () => {
     expect(names(w, "editForumTopic")).toHaveLength(MAX_RENAMES + 1);
     expect(names(w, "editForumTopic")).not.toContain("🚨 other needs you");
     expect(new Set(names(w, "editForumTopic")).size).toBe(MAX_RENAMES + 1);
+  });
+
+  it("renames no topic in a run of the schedule that used up its calls, and leaves it for the next", async () => {
+    const w = await chat();
+    const item: Alarm = {
+      ...alarm,
+      ...base(await itemId(keys.alarm("Dennis-Otto/demo"))),
+      topic: { thread: 930, name: "old" },
+      renameRefused: START,
+    };
+    await w.context.store.put(item);
+    const counted = w.context.subrequests;
+    w.context.subrequests = () => SUBREQUESTS;
+    expect(await runSchedule(w.context)).not.toContain(item.id);
+    expect(names(w, "editForumTopic")).toHaveLength(0);
+    expect((await w.context.store.get(item.id))?.renameRefused).toBe(START);
+    w.context.subrequests = counted;
+    expect(await runSchedule(w.context)).toContain(item.id);
+    expect(names(w, "editForumTopic")).toHaveLength(1);
   });
 
   it("opens no topic for a thing from before topics", async () => {

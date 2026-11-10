@@ -15,7 +15,7 @@ import {
   type NoteLine,
   type ReleaseNotes,
 } from "./content.ts";
-import type { Key, Texts } from "./texts.ts";
+import type { Key, Language, Texts } from "./texts.ts";
 
 /** The language in which the repositories write their notes, which needs no translation. */
 export const NOTES_LANGUAGE = "en";
@@ -37,6 +37,11 @@ export const MAX_SHOWN_LINE = MAX_NOTE_LINE + MAX_TRANSLATED_LINE;
 export interface Translation {
   /** The notes that it translates, by notesKey(). */
   of: string;
+  /**
+   * The language that it translates them into, the pager's when it asked: a pager
+   * that speaks another language since shows the notes in English, or asks again.
+   */
+  language: Language;
   /**
    * Each line of those notes that is no heading, in their order, without its
    * scope; none while the control repository translates them.
@@ -193,6 +198,15 @@ export function checked(
   return length > MAX_TRANSLATED ? null : lines;
 }
 
+/** Whether a translation is one of these notes, by notesKey(), into this language. */
+export function translates(
+  translation: Translation | undefined,
+  of: string | null,
+  language: Language,
+): translation is Translation {
+  return translation?.of === of && translation.language === language;
+}
+
 /**
  * The lines of the notes as the message shows them, in the language of the
  * pager: each heading from the catalog, and the items and texts translated when
@@ -205,7 +219,8 @@ export function shownNotes(
   t: Texts,
 ): NoteLine[] {
   const words =
-    translation?.lines !== undefined && translation.of === notesKey(notes)
+    translates(translation, notesKey(notes), t.language) &&
+    translation.lines !== undefined
       ? translation.lines
       : [];
   let at = 0;

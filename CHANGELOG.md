@@ -9,10 +9,13 @@ requests when there is none.
 
 ## [0.9.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.2...v0.9.0) (2026-11-10)
 
-
 ### Features
 
-* a release message shows its notes in the language of the pager, and its topic follows the version ([#139](https://github.com/Dennis-Otto/repo-pager/issues/139)) ([34c8eb3](https://github.com/Dennis-Otto/repo-pager/commit/34c8eb33ecb739daceb2a0db690a883e1e4e5eed))
+- A pager in German shows the notes of a release in German: the headings of the kinds of change at once, such as *Neue Funktionen* for *Features*, and the items once the control repository translated them with your Claude subscription, which edits the message in place without a second notification. Links such as #791, scopes such as `deps:` and names of code stay as they are, and a failed or slow translation leaves the English. The control repository needs the job for `pager-translate` from its template for the items.
+
+### Bug fixes
+
+- The topic of a release follows its version and gets its ✅ even when Telegram refused the rename at the moment: the schedule tries a refused rename again for a day, so a topic no longer keeps the name of an older version, such as *📦 repo-blueprint 1.15.1* above the message of 1.16.0.
 
 ## [0.8.2](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.1...v0.8.2) (2026-11-09)
 

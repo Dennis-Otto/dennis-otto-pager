@@ -7,6 +7,13 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.9.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.2...v0.9.0) (2026-11-10)
+
+
+### Features
+
+* a release message shows its notes in the language of the pager, and its topic follows the version ([#139](https://github.com/Dennis-Otto/repo-pager/issues/139)) ([34c8eb3](https://github.com/Dennis-Otto/repo-pager/commit/34c8eb33ecb739daceb2a0db690a883e1e4e5eed))
+
 ## [0.8.2](https://github.com/Dennis-Otto/repo-pager/compare/v0.8.1...v0.8.2) (2026-11-09)
 
 ### Bug fixes

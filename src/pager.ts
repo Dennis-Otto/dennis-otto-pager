@@ -70,6 +70,13 @@ import {
 } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
 import { postBelow, retitle, sendThing } from "./topics.ts";
+import {
+  NOTES_LANGUAGE,
+  notesKey,
+  type Translation,
+  toTranslate,
+  translates,
+} from "./translations.ts";
 
 export interface Context {
   settings: Settings;
@@ -892,6 +899,58 @@ async function pullClosed(
   return "pictures done";
 }
 
+/**
+ * Ask the control repository for the notes of a release in the language of the
+ * pager, once for each notes: its message shows them in English until the answer
+ * edits it in place (src/control.ts). A pager in English, notes with nothing but
+ * headings, and notes asked for already ask nothing; an ask that can't go leaves the
+ * English, and the log says why.
+ */
+async function askForTranslation(
+  context: Context,
+  item: Release,
+): Promise<void> {
+  const lines = toTranslate(item.notes);
+  if (
+    context.t.language === NOTES_LANGUAGE ||
+    item.notes === undefined ||
+    lines.length === 0
+  ) {
+    return;
+  }
+  const of = notesKey(item.notes);
+  if (translates(item.translation, of, context.t.language)) {
+    return;
+  }
+  // The log stays in English, without the words of the catalog that toControl() answers.
+  let failed: string | null;
+  try {
+    const why = await toControl(context, "pager-translate", {
+      item: item.id,
+      repo: item.repo,
+      number: item.number,
+      version: item.version,
+      of,
+      lines,
+    });
+    failed =
+      why === null ? null : "the app isn't installed on the control repository";
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    failed = error.detail;
+  }
+  if (failed !== null) {
+    console.warn(
+      `The notes of ${item.repo}#${item.number} stay in English: ${failed}`,
+    );
+    return;
+  }
+  item.translation = { of, language: context.t.language };
+  await context.store.put(item);
+}
+
 /** Look at each release pull request whose checks finished: is it ready to merge? */
 async function releaseCheck(
   context: Context,
@@ -947,9 +1006,17 @@ async function releaseCheck(
           same.sha === sha &&
           sameNotes(same.notes, notes)))
     ) {
+      // An ask for its translation that failed, such as on a broken network, goes
+      // again with the event that GitHub delivers again, or the next check.
+      await askForTranslation(context, same);
       outcomes.push(`#${number} shown already`);
       continue;
     }
+    // A translation of the same notes stays, so that no edit asks for it again.
+    const key = notes === undefined ? null : notesKey(notes);
+    const translation: Translation | undefined = [same, replaced]
+      .map((release) => release?.translation)
+      .find((kept) => translates(kept, key, context.t.language));
     const item: Release = {
       ...base(
         await itemId(keys.release(signal.repo)),
@@ -963,6 +1030,7 @@ async function releaseCheck(
       sha,
       url: pull.html_url ?? "",
       ...(notes === undefined ? {} : { notes }),
+      ...(translation === undefined ? {} : { translation }),
       // The same release, ready again after an update, keeps its message; a new
       // version keeps the topic of the one that it replaces, renamed.
       messageId: same?.messageId ?? replaced?.messageId ?? null,
@@ -970,6 +1038,7 @@ async function releaseCheck(
       topic: same?.topic ?? replaced?.topic ?? null,
     };
     await show(context, item, replaced !== null);
+    await askForTranslation(context, item);
     outcomes.push(`#${number} ready`);
   }
   return outcomes.join("; ");

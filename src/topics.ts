@@ -286,20 +286,27 @@ async function postInTopic(
 /**
  * Rename a thing's topic when its name changed: ✅ once it is done, without it when
  * a bundle opens again, and the new version of a release. A rename that Telegram
- * refuses keeps the old name, and the next change of the thing tries again.
+ * refuses keeps the old name, and the thing keeps when it was first refused: the
+ * next change of the thing tries again, and so does the schedule for a day, since
+ * a done thing, such as a published release, changes no more.
  */
 export async function retitle(context: Context, item: Item): Promise<void> {
   const topic = item.topic ?? null;
   if (topic === null) {
+    delete item.renameRefused;
     return;
   }
   const name = topicName(item, context.t);
   if (name === topic.name) {
+    delete item.renameRefused;
     return;
   }
   if (await context.telegram.renameTopic(topic.thread, name)) {
     item.topic = { thread: topic.thread, name };
+    delete item.renameRefused;
     await context.store.link(topic.thread, item.id, isDone(item));
+  } else {
+    item.renameRefused ??= context.now();
   }
 }
 

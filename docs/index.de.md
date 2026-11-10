@@ -14,7 +14,7 @@ Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, das
 | ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort des Steuer-Repositorys vorschlägt, etwa ein Merge, nach dem du gefragt hast, oder 🔁 Neu starten, wenn ein Fix einen Ausfall von GitHub fand, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
 
-Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für den eigenen Pager des Maintainers, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys.
+Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für den eigenen Pager des Maintainers, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys und die Versionshinweise eines Release, die das Steuer-Repository übersetzt.
 
 - [So arbeitet er](how-it-works.md): die Regeln dessen, was zählt, die Knöpfe, das Steuer-Repository, die Fragen und Berichte deiner Agenten und der Zustand.
 - [Einrichten](setup.md): deine eigene Instanz, da es keine gemeinsame App gibt, mit deiner Kopie, dem Bot, dem Worker, der GitHub-App, den Geheimnissen und dem Webhook, Schritt für Schritt.

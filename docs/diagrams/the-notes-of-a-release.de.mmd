@@ -1,0 +1,32 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: Die Versionshinweise in deiner Sprache
+    accDescr: Die Checks eines Release-Pull-Requests bestehen, und der Pager zeigt seine Nachricht sofort, mit den Überschriften der Versionshinweise in der Sprache des Pagers und den Punkten auf Englisch, was benachrichtigt. Ein Pager auf Englisch und Versionshinweise, nach denen schon gefragt wurde, enden hier. Sonst schickt der Pager die Punkte ohne ihre Bereiche an das Steuer-Repository, dessen Claude sie mit dem Abo des Maintainers übersetzt. Der Pager prüft jede Zeile: Eine, die einen Verweis wie #791 oder einen Namen aus Code verloren hat, behält ihr Englisch. Dann bearbeitet er die Nachricht an Ort und Stelle, ohne Benachrichtigung, und behält die Übersetzung für spätere Änderungen der Nachricht. Ohne Antwort bleibt das Englisch.
+
+    ready["`**🟢** Die Checks eines Release-Pull-Requests bestehen`"]
+    message["`**📦** Seine Nachricht sofort, die benachrichtigt: die Überschriften in der Sprache des Pagers, die Punkte auf Englisch`"]
+    asked{"Ein Pager auf Englisch, oder schon danach gefragt?"}
+    stays["`**📦** Die Nachricht bleibt, wie sie ist`"]
+    control["`**🤖** Das Steuer-Repository: Claude übersetzt die Punkte, ohne ihre Bereiche, mit dem Abo des Maintainers`"]
+    checked["`**🔍** Jede Zeile geprüft: Eine, die einen Verweis wie #791 oder einen Namen aus Code verloren hat, behält ihr Englisch`"]
+    edited["`**✏️** Die Nachricht auf Deutsch, an Ort und Stelle bearbeitet, ohne Benachrichtigung; die Übersetzung bleibt für spätere Änderungen`"]
+    english["`**📦** Keine Antwort: Das Englisch bleibt`"]
+
+    ready --> message
+    message --> asked
+    asked -- "ja" --> stays
+    asked -- "nein: pager-translate" --> control
+    control -- "translation" --> checked
+    checked --> edited
+    control -- "keine Antwort" --> english
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class message,asked,control,checked bot
+    class ready you
+    class stays,edited,english done

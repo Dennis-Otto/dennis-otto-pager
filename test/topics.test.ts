@@ -8,10 +8,11 @@ import { describe, expect, it, vi } from "vitest";
 import { cut } from "../src/content.ts";
 import { handleControl } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
+import { SUBREQUESTS } from "../src/deliveries.ts";
 import { apply, show } from "../src/pager.ts";
 import { render } from "../src/render.ts";
 import type { Signal } from "../src/rules.ts";
-import { runSchedule } from "../src/schedule.ts";
+import { MAX_RENAMES, RENAME_FOR, runSchedule } from "../src/schedule.ts";
 import {
   type Alarm,
   type Alert,
@@ -539,6 +540,156 @@ describe("without topics", () => {
     );
     expect(w.net.telegram("editForumTopic")).toHaveLength(2);
     warn.mockRestore();
+  });
+
+  it("renames from the schedule the topic of a release whose renames Telegram refused", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    const pull = {
+      number: 30,
+      state: "open",
+      title: "chore: release 1.15.2",
+      draft: false,
+      mergeable_state: "clean",
+      html_url: PULL_URL,
+      head: { ref: "release-please--branches--main", sha: "abc" },
+      base: { ref: "main", repo: { default_branch: "main" } },
+    };
+    const serve = (answer: object) =>
+      w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () => json(answer));
+    const check: Signal = { ...at, type: "release-check", numbers: [30] };
+    serve(pull);
+    await apply(w.context, check);
+    // Telegram refuses each rename for a while, such as after a burst of calls.
+    let refuse = true;
+    w.net.on("POST", /\/editForumTopic$/, () =>
+      refuse
+        ? json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 600",
+              parameters: { retry_after: 600 },
+            },
+            429,
+          )
+        : json({ ok: true, result: true }),
+    );
+    serve({
+      ...pull,
+      title: "chore: release 1.16.0",
+      head: { ...pull.head, sha: "def" },
+    });
+    await apply(w.context, check);
+    w.clock.now += 60_000;
+    await apply(w.context, { ...at, type: "release-merged", number: 30 });
+    await apply(w.context, {
+      ...at,
+      type: "release-published",
+      tag: "v1.16.0",
+    });
+    const id = await itemId(keys.release(REPO));
+    // The published release keeps the topic of 1.15.2 and when its rename was first refused.
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      state: "published",
+      version: "1.16.0",
+      topic: { thread: 900, name: "📦 demo 1.15.2" },
+      renameRefused: START,
+    });
+    const metadata = async () =>
+      (await env.PAGER.list({ prefix: `item:${id}` })).keys[0]?.metadata;
+    expect(await metadata()).toEqual({ rename: START });
+    // A run while Telegram still refuses keeps everything as it is.
+    w.clock.now += 15 * 60_000;
+    expect(await runSchedule(w.context)).not.toContain(id);
+    expect((await stored(w, keys.release(REPO)))?.renameRefused).toBe(START);
+    refuse = false;
+    w.clock.now += 15 * 60_000;
+    expect(await runSchedule(w.context)).toContain(id);
+    expect(names(w, "editForumTopic").at(-1)).toBe("✅ 📦 demo 1.16.0");
+    const renamed = await stored(w, keys.release(REPO));
+    expect(renamed?.topic).toEqual({ thread: 900, name: "✅ 📦 demo 1.16.0" });
+    expect(renamed).not.toHaveProperty("renameRefused");
+    expect(await metadata()).toBeUndefined();
+    const calls = names(w, "editForumTopic").length;
+    await runSchedule(w.context);
+    expect(names(w, "editForumTopic")).toHaveLength(calls);
+    warn.mockRestore();
+  });
+
+  it("keeps the old name of a topic that Telegram refuses to rename for a day", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    await apply(w.context, failing("check:lint"));
+    w.net.on(
+      "POST",
+      /\/editForumTopic$/,
+      refused("Bad Request: TOPIC_ID_INVALID"),
+    );
+    await apply(w.context, { ...at, type: "recovered", key: "check:lint" });
+    expect((await stored(w, keys.alarm(REPO)))?.renameRefused).toBe(START);
+    const calls = names(w, "editForumTopic").length;
+    w.clock.now = START + RENAME_FOR;
+    await runSchedule(w.context);
+    expect(names(w, "editForumTopic")).toHaveLength(calls);
+    expect(warn).toHaveBeenCalledWith(
+      "Telegram refused to rename topic 900 for a day; it keeps its name",
+    );
+    const kept = await stored(w, keys.alarm(REPO));
+    expect(kept).not.toHaveProperty("renameRefused");
+    expect(kept?.topic?.name).toBe("🚨 demo needs you");
+    warn.mockRestore();
+  });
+
+  it("renames at most a few topics per run of the schedule, and skips a record that needs none", async () => {
+    const w = await chat();
+    const refusedTopic = async (repo: string, thread: number) => {
+      const item: Alarm = {
+        ...alarm,
+        ...base(await itemId(keys.alarm(repo))),
+        repo,
+        topic: { thread, name: "old" },
+        renameRefused: START,
+      };
+      await w.context.store.put(item);
+      return item;
+    };
+    for (let at = 0; at <= MAX_RENAMES; at += 1) {
+      await refusedTopic(`Dennis-Otto/demo${at}`, 910 + at);
+    }
+    // A record that the list names, but that needs no rename any more.
+    const done = await refusedTopic("Dennis-Otto/other", 920);
+    const { renameRefused: _refused, ...renamed } = done;
+    await env.PAGER.put(`item:${done.id}`, JSON.stringify(renamed), {
+      metadata: { rename: START },
+    });
+    const first = await runSchedule(w.context);
+    expect(first).toHaveLength(names(w, "editForumTopic").length);
+    expect(names(w, "editForumTopic").length).toBeLessThanOrEqual(MAX_RENAMES);
+    await runSchedule(w.context);
+    await runSchedule(w.context);
+    expect(names(w, "editForumTopic")).toHaveLength(MAX_RENAMES + 1);
+    expect(names(w, "editForumTopic")).not.toContain("🚨 other needs you");
+    expect(new Set(names(w, "editForumTopic")).size).toBe(MAX_RENAMES + 1);
+  });
+
+  it("renames no topic in a run of the schedule that used up its calls, and leaves it for the next", async () => {
+    const w = await chat();
+    const item: Alarm = {
+      ...alarm,
+      ...base(await itemId(keys.alarm("Dennis-Otto/demo"))),
+      topic: { thread: 930, name: "old" },
+      renameRefused: START,
+    };
+    await w.context.store.put(item);
+    const counted = w.context.subrequests;
+    w.context.subrequests = () => SUBREQUESTS;
+    expect(await runSchedule(w.context)).not.toContain(item.id);
+    expect(names(w, "editForumTopic")).toHaveLength(0);
+    expect((await w.context.store.get(item.id))?.renameRefused).toBe(START);
+    w.context.subrequests = counted;
+    expect(await runSchedule(w.context)).toContain(item.id);
+    expect(names(w, "editForumTopic")).toHaveLength(1);
   });
 
   it("opens no topic for a thing from before topics", async () => {

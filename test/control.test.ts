@@ -1192,6 +1192,7 @@ describe("the schedule", () => {
       due: [],
       waiting: ["i444444444444444"],
       remind: [],
+      rename: [],
     });
     expect((await w.context.store.pending(START, START - 1)).waiting).toEqual(
       [],

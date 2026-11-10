@@ -7,6 +7,7 @@ import type { ReleaseNotes } from "./content.ts";
 import { sha256Hex } from "./crypto.ts";
 import type { Severity } from "./rules.ts";
 import type { Thread } from "./telegram.ts";
+import type { Translation } from "./translations.ts";
 
 /** One part of a bundle, such as a failed check on main or a code-scanning alert. */
 export interface Entry {
@@ -48,6 +49,11 @@ interface Base {
    * topics, which has none.
    */
   topic?: Topic | null;
+  /**
+   * When Telegram first refused to rename the topic to the thing's name, in
+   * milliseconds since 1970: the schedule tries again for a day (src/schedule.ts).
+   */
+  renameRefused?: number;
   /**
    * When the thing went to the control repository, in milliseconds since 1970,
    * while it waits for the answer of that job: any answer ends the wait.
@@ -198,6 +204,8 @@ export interface Release extends Base {
   url: string;
   /** What the release brings, from the body of its pull request; none when the body has no notes. */
   notes?: ReleaseNotes;
+  /** Its notes in the language of the pager, from the control repository (src/translations.ts). */
+  translation?: Translation;
   /** The head of the pull request whose pictures of the visual check went into its topic. */
   album?: string;
 }
@@ -415,6 +423,8 @@ export interface Pending {
   waiting: string[];
   /** The vulnerability reports whose reminder is due. */
   remind: string[];
+  /** The things whose topic Telegram refused to rename. */
+  rename: string[];
 }
 
 /** The metadata of the record of a thing, which the list reads. */
@@ -425,6 +435,8 @@ interface Marks {
   job?: number;
   /** When the reminder of a vulnerability report is due. */
   remind?: number;
+  /** When Telegram first refused to rename its topic. */
+  rename?: number;
 }
 
 /**
@@ -492,16 +504,26 @@ export class Store {
     }
     if (isClosed(item)) {
       options.expirationTtl = MONTH;
-    } else if (Object.keys(marks).length > 0) {
-      options.metadata = marks;
+      // A done thing waits for nothing but the rename of its topic, with ✅.
+      if (item.renameRefused !== undefined) {
+        options.metadata = { rename: item.renameRefused };
+      }
+    } else {
+      if (item.renameRefused !== undefined) {
+        marks.rename = item.renameRefused;
+      }
+      if (Object.keys(marks).length > 0) {
+        options.metadata = marks;
+      }
     }
     await this.kv.put(`item:${item.id}`, JSON.stringify(item), options);
   }
 
   /**
    * The ids of the things whose "Later" is over at now, of those whose job of the
-   * control repository went before jobsBefore, and of the vulnerability reports
-   * whose reminder is due at now, page by page of one list: the
+   * control repository went before jobsBefore, of the vulnerability reports
+   * whose reminder is due at now, and of those whose topic Telegram refused to
+   * rename, page by page of one list: the
    * free plan of KV allows a thousand lists a day, and the schedule runs 96 times.
    */
   async pending(
@@ -509,7 +531,7 @@ export class Store {
     jobsBefore: number,
     limit = 1000,
   ): Promise<Pending> {
-    const pending: Pending = { due: [], waiting: [], remind: [] };
+    const pending: Pending = { due: [], waiting: [], remind: [], rename: [] };
     let cursor: string | null = null;
     do {
       const listed: KVNamespaceListResult<Marks> = await this.kv.list({
@@ -519,7 +541,7 @@ export class Store {
       });
       for (const key of listed.keys) {
         const id = key.name.slice("item:".length);
-        const { until, job, remind } = key.metadata ?? {};
+        const { until, job, remind, rename } = key.metadata ?? {};
         if (until !== undefined && until <= now) {
           pending.due.push(id);
         }
@@ -528,6 +550,9 @@ export class Store {
         }
         if (remind !== undefined && remind <= now) {
           pending.remind.push(id);
+        }
+        if (rename !== undefined) {
+          pending.rename.push(id);
         }
       }
       cursor = listed.list_complete ? null : listed.cursor;

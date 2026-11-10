@@ -1,0 +1,32 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 400
+---
+flowchart TB
+    accTitle: The notes of a release in your language
+    accDescr: The checks of a release pull request pass, and the pager shows its message at once, with the headings of the notes in the language of the pager and the items in English, which notifies. A pager in English, and notes that were asked for already, end there. Otherwise the pager sends the items, without their scopes, to the control repository, whose Claude translates them with the maintainer's subscription. The pager checks each line: one that lost a reference such as #791 or a name of code keeps its English. Then it edits the message in place, without a notification, and keeps the translation for later changes of the message. Without an answer, the English stays.
+
+    ready["`**🟢** The checks of a release pull request pass`"]
+    message["`**📦** Its message at once, which notifies: the headings in the language of the pager, the items in English`"]
+    asked{"A pager in English, or notes asked for already?"}
+    stays["`**📦** The message stays as it is`"]
+    control["`**🤖** The control repository: Claude translates the items, without their scopes, with the maintainer's subscription`"]
+    checked["`**🔍** Each line checked: one that lost a reference such as #791, or a name of code, keeps its English`"]
+    edited["`**✏️** The message in German, edited in place, without a notification; the translation stays for later changes`"]
+    english["`**📦** No answer: the English stays`"]
+
+    ready --> message
+    message --> asked
+    asked -- "yes" --> stays
+    asked -- "no: pager-translate" --> control
+    control -- "translation" --> checked
+    checked --> edited
+    control -- "no answer" --> english
+
+    classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
+    classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px
+    classDef done fill:#16a34a2e,stroke:#16a34a,stroke-width:2px
+    class message,asked,control,checked bot
+    class ready you
+    class stays,edited,english done

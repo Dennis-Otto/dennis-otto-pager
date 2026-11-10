@@ -11,11 +11,14 @@
  * after an outage of GitHub, which comes as a proposal in the thing's topic. It
  * also forwards what the maintainer's own agents send it: a question whose options
  * are buttons, whose answer the pager saves in the control repository, the end of
- * a question that the agent no longer needs, and the report of a run. Once a day,
+ * a question that the agent no longer needs, and the report of a run. The notes
+ * of a release come back in the language of the pager, and edit its message in
+ * place (src/translations.ts). Once a day,
  * it asks for the health of the pager (src/health.ts), and any body may name the
  * day on which PAGER_FIX_TOKEN expires, for its reminder (src/tokens.ts).
  */
 import { allowed, callbackData, type Labeled, label } from "./buttons.ts";
+import { MAX_NOTE_LINES } from "./content.ts";
 import { verifySignature } from "./crypto.ts";
 import { health } from "./health.ts";
 import { type Context, draftOrWhyNot, show } from "./pager.ts";
@@ -34,6 +37,7 @@ import { type Keyboard, REACTIONS, type Thread } from "./telegram.ts";
 import type { Texts } from "./texts.ts";
 import { learnTokens, tokensOf } from "./tokens.ts";
 import { postBelow, postInNewTopic, REPORT_COLOR } from "./topics.ts";
+import { checked, notesKey, translates } from "./translations.ts";
 import { MAX_DRAFT } from "./updates.ts";
 import { footer, type Usage, usageOf } from "./usage.ts";
 
@@ -81,6 +85,7 @@ export type Message = (
   | { type: "ask"; id: string; question: string; options: string[] }
   | { type: "withdraw"; id: string; reason?: string }
   | { type: "report"; text: string; title?: string }
+  | { type: "translation"; item: string; of: string; lines: string[] }
   | { type: "health" }
 ) & { usage?: Usage; message?: number; tokens?: { fix: string | null } };
 
@@ -174,10 +179,35 @@ function withdrawalOf(message: Fields): Message | null {
     : { type: "withdraw", id, reason: (reason as string).trim() };
 }
 
+/**
+ * The notes of a release in the language of the pager: the release, the key of
+ * the notes that the pager asked for, and one line for each line that it sent, at
+ * most as many as a message shows; src/translations.ts checks each against its
+ * English.
+ */
+function translationOf(message: Fields): Message | null {
+  const { item, of, lines } = message;
+  if (
+    typeof item !== "string" ||
+    typeof of !== "string" ||
+    !/^[0-9a-f]{8}$/.test(of) ||
+    !Array.isArray(lines) ||
+    lines.length === 0 ||
+    lines.length > MAX_NOTE_LINES ||
+    lines.some((line: unknown) => typeof line !== "string")
+  ) {
+    return null;
+  }
+  return { type: "translation", item, of, lines: lines as string[] };
+}
+
 function shape(message: Fields): Message | null {
   const { type, item, text, action } = message;
   if (type === "ask") {
     return questionOf(message);
+  }
+  if (type === "translation") {
+    return translationOf(message);
   }
   if (type === "withdraw") {
     return withdrawalOf(message);
@@ -495,6 +525,40 @@ async function report(
   return new Response("reported");
 }
 
+/**
+ * The notes of a release in the language of the pager: they edit its message in
+ * place, which notifies no one, once for the notes that the pager asked for. An
+ * answer for notes that changed since, or into a language that the pager no longer
+ * speaks, the same answer again and one that doesn't fit the notes change nothing,
+ * and the message keeps what it shows.
+ */
+async function translate(
+  context: Context,
+  message: Extract<Message, { type: "translation" }>,
+): Promise<Response> {
+  const item = await context.store.get(message.item);
+  if (item?.kind !== "release" || item.notes === undefined) {
+    return new Response("Not Found", { status: 404 });
+  }
+  const asked = item.translation;
+  if (
+    !translates(asked, message.of, context.t.language) ||
+    notesKey(item.notes) !== message.of
+  ) {
+    return new Response("Conflict", { status: 409 });
+  }
+  if (asked.lines !== undefined) {
+    return new Response("translated");
+  }
+  const lines = checked(item.notes, message.lines);
+  if (lines === null) {
+    return new Response("Unprocessable Content", { status: 422 });
+  }
+  item.translation = { ...asked, lines };
+  await show(context, item);
+  return new Response("translated");
+}
+
 /** Handle a request of the control repository. */
 export async function handleControl(
   context: Context,
@@ -526,6 +590,9 @@ export async function handleControl(
   }
   if (message.type === "report") {
     return report(context, message);
+  }
+  if (message.type === "translation") {
+    return translate(context, message);
   }
   if (message.type === "proposal") {
     const { target } = message;

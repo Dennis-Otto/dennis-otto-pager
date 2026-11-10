@@ -6,18 +6,20 @@
  * that still waits in triage on the day before its acknowledgement is due comes
  * again (src/advisories.ts), the reminder of each token of the maintainer comes
  * three weeks before it expires (src/tokens.ts), a workflow that failed on the
- * default branch and whose rerun didn't help shows (src/workflows.ts), and an
+ * default branch and whose rerun didn't help shows (src/workflows.ts), a topic
+ * whose rename Telegram refused gets its name (src/topics.ts), and an
  * event of GitHub that the pager failed to handle comes again
  * (src/deliveries.ts). A run that comes to its end says so in the storage of the
  * Durable Object, for the check of the pager's health (src/health.ts).
  */
 import { remindAdvisories } from "./advisories.ts";
-import { failedEvents } from "./deliveries.ts";
+import { failedEvents, SUBREQUESTS } from "./deliveries.ts";
 import { RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
 import { remindTokens } from "./tokens.ts";
+import { retitle } from "./topics.ts";
 import { canSettle, settle } from "./workflows.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -36,6 +38,12 @@ export const ANSWER_WITHIN = 60 * 60 * 1000;
  * so that an answer that comes late still goes into it.
  */
 export const KEEP_LATE = DAY;
+
+/** How long the schedule tries again to rename a topic that Telegram refused to rename. */
+export const RENAME_FOR = DAY;
+
+/** The most topics that one run of the schedule tries to rename, each one call to Telegram. */
+export const MAX_RENAMES = 5;
 
 /**
  * Give up on the texts whose answer didn't come in time: their 👀 becomes 😢, and
@@ -108,6 +116,46 @@ async function noAnswer(
 }
 
 /**
+ * Rename the topics that Telegram refused to rename, such as after a burst of
+ * calls, at most MAX_RENAMES per run and only while the run has calls to the
+ * network left, so that the rest waits for the next run: a thing whose rename went through, or that
+ * needs none any more, is kept without its mark, and one that Telegram still
+ * refuses stays as it is, without a write, until RENAME_FOR is over, when it keeps
+ * the old name and the log says so.
+ */
+async function renameAgain(
+  context: Context,
+  refused: string[],
+): Promise<string[]> {
+  const renamed: string[] = [];
+  for (const id of refused.slice(0, MAX_RENAMES)) {
+    if (context.subrequests() >= SUBREQUESTS) {
+      break;
+    }
+    // The list may lag behind a write: only the record says whether it still waits.
+    const item = await context.store.get(id);
+    const since = item?.renameRefused;
+    if (item === null || since === undefined) {
+      continue;
+    }
+    if (since <= context.now() - RENAME_FOR) {
+      console.warn(
+        `Telegram refused to rename topic ${item.topic?.thread} for a day; it keeps its name`,
+      );
+      delete item.renameRefused;
+    } else {
+      await retitle(context, item);
+      if (item.renameRefused !== undefined) {
+        continue;
+      }
+      renamed.push(id);
+    }
+    await context.store.put(item);
+  }
+  return renamed;
+}
+
+/**
  * One run of the schedule; returns the ids of the things that it showed. The
  * events that failed come last: they take the calls to the network that the steps
  * before them left, and the requests of the events that GitHub delivers again wait
@@ -132,6 +180,7 @@ export async function runSchedule(context: Context): Promise<string[]> {
     )),
   );
   shown.push(...(await remindTokens(context)));
+  shown.push(...(await renameAgain(context, pending.rename)));
   shown.push(...(await failedEvents(context)));
   await context.local.put(RAN, context.now());
   return shown;

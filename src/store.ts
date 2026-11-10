@@ -25,6 +25,17 @@ export interface Entry {
   upload?: true;
 }
 
+/**
+ * A pause of new topics after Telegram refused one: until when the pager asks for
+ * none, and how long the pause is, which the next refusal doubles (src/topics.ts).
+ */
+export interface TopicPause {
+  /** In milliseconds since 1970. */
+  until: number;
+  /** In milliseconds. */
+  length: number;
+}
+
 /** The topic of the chat that a thing has: its thread, and the name that it shows now. */
 export interface Topic {
   thread: number;
@@ -398,6 +409,15 @@ export const SECRET_MEMORY = 4 * 60 * 60;
 
 const MONTH = 30 * 24 * 60 * 60;
 
+/** The key of the pause of new topics, one for the chat. */
+const TOPIC_PAUSE_KEY = "pause:topics";
+
+/**
+ * How long Workers KV keeps a pause of new topics, in seconds: a day, so that the
+ * next refusal within it doubles the pause, and one after it starts short again.
+ */
+const TOPIC_PAUSE_MEMORY = 24 * 60 * 60;
+
 /**
  * A text of the maintainer that waits for the answer of the control repository:
  * when it went, and the thread of the chat that it came from, where the answer goes.
@@ -673,6 +693,23 @@ export class Store {
     const id = await this.kv.get(`topic:${thread}`);
     const item = id === null ? null : await this.get(id);
     return item?.topic?.thread === thread ? item : null;
+  }
+
+  /** The pause of new topics after Telegram refused one, or null when there is none. */
+  async topicPause(): Promise<TopicPause | null> {
+    return this.kv.get<TopicPause>(TOPIC_PAUSE_KEY, "json");
+  }
+
+  /** Pause new topics, after Telegram refused one. */
+  async pauseTopics(pause: TopicPause): Promise<void> {
+    await this.kv.put(TOPIC_PAUSE_KEY, JSON.stringify(pause), {
+      expirationTtl: TOPIC_PAUSE_MEMORY,
+    });
+  }
+
+  /** End the pause of new topics, once Telegram opened one again. */
+  async resumeTopics(): Promise<void> {
+    await this.kv.delete(TOPIC_PAUSE_KEY);
   }
 
   /** Remember when an alert of secret scanning was resolved: its number and that time, nothing else. */

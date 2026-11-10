@@ -8,7 +8,7 @@
  */
 import { keyboard } from "./buttons.ts";
 import { type ReleaseNotes, releaseNotes } from "./content.ts";
-import type { Local } from "./context.ts";
+import { describe, type Local } from "./context.ts";
 import {
   type GitHub,
   GitHubError,
@@ -69,7 +69,13 @@ import {
   type Thread,
 } from "./telegram.ts";
 import { type Texts, texts } from "./texts.ts";
-import { postBelow, retitle, sendThing } from "./topics.ts";
+import {
+  leaveMainView,
+  moveIntoTopic,
+  postBelow,
+  retitle,
+  sendThing,
+} from "./topics.ts";
 import {
   NOTES_LANGUAGE,
   notesKey,
@@ -115,7 +121,10 @@ const DAY = 24 * 60 * 60 * 1000;
  * Show a thing: edit its message, or send a new one when it has none, when it is
  * gone, or with fresh, which also deletes the old one, as "Later" does when its
  * time is up. A new message goes into the thing's topic, and its first one opens
- * that; the name of the topic follows the thing. Then keep its state.
+ * that; the name of the topic follows the thing. An open thing that waits in the
+ * main view for its topic, such as one whose topic Telegram refused, moves into a
+ * new topic instead of the edit, quietly, and its old message goes. Then keep its
+ * state.
  */
 export async function show(
   context: Context,
@@ -125,10 +134,24 @@ export async function show(
   const text = render(item, context.now(), context.t);
   const buttons = keyboard(item, context.t);
   const old = item.messageId;
-  const shown =
-    old !== null && !fresh
-      ? await context.telegram.edit(old, text, buttons)
-      : false;
+  let shown = false;
+  if (old !== null && !fresh) {
+    let moved: number | null = null;
+    try {
+      moved = await moveIntoTopic(context, item, text, buttons);
+    } catch (error) {
+      // Such as too many requests at once: the edit in place shows the change, and
+      // the next change tries the move again.
+      console.warn(
+        `Telegram moves no message into a topic: ${describe(error)}; edited in place`,
+      );
+    }
+    if (moved !== null) {
+      item.messageId = moved;
+      await leaveMainView(context, old, text);
+    }
+    shown = moved !== null || (await context.telegram.edit(old, text, buttons));
+  }
   if (!shown) {
     item.messageId = await sendThing(context, item, text, buttons);
     if (old !== null && fresh) {

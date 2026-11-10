@@ -696,7 +696,7 @@ describe("Telegram", () => {
   it("deletes, answers, prompts, says and reacts", async () => {
     const net = new Net();
     const api = telegram(net);
-    await api.remove(5);
+    expect(await api.remove(5)).toBe(true);
     await api.answer("q", "x".repeat(300), true);
     expect(await api.prompt("Write", "Reply")).toBe(100);
     await api.say("Hello");
@@ -726,11 +726,22 @@ describe("Telegram", () => {
     expect(net.telegram("answerCallbackQuery")[1]?.body.show_alert).toBe(false);
   });
 
-  it("takes a message that is gone already as deleted, but not a broken network", async () => {
+  it("takes a message that is gone already as deleted, one too old to delete as kept, but not a broken network", async () => {
     const gone = new Net().on("POST", /deleteMessage$/, () =>
       json({ ok: false, description: "message to delete not found" }, 400),
     );
-    await telegram(gone).remove(5);
+    expect(await telegram(gone).remove(5)).toBe(true);
+    // Telegram deletes no message older than 48 hours.
+    const old = new Net().on("POST", /deleteMessage$/, () =>
+      json(
+        {
+          ok: false,
+          description: "Bad Request: message can't be deleted for everyone",
+        },
+        400,
+      ),
+    );
+    expect(await telegram(old).remove(5)).toBe(false);
     const broken = new Net().on("POST", /deleteMessage$/, () => {
       throw new TypeError("network");
     });

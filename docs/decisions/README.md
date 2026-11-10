@@ -26,3 +26,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0018](0018-the-pager-is-repo-pager-which-everyone-runs-as-an-instance-of-their-own.md) | The pager is Repo Pager, which everyone runs as an instance of their own | accepted |
 | [0019](0019-the-control-repository-comes-from-a-public-template-which-every-copy-follows.md) | The control repository comes from a public template, which every copy follows | accepted |
 | [0020](0020-the-notes-of-a-release-come-in-the-language-of-the-pager.md) | The notes of a release come in the language of the pager | accepted |
+| [0021](0021-a-thing-that-telegram-kept-out-of-a-topic-moves-into-it-with-its-next-change.md) | A thing that Telegram kept out of a topic moves into it with its next change | accepted |

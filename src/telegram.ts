@@ -214,24 +214,27 @@ export class Telegram {
     text: string,
     keyboard: Keyboard,
     thread: Thread,
-    replyTo: number | null = null,
+    replyTo: number | null,
   ): Promise<Sent> {
     return this.deliver(this.message(text, keyboard), thread, replyTo);
   }
 
   /**
    * Send a message as send() does, but into the thread alone: when Telegram
-   * doesn't find the thread, nothing is sent, and it returns null.
+   * doesn't find the thread, nothing is sent, and it returns null. A silent one
+   * notifies nobody, such as a message that moves into its topic.
    */
   async postInto(
     text: string,
     keyboard: Keyboard,
     thread: number,
+    silent = false,
   ): Promise<number | null> {
     try {
       return await this.sendMessage({
         ...this.message(text, keyboard),
         message_thread_id: thread,
+        ...(silent ? { disable_notification: true } : {}),
       });
     } catch (error) {
       if (!threadNotFound(error)) {
@@ -405,17 +408,22 @@ export class Telegram {
     await this.upload(single ? "sendPhoto" : "sendMediaGroup", form);
   }
 
-  /** Delete a message; one that is gone already is no error. */
-  async remove(messageId: number): Promise<void> {
+  /**
+   * Delete a message. Returns whether it is gone: one that is gone already is, and
+   * one that Telegram refuses to delete, such as one older than 48 hours, isn't.
+   */
+  async remove(messageId: number): Promise<boolean> {
     try {
       await this.call("deleteMessage", {
         chat_id: this.chatId,
         message_id: messageId,
       });
+      return true;
     } catch (error) {
       if (!(error instanceof TelegramError)) {
         throw error;
       }
+      return error.description.includes("message to delete not found");
     }
   }
 
@@ -522,10 +530,17 @@ export class Telegram {
 
   /**
    * Open a topic in the chat, with a name and the color of its icon. Returns its
-   * thread, or null when the chat has no topics or Telegram refuses one: the thing
-   * then goes into the main view, as before topics.
+   * thread; "refused" when Telegram refuses one with a Bad Request, as it refused
+   * every new topic of a private chat with BOT_TOPIC_WRONG_HOME from 9 November 2026
+   * (tdlib/telegram-bot-api#944), and may leave its notice that the topic was
+   * created in the main view all the same; or null when the chat has no topics or
+   * Telegram fails otherwise, such as with a 5xx, which passes. Without a topic the
+   * thing goes into the main view, as before topics.
    */
-  async openTopic(name: string, color: TopicColor): Promise<number | null> {
+  async openTopic(
+    name: string,
+    color: TopicColor,
+  ): Promise<number | "refused" | null> {
     if (!(await this.topics())) {
       return null;
     }
@@ -544,7 +559,7 @@ export class Telegram {
       console.warn(
         `Telegram createForumTopic: ${error.description}; sent to the main view`,
       );
-      return null;
+      return error.description.startsWith("Bad Request") ? "refused" : null;
     }
   }
 

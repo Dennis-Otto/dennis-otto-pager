@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: Ein Thema pro Sache
-    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Antwort von Fix, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was der Maintainer im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Löscht der Maintainer das Thema, öffnet die nächste Nachricht der Sache ein neues, mit der Nachricht der Sache zuerst. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher.
+    accDescr: Eine neue Sache, etwa ein Alarm, ein Beitrag oder ein Release, öffnet ein eigenes Thema im Chat, benannt nach ihrem Repository und dem, was sie ist. Ihre Nachricht mit den Knöpfen kommt zuerst, und ihre Änderungen bearbeiten sie dort. Ihre Entwürfe, die Antwort von Fix, die Rückfrage von Bearbeiten, was Später zurückbringt, und die Antworten auf das, was der Maintainer im Thema fragt, folgen darin; seine Frage geht zusammen mit der Sache an das Steuer-Repository. Ist die Sache erledigt, bekommt ihr Thema ein Häkchen vor seinen Namen und bleibt. Löscht der Maintainer das Thema, öffnet die nächste Nachricht der Sache ein neues, mit der Nachricht der Sache zuerst. Ohne Threaded Mode, oder wenn Telegram das Thema oder eine Nachricht darin ablehnt, geht es mit der Sache in der Hauptansicht weiter, wie bisher. Ein abgelehntes Thema pausiert neue Themen für eine Stunde, doppelt so lange bis zu vier Stunden, und nach der Pause zieht die nächste Änderung einer offenen Sache sie leise in ein eigenes neues Thema.
 
     thing["Eine neue Sache: ein Alarm, ein Beitrag, ein Release, Code Scanning"]
     open["`**createForumTopic** öffnet ihr Thema, etwa 🚨 demo braucht dich`"]
@@ -24,6 +24,7 @@ flowchart TB
     more -- "gemergt, wieder grün, ignoriert" --> done
     done -- "für den Maintainer erledigt" --> gone
     open -- "keine Themen, oder Telegram lehnt ab" --> main
+    main -- "ihre nächste Änderung, sobald Telegram wieder Themen öffnet (nach der Pause)" --> open
 
     classDef you fill:#f59e0b2e,stroke:#f59e0b,stroke-width:2px
     classDef bot fill:#526cfe2e,stroke:#526cfe,stroke-width:2px

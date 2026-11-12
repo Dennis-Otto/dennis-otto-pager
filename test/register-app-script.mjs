@@ -97,30 +97,36 @@ async function confirm(address) {
 }
 
 /**
- * A browser that sends the redirect of GitHub twice on one connection, the second
- * before the first is answered, as a reload while the script stores the secrets.
- * It sends both at once, so that the script reads both before it answers one.
+ * A browser that loads the page of GitHub's redirect again while the script
+ * stores the secrets. server.close() ends the connections that send no request,
+ * so the second request starts first, on a connection of its own, and ends only
+ * once the first one is answered.
  */
 async function confirmTwice(address) {
   const form = await (await fetch(`${address}/`)).text();
   const state = /\?state=([0-9a-f]{32})"/.exec(form)?.[1];
+  const done = `/done?state=${state}&code=the-code`;
   const { hostname, port } = new URL(address);
-  const request = `GET /done?state=${state}&code=the-code HTTP/1.1\r\nHost: ${hostname}\r\n\r\n`;
-  const answer = await new Promise((resolve, reject) => {
-    let text = "";
-    const socket = connect(Number(port), hostname, () =>
-      socket.write(request + request),
-    );
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk) => {
-      text += chunk;
-    });
-    socket.on("end", () => resolve(text));
+  const socket = connect(Number(port), hostname);
+  socket.setEncoding("utf8");
+  let text = "";
+  socket.on("data", (chunk) => {
+    text += chunk;
+  });
+  const ended = new Promise((resolve, reject) => {
+    socket.on("end", resolve);
     socket.on("error", reject);
   });
-  return answer
-    .split(/(?=HTTP\/1\.1 \d{3} )/)
-    .map((page) => ({ status: Number(page.slice(9, 12)), body: page }));
+  await new Promise((resolve) =>
+    socket.write(`GET ${done} HTTP/1.1\r\nHost: ${hostname}\r\n`, resolve),
+  );
+  // Gives the script the time to read the start of the second request.
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const first = await fetch(`${address}${done}`);
+  const firstPage = { status: first.status, body: await first.text() };
+  socket.write("\r\n");
+  await ended;
+  return [firstPage, { status: Number(text.slice(9, 12)), body: text }];
 }
 
 const LIST = ["--no", "--", "wrangler", "secret", "list"];
@@ -212,9 +218,11 @@ describe("scripts/register-app.mjs", () => {
         text,
         /Stored: GITHUB_APP_ID\. Missing: GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET\./,
       );
-      assert.match(
+      assert.ok(
+        text.includes(
+          "https://github.com/organizations/octo-org/settings/apps/repo-pager-of-octocat/advanced",
+        ),
         text,
-        /github\.com\/organizations\/octo-org\/settings\/apps\/repo-pager-of-octocat\/advanced/,
       );
     }
     assert.match(

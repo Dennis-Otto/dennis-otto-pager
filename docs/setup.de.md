@@ -25,6 +25,8 @@ Leg eine Kopie dieses Repositorys an: einen Fork oder ein eigenes Repository. `w
 | `LANGUAGE` | `de` für Deutsch, `en` oder leer für Englisch |
 | `CLAUDE_TOKEN_EXPIRES` | Der Tag, an dem dein Token von Claude abläuft, oder leer |
 
+Die Tests deiner Kopie bestehen mit deinen Werten: Sie nehmen sie aus `wrangler.jsonc`, und `bash scripts/check.sh` lässt sie noch einmal mit denen einer anderen Instanz laufen, damit eine eigene Änderung und ein Update durch einen grünen Pull-Request kommen.
+
 Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, privat, aus [der Vorlage des Steuer-Repositorys](https://github.com/Dennis-Otto/repo-pager-control-template), denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 richtet den Rest ein:
 
 ```sh

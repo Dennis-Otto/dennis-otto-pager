@@ -840,9 +840,12 @@ describe("the security message of a repository", () => {
 });
 
 describe("what a report says and a secret", () => {
+  // The events come from a repository of ME, and the Worker serves only the
+  // repositories of its maintainer, whom every copy sets in wrangler.jsonc.
   async function secrets(): Promise<PagerEnv> {
     return {
       ...(env as PagerEnv),
+      MAINTAINER_LOGIN: ME,
       TELEGRAM_BOT_TOKEN: "123:test",
       TELEGRAM_WEBHOOK_SECRET: "telegram-secret",
       TELEGRAM_CHAT_ID: String(CHAT),

@@ -14,6 +14,7 @@ import { describe as describeError, makeContext } from "../src/context.ts";
 import { hmacHex } from "../src/crypto.ts";
 import { forget, GitHubError } from "../src/github.ts";
 import worker from "../src/index.ts";
+import { html } from "../src/render.ts";
 import { schedule } from "../src/routes.ts";
 import type { PagerEnv } from "../src/settings.ts";
 import { type Contribution, itemId, keys } from "../src/store.ts";
@@ -23,6 +24,17 @@ import { appKey, base, CHAT, json, Net, REPO, settings } from "./helpers.ts";
 
 /** The texts of the language that wrangler.jsonc sets. */
 const say = texts(languageOf((env as PagerEnv).LANGUAGE) ?? "en");
+
+/**
+ * The maintainer and the control repository that wrangler.jsonc sets, and a
+ * repository of that maintainer. The Worker under test serves only the
+ * repositories of its maintainer, and every copy sets its own in wrangler.jsonc,
+ * as docs/setup.md asks: the tests take them from there, and
+ * scripts/check-project.sh runs them once more with those of another instance.
+ */
+const { MAINTAINER_LOGIN: OWNER, CONTROL_REPOSITORY: CONTROL } =
+  env as PagerEnv;
+const HERE = `${OWNER}/demo`;
 
 let net: Net;
 let errors: string[];
@@ -151,9 +163,9 @@ describe("the webhook of Telegram", () => {
 
 describe("the webhook of GitHub", () => {
   const repository = {
-    full_name: "Dennis-Otto/demo",
+    full_name: HERE,
     default_branch: "main",
-    owner: { login: "Dennis-Otto" },
+    owner: { login: OWNER },
   };
   const opened = {
     action: "opened",
@@ -201,10 +213,9 @@ describe("the webhook of GitHub", () => {
     const response = await call(await fromGitHub("issues", opened));
     expect(await response.text()).toBe("contribution shown");
     const sent = net.telegram("sendMessage")[0]?.body;
-    expect(env.LANGUAGE).toBe("de");
     expect(sent.text).toContain(
-      say("message.issue", { repo: REPO, author: "", link: "" }).split(
-        ` ${REPO}`,
+      say("message.issue", { repo: HERE, author: "", link: "" }).split(
+        ` ${HERE}`,
       )[0],
     );
     expect(sent.reply_markup.inline_keyboard[0][0].text).toBe(
@@ -234,7 +245,7 @@ describe("the webhook of GitHub", () => {
     expect(net.telegram("sendMessage")).toHaveLength(2);
     const replied = {
       ...commented,
-      comment: { id: 100, user: { login: "Dennis-Otto" } },
+      comment: { id: 100, user: { login: OWNER } },
     };
     expect(
       await (await call(await fromGitHub("issue_comment", replied))).text(),
@@ -264,9 +275,9 @@ describe("the webhook of GitHub", () => {
 
 describe("one change at a time", () => {
   const repository = {
-    full_name: "Dennis-Otto/demo",
+    full_name: HERE,
     default_branch: "main",
-    owner: { login: "Dennis-Otto" },
+    owner: { login: OWNER },
   };
 
   function failed(name: string) {
@@ -277,7 +288,7 @@ describe("one change at a time", () => {
       check_run: {
         name,
         conclusion: "failure",
-        html_url: `https://github.com/Dennis-Otto/demo/runs/${name}`,
+        html_url: `https://github.com/${HERE}/runs/${name}`,
         check_suite: { head_branch: "main" },
       },
     };
@@ -304,7 +315,7 @@ describe("one change at a time", () => {
     ]);
     expect(net.telegram("sendMessage")).toHaveLength(1);
     const store = makeContext(await settings(), env as PagerEnv).store;
-    const bundle = await store.get(await itemId(keys.alarm(REPO)));
+    const bundle = await store.get(await itemId(keys.alarm(HERE)));
     expect(bundle).toMatchObject({
       entries: [{ key: "check:lint" }, { key: "check:test" }],
     });
@@ -398,11 +409,15 @@ describe("the schedule", () => {
     const running = createExecutionContext();
     await worker.scheduled(createScheduledController(), environment, running);
     await waitOnExecutionContext(running);
+    // The message is HTML: the quotes of the English text come escaped.
     expect(net.telegram("sendMessage")[0]?.body.text).toContain(
-      say("reminder.expired", {
-        repo: "Dennis-Otto/repo-pager-control",
-        date: say.date("2026-11-01"),
-      }),
+      html(
+        say("reminder.expired", {
+          repo: CONTROL,
+          date: say.date("2026-11-01"),
+        }),
+        1000,
+      ),
     );
   });
 

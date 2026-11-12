@@ -47,18 +47,48 @@ export const MAX_DRAFT = 3000;
 /** The most of the message that a free text answers which goes along with it. */
 export const MAX_REPLY = 1000;
 
+/** The answer to a pressed button: a short note, or an alert that waits for "OK". */
+type Answer = (text: string, alert: boolean) => Promise<void>;
+
+/**
+ * A pressed button. Every press gets an answer, or Telegram shows the button's
+ * loading state until it gives up and the maintainer can't tell whether the press
+ * acted: a press whose handling fails before its answer, such as on an edit that
+ * Telegram refuses or a write of Workers KV, gets an alert that says so, and its
+ * error goes on to the log of the route.
+ */
 async function pressed(
   context: Context,
   query: NonNullable<Update["callback_query"]>,
 ): Promise<string> {
+  let answered = false;
+  const answer: Answer = async (text, alert) => {
+    await context.telegram.answer(query.id, text, alert);
+    answered = true;
+  };
+  try {
+    return await act(context, query, answer);
+  } catch (error) {
+    if (!answered) {
+      await quietly(answer(context.t("answer.failed"), true));
+    }
+    throw error;
+  }
+}
+
+async function act(
+  context: Context,
+  query: NonNullable<Update["callback_query"]>,
+  answer: Answer,
+): Promise<string> {
   const parsed = parsePress(query.data ?? "");
   if (parsed === null) {
-    await context.telegram.answer(query.id, context.t("answer.unknown"), true);
+    await answer(context.t("answer.unknown"), true);
     return "an unknown button";
   }
   const item = await context.store.get(parsed.id);
   if (item === null) {
-    await context.telegram.answer(query.id, context.t("answer.gone"), true);
+    await answer(context.t("answer.gone"), true);
     // Its own message went with it, so this is a proposal's: its button goes too.
     if (query.message?.message_id !== undefined) {
       await context.telegram.clear(query.message.message_id);
@@ -66,7 +96,7 @@ async function pressed(
     return "a button of a thing that is gone";
   }
   const reply = await press(context, item, parsed);
-  await context.telegram.answer(query.id, reply.text, reply.alert);
+  await answer(reply.text, reply.alert);
   // A button of another message than the thing's own is that of a proposal of the
   // control repository: it acts once, so it goes.
   const shownIn = query.message?.message_id;
@@ -74,6 +104,19 @@ async function pressed(
     await context.telegram.clear(shownIn);
   }
   return `${parsed.action}: ${reply.text}`;
+}
+
+/**
+ * Wait for a call of Telegram that tells the maintainer about a failure, and let
+ * its own error go: the error that matters is the first one, which the route logs,
+ * and Telegram may well be what failed.
+ */
+async function quietly(call: Promise<void>): Promise<void> {
+  try {
+    await call;
+  } catch {
+    // The first error goes to the log; this one says nothing new.
+  }
 }
 
 async function edited(
@@ -153,34 +196,62 @@ async function answerInWords(
   return "an answer in words";
 }
 
+/**
+ * How far the handling of a text got: once it has reached a run of the control
+ * repository, a later failure must not tell the maintainer to write it again,
+ * which would start a second run of Claude, since the answer of the first can
+ * still come.
+ */
+interface Progress {
+  sent: boolean;
+}
+
 async function freeText(
   context: Context,
   message: Message,
   text: string,
   item: Item | null,
+  progress: Progress,
 ): Promise<string> {
   const thread = threadOf(message);
   const repo = context.settings.controlRepository;
-  const installation = await context.github.installation(repo);
-  if (installation === null) {
+  try {
+    const installation = await context.github.installation(repo);
+    if (installation === null) {
+      await context.telegram.say(
+        context.t("chat.noControl", { repo: html(repo) }),
+        thread,
+      );
+      return "free text without a control repository";
+    }
+    // The message that the text answers, if any, says what "it" is, and so does
+    // the thing whose topic the text came from: the control repository reads both
+    // as data, as everything else. A topic that the maintainer opened, and
+    // General, have no thing: the text starts a conversation of its own.
+    const answered = message.reply_to_message?.text?.trim() ?? "";
+    await context.github.dispatch(installation, repo, "pager-text", {
+      text,
+      message: message.message_id,
+      ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
+      ...(item === null
+        ? {}
+        : { thing: about(item, context.now(), context.t) }),
+      language: context.t.language,
+    });
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    // GitHub refused it, so it reached no run: the text says why, as an answer in
+    // words does, and waits for no answer.
     await context.telegram.say(
-      context.t("chat.noControl", { repo: html(repo) }),
+      context.t("chat.notSent", { detail: html(error.detail) }),
       thread,
     );
-    return "free text without a control repository";
+    await context.telegram.react(message.message_id, REACTIONS.failed);
+    return "free text that GitHub refused";
   }
-  // The message that the text answers, if any, says what "it" is, and so does the
-  // thing whose topic the text came from: the control repository reads both as
-  // data, as everything else. A topic that the maintainer opened, and General,
-  // have no thing: the text starts a conversation of its own.
-  const answered = message.reply_to_message?.text?.trim() ?? "";
-  await context.github.dispatch(installation, repo, "pager-text", {
-    text,
-    message: message.message_id,
-    ...(answered === "" ? {} : { reply: answered.slice(0, MAX_REPLY) }),
-    ...(item === null ? {} : { thing: about(item, context.now(), context.t) }),
-    language: context.t.language,
-  });
+  progress.sent = true;
   await context.telegram.react(message.message_id, REACTIONS.taken);
   // Its answer turns the 👀 into 👍, or the schedule into 😢 when none comes; the
   // answer goes into the thread that the text came from, which the store keeps.
@@ -216,6 +287,32 @@ export async function handleUpdate(
   if (text === "") {
     return "a message without text";
   }
+  const progress: Progress = { sent: false };
+  try {
+    return await written(context, message, text, progress);
+  } catch (error) {
+    if (progress.sent) {
+      // The text reached its run, whose answer can still come and turn its
+      // reaction into 👍: no 😢 and no "write it again", only the log of the route.
+      throw error;
+    }
+    // Every text gets a reaction: one whose handling fails gets 😢 and a message
+    // in its thread that says so, and its error goes on to the log of the route.
+    await quietly(context.telegram.react(message.message_id, REACTIONS.failed));
+    await quietly(
+      context.telegram.say(context.t("chat.failed"), threadOf(message)),
+    );
+    throw error;
+  }
+}
+
+/** A text of the maintainer: help, a new draft, an answer in words or free text. */
+async function written(
+  context: Context,
+  message: Message,
+  text: string,
+  progress: Progress,
+): Promise<string> {
   if (/^\/(start|help)\b/.test(text)) {
     await context.telegram.say(context.t("chat.help"), threadOf(message));
     return "help";
@@ -232,5 +329,5 @@ export async function handleUpdate(
   if (item?.kind === "decision" && item.state === "open") {
     return answerInWords(context, message, text, item);
   }
-  return freeText(context, message, text, item);
+  return freeText(context, message, text, item, progress);
 }

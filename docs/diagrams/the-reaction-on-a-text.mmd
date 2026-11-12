@@ -5,14 +5,16 @@ config:
 ---
 flowchart TB
     accTitle: The reaction on a text
-    accDescr: The maintainer writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.
+    accDescr: The maintainer writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When GitHub refuses the text, it gets 😢 at once instead, and its thread says why. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.
 
     dennis["The maintainer writes a text to the bot"]
     taken["`**👀** The pager sends it to the control repository, which runs Claude`"]
     answered["`**👍** The answer or a proposal came, with its footer, such as Opus 5.5 · high · 48,213 tokens`"]
+    refused["`**😢** Not sent: GitHub refused the text, and its thread says why`"]
     failed["`**😢** No answer: the job failed, or none came within an hour`"]
 
-    dennis --> taken
+    dennis -- "GitHub takes it" --> taken
+    dennis -- "GitHub refuses it" --> refused
     taken -- "the answer" --> answered
     taken -- "the job failed, or the schedule finds it after an hour" --> failed
     failed -- "a late answer" --> answered
@@ -24,4 +26,4 @@ flowchart TB
     class dennis you
     class taken bot
     class answered done
-    class failed warn
+    class failed,refused warn

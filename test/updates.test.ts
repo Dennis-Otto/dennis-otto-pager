@@ -978,6 +978,60 @@ describe("messages", () => {
     expect(await w.context.store.thread(500)).toBeNull();
   });
 
+  it("say at once in its thread that a free text GitHub refused never left", async () => {
+    const w = await world();
+    withControl(w.net).on("POST", "/repos/Dennis-Otto/control/dispatches", () =>
+      json({ message: "Server <Error>" }, 500),
+    );
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    expect(await handleUpdate(w.context, message("Status?", topic))).toBe(
+      "free text that GitHub refused",
+    );
+    expect(w.net.telegram("sendMessage").map((call) => call.body)).toEqual([
+      expect.objectContaining({
+        message_thread_id: 77,
+        text: "😢 Your text didn't reach Dennis-Otto/control: GitHub refused: Server &lt;Error&gt;. Nothing runs for it: write it again once GitHub takes it.",
+      }),
+    ]);
+    expect(
+      w.net.telegram("setMessageReaction").map((call) => call.body.reaction),
+    ).toEqual([[{ type: "emoji", emoji: "😢" }]]);
+    // No 👀 and no waiting text, which the schedule would mark a second time.
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+    expect(await w.context.store.thread(500)).toBeNull();
+  });
+
+  it("say so too when GitHub refuses to find the app on the control repository", async () => {
+    const w = await world();
+    w.net.on("GET", "/repos/Dennis-Otto/control/installation", () =>
+      json({ message: "Bad credentials" }, 401),
+    );
+    expect(await handleUpdate(w.context, message("Status?"))).toBe(
+      "free text that GitHub refused",
+    );
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "GitHub refused: Bad credentials.",
+    );
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("let a failure of the network on a free text through to the log", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => {
+        throw new TypeError("Network connection lost.");
+      },
+    );
+    await expect(handleUpdate(w.context, message("Status?"))).rejects.toThrow(
+      "Network connection lost.",
+    );
+    expect(w.net.telegram("setMessageReaction")).toHaveLength(0);
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
   it("keep the thread of a free text for its answer, which the reaction needs not", async () => {
     const w = await world();
     withControl(w.net).on(

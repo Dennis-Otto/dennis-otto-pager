@@ -312,10 +312,12 @@ Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.de.dark.svg">
-  <img src="images/diagrams/the-reaction-on-a-text.de.svg" alt="Die Reaktion auf einen Text: Der Maintainer schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.">
+  <img src="images/diagrams/the-reaction-on-a-text.de.svg" alt="Die Reaktion auf einen Text: Der Maintainer schreibt dem Bot einen Text, und der Pager schickt ihn an das Steuer-Repository und reagiert mit 👀. Lehnt GitHub den Text ab, bekommt er stattdessen sofort ein 😢, und sein Thread sagt, warum. Kommt die Antwort oder ein Vorschlag, wird aus dem 👀 ein 👍. Schlägt der Job fehl, wird es ein 😢, und ebenso, wenn binnen einer Stunde keine Antwort kam, was der Zeitplan alle 15 Minuten findet. Eine Antwort, die danach kommt, macht es trotzdem zum 👍.">
 </picture>
 
 Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der Pager eine Stunde auf die Antwort: Der Zeitplan gibt alle 15 Minuten einem Text, der danach noch wartet, sein 😢, 60 bis 75 Minuten nachdem er ging. Eine Antwort, die später kommt, macht es trotzdem zum 👍, im Thread ihres Textes.
+
+Ein Text, den GitHub ablehnt, bei einem Ausfall von GitHub, nachdem die App ihr Recht auf das Steuer-Repository verlor, oder bei einem abgelehnten Dispatch, erreicht das Steuer-Repository nie: Er bekommt kein 👀 und wartet nicht, sondern sofort sein 😢, und eine Nachricht in seinem Thread sagt, was GitHub geantwortet hat. Für ihn läuft nichts; schreib ihn noch einmal, sobald GitHub ihn annimmt.
 
 ## Ein Thema pro Sache
 

@@ -153,7 +153,39 @@ async function answerInWords(
   return "an answer in words";
 }
 
+/**
+ * A text for the control repository, which answers it in a run of Claude. The text
+ * gets 👀 once it is sent, and 😢 at once with the reason in its thread when GitHub
+ * refuses it, such as during an outage or after the app lost its permission there:
+ * a text that never left must not look like one whose answer is slow.
+ */
 async function freeText(
+  context: Context,
+  message: Message,
+  text: string,
+  item: Item | null,
+): Promise<string> {
+  const thread = threadOf(message);
+  const repo = context.settings.controlRepository;
+  try {
+    return await sendText(context, message, text, item);
+  } catch (error) {
+    if (!(error instanceof GitHubError)) {
+      throw error;
+    }
+    await context.telegram.say(
+      context.t("chat.notSent", {
+        repo: html(repo),
+        detail: html(error.detail),
+      }),
+      thread,
+    );
+    await context.telegram.react(message.message_id, REACTIONS.failed);
+    return "free text that GitHub refused";
+  }
+}
+
+async function sendText(
   context: Context,
   message: Message,
   text: string,

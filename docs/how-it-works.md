@@ -312,10 +312,12 @@ A text to the bot shows where it is with one reaction, which the pager changes a
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.dark.svg">
-  <img src="images/diagrams/the-reaction-on-a-text.svg" alt="The reaction on a text: The maintainer writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.">
+  <img src="images/diagrams/the-reaction-on-a-text.svg" alt="The reaction on a text: The maintainer writes a text to the bot, and the pager sends it to the control repository and reacts with 👀. When GitHub refuses the text, it gets 😢 at once instead, and its thread says why. When the answer or a proposal comes, the 👀 becomes 👍. When the job fails, it becomes 😢, and so does it when no answer came within an hour, which the schedule finds every 15 minutes. An answer that comes after that still turns it into 👍.">
 </picture>
 
 The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍, in the thread of its text.
+
+A text that GitHub refuses, during an outage of GitHub, after the app lost its permission on the control repository or on a refused dispatch, never reaches the control repository: it gets no 👀 and doesn't wait, but its 😢 at once, and a message in its thread says what GitHub answered. Nothing runs for it; write it again once GitHub takes it.
 
 ## A topic per thing
 

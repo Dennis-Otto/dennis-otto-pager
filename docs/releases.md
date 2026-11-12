@@ -58,7 +58,7 @@ So a copy deploys every push to its `main`, which changes only when you change i
 - **With Workers Builds:** connect your copy as in [Set up Cloudflare once](#set-up-cloudflare-once), with the deploy command `npx wrangler deploy` in step 3, and every other setting as there. Then the merge of a release and a change of `wrangler.jsonc`, such as a new `LANGUAGE` or `LATER_HOURS`, go live by themselves, a minute after the push.
 - **By hand:** without Workers Builds, run `npx wrangler deploy` in a checkout of your `main` after each such push, signed in with `npx wrangler login`.
 
-Either way, the Worker deploys what your `main` has, with your `wrangler.jsonc`. Bring in each release by its tag, never the `main` of this repository, which holds changes that no release has yet: *Keep your copy current* of [Set up](setup.md) shows how. A copy uploads no versions without traffic: try a change with `npm run dev` before you push it, and roll back as below.
+Either way, the Worker deploys what your `main` has, with your `wrangler.jsonc`, and every merge into it goes live, the pull request of a bot that merges by itself too, such as one of Renovate or of the blueprint, if you turn them on in your copy: leave their automerge off there, or accept that what they merge goes live. Bring in each release by its tag, never the `main` of this repository, which holds changes that no release has yet: *Keep your copy current* of [Set up](setup.md) shows how. A copy uploads no versions without traffic: try a change with `npm run dev` before you push it, and roll back as below.
 
 ## Roll back
 

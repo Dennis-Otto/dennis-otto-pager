@@ -11,13 +11,25 @@
 // to that organization instead, whose apps you may manage, so that it can be
 // installed on the organization's repositories; docs/setup.md says which to take.
 //
-// It needs `npx wrangler login` before, as the first deployment does.
+// It needs `npx wrangler login` and the deployed Worker before, as docs/setup.md
+// shows, and checks both with `wrangler secret list` before it sends the manifest:
+// GitHub hands out the private key and the secret of the webhook only once, so
+// they must have a place to go. Should Wrangler still fail to store one, the
+// script names the secrets that are stored and those that are missing, and how to
+// recover. test/register-app-script.mjs runs it with a stand-in for npx.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
-import { newAppPage, registration, USAGE } from "./app-address.ts";
+import {
+  conversionFailed,
+  newAppPage,
+  recovery,
+  registration,
+  USAGE,
+  WRANGLER_NOT_READY,
+} from "./app-address.ts";
 
 const asked = registration(process.argv.slice(2));
 if (typeof asked === "string") {
@@ -40,23 +52,20 @@ function htmlText(text) {
     .replace(/"/g, "&quot;");
 }
 
-function put(name, value) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "npx",
-      ["--no", "--", "wrangler", "secret", "put", name],
-      {
-        stdio: ["pipe", "inherit", "inherit"],
-        shell: process.platform === "win32",
-      },
-    );
-    child.on("error", reject);
-    child.on("exit", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`wrangler secret put ${name} failed`)),
-    );
-    child.stdin.end(value);
+// Runs `npx wrangler ARGS` with the input on its stdin, or with none, which keeps
+// Wrangler from asking anything; what it says on stderr reaches the terminal.
+function wrangler(args, input, output = "inherit") {
+  return new Promise((resolve) => {
+    const child = spawn("npx", ["--no", "--", "wrangler", ...args], {
+      stdio: [input === undefined ? "ignore" : "pipe", output, "inherit"],
+      shell: process.platform === "win32",
+    });
+    child.on("error", (error) => {
+      console.error(error.message);
+      resolve(false);
+    });
+    child.on("exit", (code) => resolve(code === 0));
+    child.stdin?.end(input);
   });
 }
 
@@ -81,8 +90,11 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   const page = (status, body) => {
     response.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+    // Once the last page is sent, the browser's open connections end too, so
+    // that the script ends at once rather than when they time out.
     response.end(
       `<!doctype html><meta charset="utf-8"><title>Pager app</title>${body}`,
+      () => server.listening || server.closeIdleConnections(),
     );
   };
   if (url.pathname === "/") {
@@ -101,25 +113,57 @@ const server = createServer(async (request, response) => {
     page(404, "<p>Not here.</p>");
     return;
   }
-  try {
-    const app = await convert(url.searchParams.get("code") ?? "");
-    await put("GITHUB_APP_ID", String(app.id));
-    await put("GITHUB_APP_PRIVATE_KEY", app.pem);
-    await put("GITHUB_WEBHOOK_SECRET", app.webhook_secret);
-    const install = `${app.html_url}/installations/new`;
-    page(
-      200,
-      `<p>The app ${htmlText(app.slug)} exists, and its secrets are in the Worker.</p>
-<p>Now <a href="${htmlText(install)}">install it</a> on your repositories and on the control repository.</p>`,
-    );
-    console.log(`Done. Install the app: ${install}`);
-  } catch (error) {
-    page(500, `<p>${htmlText(String(error.message))}</p>`);
-    console.error(error.message);
-    process.exitCode = 1;
-  }
+  // The code of the manifest converts once: no second request gets this far.
   server.close();
+  const failed = (message) => {
+    page(
+      500,
+      message
+        .split("\n")
+        .map((line) => `<p>${htmlText(line)}</p>`)
+        .join("\n"),
+    );
+    console.error(message);
+    process.exitCode = 1;
+  };
+  let app;
+  try {
+    app = await convert(url.searchParams.get("code") ?? "");
+  } catch (error) {
+    failed(conversionFailed(organization, error.message));
+    return;
+  }
+  const values = {
+    GITHUB_APP_ID: String(app.id),
+    GITHUB_APP_PRIVATE_KEY: app.pem,
+    GITHUB_WEBHOOK_SECRET: app.webhook_secret,
+  };
+  const stored = [];
+  for (const [name, value] of Object.entries(values)) {
+    if (!(await wrangler(["secret", "put", name], value))) {
+      console.error(`wrangler secret put ${name} failed.`);
+      failed(recovery(organization, app.slug, stored));
+      return;
+    }
+    stored.push(name);
+  }
+  const install = `${app.html_url}/installations/new`;
+  page(
+    200,
+    `<p>The app ${htmlText(app.slug)} exists, and its secrets are in the Worker.</p>
+<p>Now <a href="${htmlText(install)}">install it</a> on your repositories and on the control repository.</p>`,
+  );
+  console.log(`Done. Install the app: ${install}`);
 });
+
+// Before GitHub creates the app: Wrangler must be signed in and reach the Worker,
+// or the secrets that GitHub hands out once would have nowhere to go.
+// `wrangler whoami` can't tell, since it succeeds without a sign-in as well.
+
+if (!(await wrangler(["secret", "list"], undefined, "ignore"))) {
+  console.error(WRANGLER_NOT_READY);
+  process.exit(1);
+}
 
 server.listen(0, "127.0.0.1", () => {
   const { port } = server.address();

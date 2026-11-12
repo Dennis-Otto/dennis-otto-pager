@@ -820,8 +820,8 @@ describe("buttons", () => {
         message_thread_id: 77,
       });
       await pressing(w, drafted, `edit:${ID}`);
-      // The prompt is the third message: after the first prompt and the refusal.
-      const prompt = 102;
+      // The prompt is the message that the press sent last.
+      const prompt = w.net.lastMessageId;
       expect(await w.context.store.pendingEdit(prompt)).toEqual({
         item: ID,
         prompt,

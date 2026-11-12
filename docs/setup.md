@@ -122,7 +122,7 @@ The app is private, so only your account can install it. Its permissions:
 | Actions | Read and write | A workflow that fails on `main`, and the jobs that failed in it; 🔁 Rerun, which reads a run that failed and runs its failed jobs again; the pictures of a visual check |
 | Checks | Read | A required check of another app than GitHub Actions that fails on `main`; a release whose checks finished |
 | Code scanning alerts | Read | An alert of severity high or critical |
-| Contents | Read and write | 🔀 Merge of a release; the events to the control repository |
+| Contents | Read and write | 🔀 Merge of a release; the events to the control repository; whether a release is still a draft after a failed release, which GitHub lists only to a token that may write the contents |
 | Discussions | Read and write | A new discussion or a comment on one; ✅ Send of a reply in a discussion, as the app |
 | Issues | Read | A new issue, a comment on one or on a pull request, and its end; a `bot-failure` issue |
 | Metadata | Read | Required by GitHub; the required checks of `main` |

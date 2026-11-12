@@ -969,8 +969,33 @@ describe("releases", () => {
         ...at,
         type: "recovered",
         key: "workflow:.github/workflows/release.yml",
+        release: { dispatched: false },
       },
     });
+  });
+
+  it("names the run of a release that passes and whether it was started by hand, which decides whether it takes up a failed one", () => {
+    const releaseOf = (run: object) =>
+      (
+        classify(
+          "workflow_run",
+          event({
+            action: "completed",
+            workflow_run: { ...workflow, conclusion: "success", ...run },
+          }),
+          ME,
+        ) as { signal: { release: unknown } }
+      ).signal.release;
+    expect(releaseOf({ id: 4 })).toEqual({ run: 4, dispatched: false });
+    expect(releaseOf({ id: 4, event: "schedule" })).toEqual({
+      run: 4,
+      dispatched: false,
+    });
+    expect(releaseOf({ id: 5, event: "workflow_dispatch" })).toEqual({
+      run: 5,
+      dispatched: true,
+    });
+    expect(releaseOf({ event: undefined })).toEqual({ dispatched: false });
   });
 
   it("names the attempt that failed, so that a fix reads its jobs and not those of a rerun", () => {

@@ -122,7 +122,7 @@ Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
 | Actions | Read and write | Ein Workflow, der auf `main` scheitert, und die Jobs, die in ihm scheiterten; 🔁 Neu starten, das einen gescheiterten Lauf liest und seine gescheiterten Jobs erneut startet; die Bilder eines Visual Checks |
 | Checks | Read | Ein Pflicht-Check einer anderen App als GitHub Actions, der auf `main` scheitert; ein Release, dessen Checks fertig sind |
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
-| Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository |
+| Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository; ob ein Release nach einem gescheiterten Release noch ein Entwurf ist, was GitHub nur einem Token zeigt, das die Inhalte schreiben darf |
 | Discussions | Read and write | Eine neue Diskussion oder ein Kommentar zu einer; ✅ Senden einer Antwort in einer Diskussion, als App |
 | Issues | Read | Ein neues Issue, ein Kommentar dazu oder zu einem Pull Request, und sein Ende; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |

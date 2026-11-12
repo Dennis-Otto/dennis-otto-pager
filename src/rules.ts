@@ -253,7 +253,17 @@ export type Signal = Where &
         reason: ContributionEnd;
       }
     | ({ type: "failing" | "still-failing" } & Failure)
-    | { type: "recovered"; key: string }
+    | {
+        type: "recovered";
+        key: string;
+        /**
+         * The pass of a release workflow, which takes its entry out only when it
+         * belongs to the failure: the run that passed, and whether a person
+         * started it by hand, as a run that takes up a release that an earlier
+         * run left as a draft.
+         */
+        release?: { run?: number; dispatched: boolean };
+      }
     | {
         type: "check";
         name: string;
@@ -1011,7 +1021,19 @@ export function finishedRun(
     };
   }
   if (PASSED.has(conclusion)) {
-    return { signal: { ...at, type: "recovered", key } };
+    // A run of a push or of the schedule passes when it finds nothing to
+    // release, also while the release of a run that failed is still a draft.
+    return {
+      signal: {
+        ...at,
+        type: "recovered",
+        key,
+        release: {
+          ...withRun(runId(run?.id)),
+          dispatched: run?.event === "workflow_dispatch",
+        },
+      },
+    };
   }
   return { ignored: `a release run that ended ${conclusion}` };
 }

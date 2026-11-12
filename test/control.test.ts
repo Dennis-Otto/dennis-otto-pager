@@ -18,6 +18,7 @@ import {
 import {
   base,
   DELIVERIES,
+  FAILURES,
   json,
   RATE_LIMIT,
   REPO,
@@ -1161,6 +1162,7 @@ describe("the schedule", () => {
     expect(await runSchedule(w.context)).toEqual([]);
     expect(w.net.calls.map((call) => call.url)).toEqual([
       RATE_LIMIT,
+      FAILURES,
       DELIVERIES,
     ]);
     vi.restoreAllMocks();
@@ -1280,6 +1282,7 @@ describe("the schedule", () => {
       expect(await runSchedule(w.context)).toEqual([]);
       expect(w.net.calls.map((call) => call.url)).toEqual([
         RATE_LIMIT,
+        FAILURES,
         DELIVERIES,
       ]);
       vi.restoreAllMocks();

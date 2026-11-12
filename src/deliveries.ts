@@ -3,25 +3,40 @@
  * event of a webhook again by itself, so each run of the schedule asks it to: it
  * reads the deliveries of the app's webhook of the last three hours, and an event
  * whose newest attempt got a 5xx from the pager, or no answer in time, comes
- * again, three attempts in all. An event whose third attempt fails becomes an
- * entry of the alarm of the control repository, the pager's own, which links the
- * recent deliveries on the app's Advanced page; an attempt that passes later, such
- * as one asked for there, takes it out. The list of the deliveries counts the
- * attempts, so the pager writes nothing for them, and each signal leaves the same
- * state when it comes twice, since a redelivery may bring one that went through
- * before its answer failed. A redelivery comes late, so an event that a newer one
- * of the same kind and repository overtook doesn't come again: its signal could
- * bring back an older state.
+ * again, three attempts in all. On a busy day the deliveries of three hours are
+ * thousands, more than one run can read, so a run reads the failures of the last
+ * three hours on a list of their own, and the deliveries of every outcome only
+ * back to the newest that the run before read: they bring the answers that didn't
+ * come in time, which the list of the failures leaves out, and the attempts that
+ * passed. What the next runs need of them it keeps in the storage of the Durable
+ * Object, and a run that can't read back as far as it should says so in the log.
+ * An event whose third attempt fails becomes an entry of the alarm of the control
+ * repository, the pager's own, which links the recent deliveries on the app's
+ * Advanced page; an attempt that passes later, such as one asked for there, takes
+ * it out. The list of the deliveries counts the attempts, so the pager writes
+ * nothing to Workers KV for them, and each signal leaves the same state when it
+ * comes twice, since a redelivery may bring one that went through before its
+ * answer failed. A redelivery comes late, so an event that a newer one of the
+ * same kind and repository overtook doesn't come again: its signal could bring
+ * back an older state.
  */
-import { type Delivery, GitHubError } from "./github.ts";
+import { type Deliveries, type Delivery, GitHubError } from "./github.ts";
 import { apply, type Context } from "./pager.ts";
 import { type Alarm, DELIVERY_ENTRY, isClosed, itemId, keys } from "./store.ts";
 
 /** How far back the schedule reads the deliveries of the webhook, in milliseconds. */
 export const LOOK_BACK = 3 * 60 * 60 * 1000;
 
-/** How many pages of 100 deliveries one run reads at most. */
-export const MAX_PAGES = 3;
+/** How many pages of 100 failures one run reads at most: they reach back hours, also on a busy day. */
+export const FAILURE_PAGES = 3;
+
+/**
+ * How many pages of 100 deliveries of every outcome one run reads at most, back
+ * to the newest that the run before read: more than the busiest quarter of an
+ * hour of a fleet of ten repositories, 431 workflow runs, each with three
+ * deliveries of its own besides those of its checks.
+ */
+export const MAX_PAGES = 20;
 
 /** How many attempts an event gets in all, its first delivery included. */
 export const MAX_ATTEMPTS = 3;
@@ -40,6 +55,28 @@ export const SUBREQUESTS = 50;
  * new entry below it.
  */
 export const ALARM_CHANGE = 11;
+
+/**
+ * The calls that each page of every outcome leaves for the redeliveries and one
+ * change of the alarm.
+ */
+export const RESERVE = MAX_REDELIVERIES + ALARM_CHANGE;
+
+/** The key of what a run keeps of the deliveries for the next, in the storage of the Durable Object. */
+export const SEEN = "deliveries";
+
+/** What a run keeps of the deliveries for the next. */
+export interface Seen {
+  /** The id of the newest delivery of every outcome that a run read, or null before any. */
+  newest: number | null;
+  /**
+   * The deliveries of the last LOOK_BACK that the list of the failures leaves out
+   * and the next runs need: an answer that didn't come in time, an attempt asked
+   * for again that passed, and of each kind and repository the newest event that
+   * passed at once, which may overtake an older one.
+   */
+  kept: Delivery[];
+}
 
 /**
  * The events whose signal a newer one of the same kind and repository can
@@ -95,20 +132,54 @@ function left(context: Context): number {
   return SUBREQUESTS - context.subrequests();
 }
 
+/** Whether the list of the failures shows a delivery: GitHub's `failure`, a code from 400 to 599. */
+function listed(delivery: Delivery): boolean {
+  return delivery.status_code >= 400 && delivery.status_code <= 599;
+}
+
+/** A delivery with only the fields that the pager reads, as a run keeps it. */
+function compact(delivery: Delivery): Delivery {
+  return {
+    id: delivery.id,
+    guid: delivery.guid,
+    delivered_at: delivery.delivered_at,
+    redelivery: delivery.redelivery,
+    status_code: delivery.status_code,
+    event: delivery.event,
+    action: delivery.action,
+    repository_id: delivery.repository_id,
+  };
+}
+
+/** The pages that a run read of one list, and whether they reach back as far as it should. */
+interface Read {
+  deliveries: Delivery[];
+  reached: boolean;
+}
+
 /**
- * The deliveries of the last LOOK_BACK, newest first, as GitHub lists them, on as
- * many pages as MAX_PAGES and the calls left allow. A page that GitHub refuses
- * ends the list: the pages before it still reach back from the newest.
+ * The deliveries of one list, newest first, page by page until the oldest of
+ * them is as old as `enough` asks, or the list ends, on as many pages as `pages`
+ * and the calls left allow: each page only while more than `room` calls are
+ * left. A page that GitHub refuses ends the list: the pages before it still
+ * reach back from the newest.
  */
-async function recent(context: Context): Promise<Delivery[]> {
-  const since = context.now() - LOOK_BACK;
-  const read: Delivery[] = [];
+async function read(
+  context: Context,
+  status: "failure" | null,
+  pages: number,
+  room: number,
+  enough: (oldest: Delivery) => boolean,
+): Promise<Read> {
+  const deliveries: Delivery[] = [];
   let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES && left(context) > 0; page += 1) {
+  for (let page = 0; page < pages; page += 1) {
+    if (left(context) <= room) {
+      break;
+    }
+    let answer: Deliveries;
     try {
-      const answer = await context.github.deliveries(cursor);
-      read.push(...answer.deliveries);
-      cursor = answer.cursor;
+      answer = await context.github.deliveries(cursor, status);
     } catch (error) {
       if (!(error instanceof GitHubError)) {
         throw error;
@@ -119,16 +190,110 @@ async function recent(context: Context): Promise<Delivery[]> {
       );
       break;
     }
-    const oldest = read.at(-1);
-    if (
-      cursor === null ||
-      oldest === undefined ||
-      Date.parse(oldest.delivered_at) < since
-    ) {
-      break;
+    deliveries.push(...answer.deliveries);
+    cursor = answer.cursor;
+    const oldest = deliveries.at(-1);
+    if (cursor === null || oldest === undefined || enough(oldest)) {
+      return { deliveries, reached: true };
     }
   }
-  return read.filter((delivery) => Date.parse(delivery.delivered_at) >= since);
+  return { deliveries, reached: false };
+}
+
+/**
+ * Say in the log when the pages of a list ended before they reached as far back
+ * as they should, since the next run starts from the newest again. A run that
+ * read no page leaves the whole list to the next, which reaches back as far.
+ */
+function gap(list: Read, name: string, goal: string, missed: string): void {
+  const oldest = list.deliveries.at(-1);
+  if (!list.reached && oldest !== undefined) {
+    console.warn(
+      `The ${name} of the webhook were read back to ${oldest.delivered_at}, not to ${goal}: ${missed}`,
+    );
+  }
+}
+
+/**
+ * What the next runs need of the deliveries that the list of the failures leaves
+ * out: an answer that didn't come in time, an attempt asked for again that
+ * passed, and of each kind and repository that SUPERSEDED names the newest event
+ * that passed at once, since only a newer one may overtake an event.
+ */
+function keep(deliveries: Delivery[]): Delivery[] {
+  const kept: Delivery[] = [];
+  const newest = new Map<string, Delivery>();
+  for (const delivery of deliveries) {
+    if (listed(delivery)) {
+      continue;
+    }
+    if (failed(delivery) || (passed(delivery) && delivery.redelivery)) {
+      kept.push(delivery);
+    } else if (
+      passed(delivery) &&
+      SUPERSEDED.has(delivery.event) &&
+      delivery.repository_id !== null
+    ) {
+      const kind = `${delivery.event} ${delivery.repository_id}`;
+      const known = newest.get(kind);
+      if (known === undefined || known.id < delivery.id) {
+        newest.set(kind, delivery);
+      }
+    }
+  }
+  return [...kept, ...newest.values()];
+}
+
+/**
+ * The deliveries of the last LOOK_BACK that a run needs: the failures, those of
+ * every outcome back to the newest that the run before read, and what the runs
+ * before kept of the older ones. The failures come first, and each page of every
+ * outcome leaves the calls of the redeliveries and of a change of the alarm.
+ * Keeps what the next runs need. Without a page of every outcome, the run
+ * doesn't see what passed since the run before, so it must not act on them.
+ */
+async function recent(
+  context: Context,
+): Promise<{ found: Delivery[]; complete: boolean }> {
+  const since = context.now() - LOOK_BACK;
+  const old = (delivery: Delivery) => Date.parse(delivery.delivered_at) < since;
+  const before = await context.local.get<Seen>(SEEN);
+  const newest = before?.newest ?? null;
+  const failures = await read(context, "failure", FAILURE_PAGES, 0, old);
+  gap(
+    failures,
+    "failures",
+    "three hours",
+    "an older failed event gets no more attempts and no entry in the alarm",
+  );
+  const all = await read(
+    context,
+    null,
+    MAX_PAGES,
+    RESERVE,
+    (oldest) => old(oldest) || (newest !== null && oldest.id <= newest),
+  );
+  gap(
+    all,
+    "deliveries",
+    newest === null ? "three hours" : `delivery ${newest} of the run before`,
+    "an answer that didn't come in time before then is missed, and so is an attempt that passed",
+  );
+  const byId = new Map<number, Delivery>();
+  for (const delivery of [
+    ...(before?.kept ?? []),
+    ...failures.deliveries,
+    ...all.deliveries,
+  ]) {
+    byId.set(delivery.id, compact(delivery));
+  }
+  const found = [...byId.values()].filter((delivery) => !old(delivery));
+  const ids = all.deliveries.map((delivery) => delivery.id);
+  await context.local.put<Seen>(SEEN, {
+    newest: ids.length === 0 ? newest : Math.max(...ids),
+    kept: keep(found),
+  });
+  return { found, complete: all.reached || ids.length > 0 };
 }
 
 /** The events of the deliveries, by their guid, each with its newest attempt by id. */
@@ -271,7 +436,14 @@ async function alarm(
  * of the alarm. Returns the id of the alarm when it changed.
  */
 export async function failedEvents(context: Context): Promise<string[]> {
-  const found = events(await recent(context));
+  const { found: deliveries, complete } = await recent(context);
+  if (!complete) {
+    // A newer pass that overtakes a failed event, or an attempt that passed
+    // already, may be among the deliveries that this run couldn't read: the
+    // next run reads them and decides.
+    return [];
+  }
+  const found = events(deliveries);
   const failing = found.filter(
     (event) =>
       event.first !== null && failed(event.newest) && !overtaken(event, found),

@@ -16,6 +16,8 @@ export const START = Date.parse("2026-11-04T08:00:00Z");
 /** The first page of the deliveries of the app's webhook, which each run of the schedule reads. */
 export const DELIVERIES =
   "https://api.github.com/app/hook/deliveries?per_page=100";
+/** The first page of the failures of the webhook, which each run of the schedule reads first. */
+export const FAILURES = `${DELIVERIES}&status=failure`;
 /** The limits of the API, from which the schedule reads when GITHUB_USER_TOKEN expires, once a day. */
 export const RATE_LIMIT = "https://api.github.com/rate_limit";
 
@@ -103,7 +105,7 @@ export class Net {
         : true;
       return json({ ok: true, result });
     }
-    if (url === DELIVERIES) {
+    if (url === DELIVERIES || url === FAILURES) {
       return json([]);
     }
     if (url === RATE_LIMIT) {

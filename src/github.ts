@@ -401,16 +401,22 @@ export class GitHub {
 
   /**
    * A page of 100 deliveries of the app's webhook, newest first: the first one, or
-   * the one that a cursor of the page before names. Only the cursor is taken from
-   * GitHub's Link header, so the JWT of the app goes to no other address.
+   * the one that a cursor of the page before names, of every outcome or only the
+   * failures, those whose status GitHub names `failure`: a code from 400 to 599,
+   * which leaves out an answer that didn't come in time. Only the cursor is taken
+   * from GitHub's Link header, so the JWT of the app goes to no other address.
    */
-  async deliveries(cursor: string | null): Promise<Deliveries> {
+  async deliveries(
+    cursor: string | null,
+    status: "failure" | null = null,
+  ): Promise<Deliveries> {
+    const filter = status === null ? "" : `&status=${status}`;
     const query =
       cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`;
     const response = await this.call(
       await this.jwt(),
       "GET",
-      `/app/hook/deliveries?per_page=100${query}`,
+      `/app/hook/deliveries?per_page=100${filter}${query}`,
     );
     const link = response.headers.get("link");
     return {

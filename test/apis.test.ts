@@ -290,6 +290,20 @@ describe("the GitHub App", () => {
     expect(net.github("/rules/branches/main")).toHaveLength(1);
   });
 
+  it("tells whether one of the newest releases is a draft, with a token that may see drafts", async () => {
+    const releases = "/repos/Dennis-Otto/demo/releases?per_page=10";
+    const net = new Net().on("GET", releases, () =>
+      json([{ draft: false }, { draft: true }]),
+    );
+    const api = await github(net);
+    expect(await api.draftRelease(9, "Dennis-Otto/demo")).toBe(true);
+    expect(net.github("/access_tokens")[0]?.body.permissions).toEqual({
+      contents: "write",
+    });
+    net.on("GET", releases, () => json([{ draft: false }, {}]));
+    expect(await api.draftRelease(9, "Dennis-Otto/demo")).toBe(false);
+  });
+
   it("sends an event to a repository and says why GitHub refused one", async () => {
     const net = new Net().on(
       "POST",

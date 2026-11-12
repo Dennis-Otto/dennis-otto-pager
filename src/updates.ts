@@ -154,7 +154,7 @@ async function edited(
 ): Promise<string> {
   const thread = threadOf(message);
   const item = await context.store.get(itemId);
-  await context.store.setPendingEdit(null);
+  await context.store.clearPendingEdit(prompt);
   await context.telegram.remove(prompt);
   if (
     item?.kind !== "contribution" ||
@@ -354,11 +354,12 @@ async function written(
     await context.telegram.say(context.t("chat.help"), threadOf(message));
     return "help";
   }
-  const pending = await context.store.pendingEdit();
-  if (
-    pending !== null &&
-    message.reply_to_message?.message_id === pending.prompt
-  ) {
+  // A reply to a prompt of ✏️ Edit is the new text of the draft that prompt asked
+  // for, however many prompts wait.
+  const replyTo = message.reply_to_message?.message_id;
+  const pending =
+    replyTo === undefined ? null : await context.store.pendingEdit(replyTo);
+  if (pending !== null) {
     return edited(context, message, text, pending.item, pending.prompt);
   }
   const thread = threadOf(message);

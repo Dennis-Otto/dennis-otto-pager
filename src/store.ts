@@ -471,6 +471,9 @@ export interface Asked {
   late?: true;
 }
 
+/** How long a prompt of ✏️ Edit waits for its answer, in seconds: a day. */
+const EDIT_PROMPT = 24 * 60 * 60;
+
 /** A text that the maintainer is writing in reply to a prompt of the pager. */
 export interface PendingEdit {
   item: string;
@@ -771,15 +774,24 @@ export class Store {
     return kept === null ? null : Number(kept);
   }
 
-  async pendingEdit(): Promise<PendingEdit | null> {
-    return this.kv.get<PendingEdit>("edit", "json");
+  /**
+   * The draft whose new text a prompt of ✏️ Edit waits for, by the message id of that
+   * prompt, or null. Each prompt has a key of its own, so that a press on ✏️ Edit
+   * of another draft, or of the same one again, leaves the earlier prompt working.
+   */
+  async pendingEdit(prompt: number): Promise<PendingEdit | null> {
+    return this.kv.get<PendingEdit>(`edit:${prompt}`, "json");
   }
 
-  async setPendingEdit(edit: PendingEdit | null): Promise<void> {
-    if (edit === null) {
-      await this.kv.delete("edit");
-    } else {
-      await this.kv.put("edit", JSON.stringify(edit), { expirationTtl: 86400 });
-    }
+  /** Keep a prompt of ✏️ Edit for a day, the time a maintainer has to answer it. */
+  async setPendingEdit(edit: PendingEdit): Promise<void> {
+    await this.kv.put(`edit:${edit.prompt}`, JSON.stringify(edit), {
+      expirationTtl: EDIT_PROMPT,
+    });
+  }
+
+  /** Forget a prompt of ✏️ Edit once its answer came. */
+  async clearPendingEdit(prompt: number): Promise<void> {
+    await this.kv.delete(`edit:${prompt}`);
   }
 }

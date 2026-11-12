@@ -531,6 +531,12 @@ describe("buttons", () => {
       await expect(
         pressing(w, contribution(), `assistant:${ID}`),
       ).rejects.toThrow("network");
+      // The press still gets its answer, so its button stops loading.
+      expect(w.net.telegram("answerCallbackQuery").at(-1)?.body).toEqual({
+        callback_query_id: "q1",
+        text: texts("en")("answer.failed"),
+        show_alert: true,
+      });
     });
   });
 
@@ -915,13 +921,88 @@ describe("an action that went through on GitHub", () => {
 
   it("still acts and keeps nothing when the message failed before GitHub was asked", async () => {
     // Later changes nothing on GitHub: a press that Telegram can't show stays
-    // unanswered and unsaved, and the next press puts the thing aside again.
+    // unsaved, and the next press puts the thing aside again.
     const w = await world();
     refusingEdits(w, "502");
     await expect(pressing(w, alarm, `later:${ID}`)).rejects.toThrow(
       "Bad Gateway",
     );
     expect(await w.context.store.get(ID)).toMatchObject({ snoozedUntil: null });
+    // Its answer says that it failed, rather than a button that loads until
+    // Telegram gives up.
+    expect(w.net.telegram("answerCallbackQuery")).toHaveLength(1);
+    expect(w.net.telegram("answerCallbackQuery")[0]?.body).toEqual({
+      callback_query_id: "q1",
+      text: t("answer.failed"),
+      show_alert: true,
+    });
+  });
+
+  it("answers a press whose edit Telegram fails with a 500", async () => {
+    const w = await world();
+    w.net.on("POST", /\/editMessageText$/, () =>
+      json(
+        { ok: false, error_code: 500, description: "Internal Server Error" },
+        500,
+      ),
+    );
+    await expect(pressing(w, alarm, `ignore:${ID}`)).rejects.toThrow(
+      "Internal Server Error",
+    );
+    expect(w.net.telegram("answerCallbackQuery").at(-1)?.body).toMatchObject({
+      text: t("answer.failed"),
+      show_alert: true,
+    });
+  });
+
+  it("answers a press whose thing can't be read, and logs the first error", async () => {
+    const w = await world();
+    await w.context.store.put(alarm);
+    w.context.store.get = () => Promise.reject(new TypeError("KV failed"));
+    await expect(
+      handleUpdate(w.context, {
+        callback_query: { id: "q1", from: { id: CHAT }, data: `later:${ID}` },
+      }),
+    ).rejects.toThrow("KV failed");
+    expect(w.net.telegram("answerCallbackQuery").at(-1)?.body).toMatchObject({
+      text: t("answer.failed"),
+      show_alert: true,
+    });
+  });
+
+  it("throws the error of the press when Telegram takes no answer either", async () => {
+    const w = await world();
+    refusingEdits(w, "502");
+    w.net.on("POST", /\/answerCallbackQuery$/, () =>
+      json({ ok: false, error_code: 502, description: "Bad Gateway" }, 502),
+    );
+    await expect(pressing(w, alarm, `later:${ID}`)).rejects.toThrow(
+      "editMessageText",
+    );
+    expect(w.net.telegram("answerCallbackQuery")).toHaveLength(1);
+  });
+
+  it("answers once, though what follows its answer fails", async () => {
+    // A proposal's button goes after the answer: a failure there needs no second
+    // answer, which Telegram would refuse anyway.
+    const w = await world();
+    w.net.on("POST", /\/editMessageReplyMarkup$/, () => {
+      throw new TypeError("fetch failed");
+    });
+    await w.context.store.put(alarm);
+    await expect(
+      handleUpdate(w.context, {
+        callback_query: {
+          id: "q1",
+          from: { id: CHAT },
+          data: `later:${ID}`,
+          message: { message_id: 99 },
+        },
+      }),
+    ).rejects.toThrow("fetch failed");
+    expect(
+      w.net.telegram("answerCallbackQuery").map((call) => call.body.text),
+    ).toEqual([t("answer.later", { hours: 4 })]);
   });
 });
 
@@ -990,7 +1071,7 @@ describe("messages", () => {
     expect(w.net.telegram("sendMessage").map((call) => call.body)).toEqual([
       expect.objectContaining({
         message_thread_id: 77,
-        text: "😢 Your text didn't reach Dennis-Otto/control: GitHub refused: Server &lt;Error&gt;. Nothing runs for it: write it again once GitHub takes it.",
+        text: texts("en")("chat.notSent", { detail: "Server &lt;Error&gt;" }),
       }),
     ]);
     expect(
@@ -1013,22 +1094,6 @@ describe("messages", () => {
       "GitHub refused: Bad credentials.",
     );
     expect(w.net.github("/dispatches")).toHaveLength(0);
-    expect(await w.context.store.waiting(START + 1)).toEqual([]);
-  });
-
-  it("let a failure of the network on a free text through to the log", async () => {
-    const w = await world();
-    withControl(w.net).on(
-      "POST",
-      "/repos/Dennis-Otto/control/dispatches",
-      () => {
-        throw new TypeError("Network connection lost.");
-      },
-    );
-    await expect(handleUpdate(w.context, message("Status?"))).rejects.toThrow(
-      "Network connection lost.",
-    );
-    expect(w.net.telegram("setMessageReaction")).toHaveLength(0);
     expect(await w.context.store.waiting(START + 1)).toEqual([]);
   });
 
@@ -1075,6 +1140,89 @@ describe("messages", () => {
       message_thread_id: 77,
     });
     expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("explain a free text that GitHub refuses, with 😢, in its thread", async () => {
+    const w = await world();
+    withControl(w.net).on("POST", "/repos/Dennis-Otto/control/dispatches", () =>
+      json({ message: "Resource not accessible by integration" }, 403),
+    );
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    expect(await handleUpdate(w.context, message("Status?", topic))).toBe(
+      "free text that GitHub refused",
+    );
+    expect(w.net.telegram("sendMessage")[0]?.body).toMatchObject({
+      message_thread_id: 77,
+      text: texts("en")("chat.notSent", {
+        detail: "Resource not accessible by integration",
+      }),
+    });
+    expect(
+      w.net.telegram("setMessageReaction").map((call) => call.body.reaction),
+    ).toEqual([[{ type: "emoji", emoji: "😢" }]]);
+    // It reached no run, so no answer is waited for.
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("react with 😢 to a text whose handling fails, and log its error", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    );
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    await expect(
+      handleUpdate(w.context, message("Status?", topic)),
+    ).rejects.toThrow("fetch failed");
+    expect(
+      w.net.telegram("setMessageReaction").map((call) => call.body.reaction),
+    ).toEqual([[{ type: "emoji", emoji: "😢" }]]);
+    expect(w.net.telegram("sendMessage")[0]?.body).toMatchObject({
+      message_thread_id: 77,
+      text: texts("en")("chat.failed"),
+    });
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("throw the error of a text when Telegram takes nothing more either", async () => {
+    const w = await world();
+    w.net.on("POST", /\/sendMessage$/, () =>
+      json(
+        { ok: false, error_code: 500, description: "Internal Server Error" },
+        500,
+      ),
+    );
+    await expect(handleUpdate(w.context, message("/help"))).rejects.toThrow(
+      "Internal Server Error",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    expect(w.net.telegram("setMessageReaction")).toHaveLength(1);
+  });
+
+  it("tell a text that reached its run not to be written again when its 👀 fails", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    // A reaction that Telegram refuses passes; one that never reaches it throws.
+    w.net.on("POST", /\/setMessageReaction$/, () => {
+      throw new TypeError("network");
+    });
+    await expect(
+      handleUpdate(w.context, message("What failed tonight?")),
+    ).rejects.toThrow("network");
+    expect(w.net.github("/dispatches")).toHaveLength(1);
+    // Its run has started, and its answer can still come: no 😢, and no message
+    // that asks for the text again, which would start a second run of Claude.
+    expect(
+      w.net.telegram("setMessageReaction").map((call) => call.body.reaction),
+    ).toEqual([[{ type: "emoji", emoji: "👀" }]]);
+    expect(w.net.telegram("sendMessage")).toEqual([]);
   });
 
   it("send the message that a free text answers along, as its context", async () => {

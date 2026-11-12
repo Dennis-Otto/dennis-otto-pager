@@ -223,21 +223,31 @@ function dueOf(context: Context, token: Token, state: TokenState): Due | null {
  * when ⏰ Later brings it back, so that it says how many days are left then, or
  * that the token expired. A reminder that names no day, such as that of a token
  * that GitHub refuses or one from before the pager kept the day, keeps its text.
+ * Returns false when the token has another day by now, or is no longer watched,
+ * since it was renewed or removed: the reminder of the old day is then over and
+ * shows nothing new, rather than a countdown to a day that no longer applies.
  */
-export function refreshReminder(context: Context, item: Reminder): void {
+export async function refreshReminder(
+  context: Context,
+  item: Reminder,
+): Promise<boolean> {
   if (item.expires === undefined) {
-    return;
+    return true;
   }
-  const due = dueOf(context, item.token ?? "claude", {
-    expires: item.expires,
-  });
+  const token = item.token ?? "claude";
+  const current = (await watchedTokens(context))[token];
+  if (current?.expires !== item.expires) {
+    return false;
+  }
+  const due = dueOf(context, token, { expires: item.expires });
   if (due === null) {
-    return;
+    return true;
   }
   item.text = due.text;
   if (due.expired) {
     item.expired = true;
   }
+  return true;
 }
 
 /**

@@ -538,8 +538,46 @@ describe("the reminder of a token's day", () => {
     expect((await renewed.store.get(id))?.state).toBe("done");
   });
 
+  it("is over when ⏰ Later put it aside and the token got a new day", async () => {
+    const w = await world({ tokenExpires: EXPIRES, laterHours: 14 * 24 });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    w.clock.now = Date.parse("2026-11-20T08:00:00Z");
+    await press(w, "later", id);
+
+    // Renewed while it was put aside: its old day passes without a page.
+    const renewed = await withSettings(w, { tokenExpires: "2027-11-25" });
+    w.clock.now = ON_THE_DAY;
+    expect(await runSchedule(renewed)).toEqual([]);
+    // When it comes back, after the old day, it is over without a page.
+    w.clock.now = Date.parse("2026-12-04T09:00:00Z");
+    expect(await runSchedule(renewed)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(await renewed.store.get(id)).toMatchObject({
+      state: "done",
+      snoozedUntil: null,
+    });
+    expect(lastText(w)).not.toContain("it has expired");
+  });
+
+  it("is over when ⏰ Later put it aside and the token is no longer watched", async () => {
+    const w = await world({ tokenExpires: EXPIRES, laterHours: 4 });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    await press(w, "later", id);
+
+    const removed = await withSettings(w, { tokenExpires: null });
+    w.clock.now += DAY;
+    expect(await runSchedule(removed)).toEqual([]);
+    expect((await removed.store.get(id))?.state).toBe("done");
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+  });
+
   it("is made anew for PAGER_FIX_TOKEN as well", async () => {
     const w = await world({ laterHours: 4 });
+    await w.context.local.put(TOKENS, {
+      fix: { expires: "2026-11-20" },
+    } satisfies Tokens);
     const fix = await reminder("fix-token:2026-11-20");
     const item: Reminder = {
       ...base(fix),
@@ -559,7 +597,7 @@ describe("the reminder of a token's day", () => {
   });
 
   it("keeps the text of a reminder that names no day, or whose day is far", async () => {
-    const w = await world();
+    const w = await world({ tokenExpires: "2027-06-01" });
     const refused = await reminder("user-token:refused:2026-11-01");
     const far = await reminder("claude-token:2027-06-01");
     for (const [id, expires] of [

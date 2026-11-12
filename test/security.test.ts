@@ -26,6 +26,7 @@ import { about } from "../src/topics.ts";
 import {
   appKey,
   CHAT,
+  directly,
   json,
   Net,
   REPO,
@@ -622,7 +623,11 @@ describe("the reminder of a vulnerability report", () => {
     const busy = await due("triage");
     busy.context.subrequests = () => SUBREQUESTS - REMINDER_CALLS + 1;
     expect(
-      await remindAdvisories(busy.context, [(await advisory(busy)).id]),
+      await remindAdvisories(
+        busy.context,
+        [(await advisory(busy)).id],
+        directly,
+      ),
     ).toEqual([]);
     expect((await advisory(busy)).remindAt).toBe(START + 6 * DAY);
   });
@@ -632,10 +637,11 @@ describe("the reminder of a vulnerability report", () => {
     const item = await advisory(w);
     await apply(w.context, secret(1));
     expect(
-      await remindAdvisories(w.context, [
-        "i000000000000000",
-        (await bundle(w)).id,
-      ]),
+      await remindAdvisories(
+        w.context,
+        ["i000000000000000", (await bundle(w)).id],
+        directly,
+      ),
     ).toEqual([]);
     for (const changed of [
       { ...item, remindAt: START + 7 * DAY },
@@ -643,7 +649,9 @@ describe("the reminder of a vulnerability report", () => {
       { ...item, state: "ignored" as const },
     ]) {
       await w.context.store.put(changed);
-      expect(await remindAdvisories(w.context, [item.id])).toEqual([]);
+      expect(await remindAdvisories(w.context, [item.id], directly)).toEqual(
+        [],
+      );
     }
     expect(w.net.github(STATE)).toHaveLength(0);
   });

@@ -9,12 +9,20 @@
  * default branch and whose rerun didn't help shows (src/workflows.ts), a topic
  * whose rename Telegram refused gets its name (src/topics.ts), and an
  * event of GitHub that the pager failed to handle comes again
- * (src/deliveries.ts). A run that comes to its end says so in the storage of the
- * Durable Object, for the check of the pager's health (src/health.ts).
+ * (src/deliveries.ts).
+ *
+ * Each step, and each thing of a step, goes apart from the others: one that
+ * Telegram or GitHub refuses, or that a network that breaks stops, goes to the
+ * log and costs only itself, and the run goes on with the next thing and the next
+ * step, above all the events that failed, which get their attempts only for three
+ * hours. A thing that failed is due again in the next run. A run where nothing
+ * failed comes to its end and says so in the storage of the Durable Object; one
+ * where something failed notes there what failed last instead. Both are for the
+ * check of the pager's health (src/health.ts).
  */
 import { remindAdvisories } from "./advisories.ts";
-import { failedEvents, SUBREQUESTS } from "./deliveries.ts";
-import { RAN } from "./health.ts";
+import { canShow, failedEvents, SUBREQUESTS } from "./deliveries.ts";
+import { errorOf, FAILED, type Failure, RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
@@ -46,6 +54,16 @@ export const RENAME_FOR = DAY;
 export const MAX_RENAMES = 5;
 
 /**
+ * Do one thing of a step of the schedule apart from the others, such as the
+ * reminder of one token: an error of it goes to the log and is noted, and the
+ * step goes on with its next thing. Returns whether the thing went through.
+ */
+export type Apart = (
+  thing: string,
+  work: () => Promise<void>,
+) => Promise<boolean>;
+
+/**
  * Give up on the texts whose answer didn't come in time: their 👀 becomes 😢, and
  * their thread stays for a day, for an answer that comes late.
  */
@@ -57,36 +75,50 @@ async function giveUp(context: Context): Promise<void> {
   await context.store.giveUp(late, context.now() - KEEP_LATE);
 }
 
-async function bringBack(context: Context, due: string[]): Promise<string[]> {
+/**
+ * Bring back the things whose time is up, as far as the calls of this run reach:
+ * the rest waits for the next run.
+ */
+async function bringBack(
+  context: Context,
+  due: string[],
+  apart: Apart,
+): Promise<string[]> {
   const done: string[] = [];
   for (const id of due) {
-    const item = await context.store.get(id);
-    if (item === null) {
-      // Expired between the list and the read.
-      continue;
+    // A workflow takes no more calls than any other thing.
+    if (!canShow(context)) {
+      break;
     }
-    if (item.kind === "workflow") {
-      // A failure that waited for its rerun, unless an event showed or ended it
-      // since the list; one that no calls are left for waits for the next run.
-      if (
-        item.state === "waiting" &&
-        canSettle(context) &&
-        (await settle(context, item))
-      ) {
-        done.push(id);
+    await apart(`thing ${id}`, async () => {
+      const item = await context.store.get(id);
+      if (item === null) {
+        // Expired between the list and the read.
+        return;
       }
-      continue;
-    }
-    item.snoozedUntil = null;
-    if (item.kind === "reminder" && !(await refreshReminder(context, item))) {
-      // Its token was renewed or removed while it was put aside: the reminder of
-      // the old day is over, and its message loses its buttons without a page.
-      item.state = "done";
-      await show(context, item);
-      continue;
-    }
-    await show(context, item, true);
-    done.push(id);
+      if (item.kind === "workflow") {
+        // A failure that waited for its rerun, unless an event showed or ended it
+        // since the list; one that no calls are left for waits for the next run.
+        if (
+          item.state === "waiting" &&
+          canSettle(context) &&
+          (await settle(context, item))
+        ) {
+          done.push(id);
+        }
+        return;
+      }
+      item.snoozedUntil = null;
+      if (item.kind === "reminder" && !(await refreshReminder(context, item))) {
+        // Its token was renewed or removed while it was put aside: the reminder of
+        // the old day is over, and its message loses its buttons without a page.
+        item.state = "done";
+        await show(context, item);
+        return;
+      }
+      await show(context, item, true);
+      done.push(id);
+    });
   }
   return done;
 }
@@ -95,29 +127,36 @@ async function bringBack(context: Context, due: string[]): Promise<string[]> {
  * Give a thing whose job of the control repository didn't answer within the hour
  * its buttons back, once, as a job that failed does: a new message, which
  * notifies, in the state before its button, with a note that no answer came. An
- * answer that comes later still shows, as a draft or a note.
+ * answer that comes later still shows, as a draft or a note. The things that the
+ * calls of this run don't reach wait for the next run.
  */
 async function noAnswer(
   context: Context,
   waiting: string[],
+  apart: Apart,
 ): Promise<string[]> {
   const done: string[] = [];
   for (const id of waiting) {
-    // The list may lag behind a write: only the record says whether it still waits.
-    const item = await context.store.get(id);
-    const before = item === null ? undefined : beforeJob(item);
-    if (
-      item === null ||
-      before === undefined ||
-      (item.jobStarted ?? context.now()) > context.now() - ANSWER_WITHIN
-    ) {
-      continue;
+    if (!canShow(context)) {
+      break;
     }
-    (item as { state: Item["state"] }).state = before;
-    delete item.jobStarted;
-    item.note = context.t("note.noAnswer");
-    await show(context, item, true);
-    done.push(id);
+    await apart(`thing ${id}`, async () => {
+      // The list may lag behind a write: only the record says whether it still waits.
+      const item = await context.store.get(id);
+      const before = item === null ? undefined : beforeJob(item);
+      if (
+        item === null ||
+        before === undefined ||
+        (item.jobStarted ?? context.now()) > context.now() - ANSWER_WITHIN
+      ) {
+        return;
+      }
+      (item as { state: Item["state"] }).state = before;
+      delete item.jobStarted;
+      item.note = context.t("note.noAnswer");
+      await show(context, item, true);
+      done.push(id);
+    });
   }
   return done;
 }
@@ -133,31 +172,34 @@ async function noAnswer(
 async function renameAgain(
   context: Context,
   refused: string[],
+  apart: Apart,
 ): Promise<string[]> {
   const renamed: string[] = [];
   for (const id of refused.slice(0, MAX_RENAMES)) {
     if (context.subrequests() >= SUBREQUESTS) {
       break;
     }
-    // The list may lag behind a write: only the record says whether it still waits.
-    const item = await context.store.get(id);
-    const since = item?.renameRefused;
-    if (item === null || since === undefined) {
-      continue;
-    }
-    if (since <= context.now() - RENAME_FOR) {
-      console.warn(
-        `Telegram refused to rename topic ${item.topic?.thread} for a day; it keeps its name`,
-      );
-      delete item.renameRefused;
-    } else {
-      await retitle(context, item);
-      if (item.renameRefused !== undefined) {
-        continue;
+    await apart(`thing ${id}`, async () => {
+      // The list may lag behind a write: only the record says whether it still waits.
+      const item = await context.store.get(id);
+      const since = item?.renameRefused;
+      if (item === null || since === undefined) {
+        return;
       }
-      renamed.push(id);
-    }
-    await context.store.put(item);
+      if (since <= context.now() - RENAME_FOR) {
+        console.warn(
+          `Telegram refused to rename topic ${item.topic?.thread} for a day; it keeps its name`,
+        );
+        delete item.renameRefused;
+      } else {
+        await retitle(context, item);
+        if (item.renameRefused !== undefined) {
+          return;
+        }
+        renamed.push(id);
+      }
+      await context.store.put(item);
+    });
   }
   return renamed;
 }
@@ -166,29 +208,67 @@ async function renameAgain(
  * One run of the schedule; returns the ids of the things that it showed. The
  * events that failed come last: they take the calls to the network that the steps
  * before them left, and the requests of the events that GitHub delivers again wait
- * only for the little that the run does after it asked for them. Only a run that
- * came to its end notes its time.
+ * only for the little that the run does after it asked for them. Each step runs
+ * whatever the steps before it did, and only a run where nothing failed notes its
+ * time.
  */
 export async function runSchedule(context: Context): Promise<string[]> {
   const pending = await context.store.pending(
     context.now(),
     context.now() - ANSWER_WITHIN,
   );
-  const shown = [
-    ...(await bringBack(context, pending.due)),
-    ...(await noAnswer(context, pending.waiting)),
-  ];
-  await giveUp(context);
+  let failed = false;
+  const apart: Apart = async (what, work) => {
+    try {
+      await work();
+      return true;
+    } catch (error) {
+      failed = true;
+      const said = errorOf(error);
+      console.error(`The schedule failed at ${what}:`, said);
+      await context.local.put<Failure>(FAILED, {
+        at: new Date(context.now()).toISOString(),
+        what,
+        error: said,
+      });
+      return false;
+    }
+  };
+  const shown: string[] = [];
+  // One step, apart from the others, whose things go apart from each other too.
+  const step = (name: string, work: (each: Apart) => Promise<string[]>) =>
+    apart(name, async () => {
+      shown.push(
+        ...(await work((thing, one) => apart(`${name}, ${thing}`, one))),
+      );
+    });
+  await step("the things that come back", (each) =>
+    bringBack(context, pending.due, each),
+  );
+  await step("the things whose job didn't answer", (each) =>
+    noAnswer(context, pending.waiting, each),
+  );
+  await step("the texts without an answer", async () => {
+    await giveUp(context);
+    return [];
+  });
   // A report that came back from "Later" in this run is reminded of in the next.
-  shown.push(
-    ...(await remindAdvisories(
+  await step("the reminders of vulnerability reports", (each) =>
+    remindAdvisories(
       context,
       pending.remind.filter((id) => !shown.includes(id)),
-    )),
+      each,
+    ),
   );
-  shown.push(...(await remindTokens(context)));
-  shown.push(...(await renameAgain(context, pending.rename)));
-  shown.push(...(await failedEvents(context)));
-  await context.local.put(RAN, context.now());
+  await step("the reminders of the tokens", (each) =>
+    remindTokens(context, each),
+  );
+  await step("the renames of topics", (each) =>
+    renameAgain(context, pending.rename, each),
+  );
+  await step("the events that failed", () => failedEvents(context));
+  if (!failed) {
+    await context.local.put(RAN, context.now());
+  }
   return shown;
 }

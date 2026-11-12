@@ -512,14 +512,25 @@ describe("the schedule and a workflow that waits", () => {
     expect(telegram(w)).toEqual([]);
   });
 
-  it("stops at an error that isn't an answer of GitHub", async () => {
+  it("stops at an error that isn't an answer of GitHub, and the thing waits for the next run", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const w = await world();
     await apply(w.context, ran(60, 1));
     w.clock.now = START + WAIT;
     vi.spyOn(w.context.github, "workflowRun").mockRejectedValue(
       new TypeError("lost"),
     );
-    await expect(runSchedule(w.context)).rejects.toThrow("lost");
+    expect(await runSchedule(w.context)).toEqual([]);
+    const waiting = await thing(w);
+    expect(error).toHaveBeenCalledWith(
+      `The schedule failed at the things that come back, thing ${waiting.id}:`,
+      "TypeError",
+    );
+    expect(waiting).toMatchObject({
+      state: "waiting",
+      snoozedUntil: START + WAIT,
+    });
+    expect(telegram(w)).toEqual([]);
   });
 });
 

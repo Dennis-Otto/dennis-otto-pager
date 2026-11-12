@@ -1,13 +1,13 @@
 // The health of the pager, which the control repository asks for once a day: when
-// the schedule last ran to its end, whether Telegram and GitHub take its secrets,
+// the schedule last ran to its end and what last failed in it, whether Telegram and GitHub take its secrets,
 // whether the webhook of Telegram delivers, and the days of the tokens; signed, as
 // every body of the control repository, and without a secret in the answer.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Memory } from "../src/context.ts";
 import { handleControl } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
-import { type Health, MAX_ERROR, RAN } from "../src/health.ts";
+import { type Health, health, MAX_ERROR, RAN } from "../src/health.ts";
 import { runSchedule } from "../src/schedule.ts";
 import { TOKENS, type Tokens } from "../src/tokens.ts";
 import { appKey, json, START, type World, world } from "./helpers.ts";
@@ -66,6 +66,7 @@ describe("the health of the pager", () => {
     const answer = await healthOf(w);
     expect(answer).toEqual({
       schedule: "2026-11-04T07:45:00.000Z",
+      failure: null,
       telegram: {
         ok: true,
         webhook: true,
@@ -109,6 +110,7 @@ describe("the health of the pager", () => {
       );
     expect(await healthOf(w)).toEqual({
       schedule: null,
+      failure: null,
       telegram: { ok: false, error: "Telegram getMe: Unauthorized" },
       github: {
         ok: false,
@@ -184,13 +186,23 @@ describe("the health of the pager", () => {
     expect(w.net.calls).toEqual([]);
   });
 
-  it("notes the time of a run of the schedule only once it came to its end", async () => {
+  it("notes the time of a run of the schedule only when nothing failed in it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const w = await world();
     w.net.on("GET", "/app/hook/deliveries?per_page=100", () => {
       throw new TypeError("Network connection lost");
     });
-    await expect(runSchedule(w.context)).rejects.toThrow(TypeError);
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule failed at the events that failed:",
+      "TypeError",
+    );
     expect(await w.context.local.get(RAN)).toBeUndefined();
+    expect((await health(w.context)).failure).toEqual({
+      at: "2026-11-04T08:00:00.000Z",
+      what: "the events that failed",
+      error: "TypeError",
+    });
   });
 });
 

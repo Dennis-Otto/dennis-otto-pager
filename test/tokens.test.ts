@@ -236,12 +236,18 @@ describe("GITHUB_USER_TOKEN", () => {
     expect((await readTokens(w.context)).checked?.day).toBe("2026-11-04");
   });
 
-  it("passes on an error that isn't an answer of GitHub", async () => {
+  it("passes on an error that isn't an answer of GitHub, which the next run asks again after", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const w = await world();
     w.net.on("GET", "/rate_limit", () => {
       throw new TypeError("Network connection lost");
     });
-    await expect(runSchedule(w.context)).rejects.toThrow(TypeError);
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule failed at the reminders of the tokens, the check of GITHUB_USER_TOKEN:",
+      "TypeError",
+    );
+    expect((await readTokens(w.context)).checked).toBeUndefined();
   });
 
   it("isn't asked about without the token, or when the run has no call left", async () => {

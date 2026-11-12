@@ -28,7 +28,12 @@ import {
   render,
   visible,
 } from "../src/render.ts";
-import { type PagerEnv, readSettings } from "../src/settings.ts";
+import {
+  isLogin,
+  ownersOf,
+  type PagerEnv,
+  readSettings,
+} from "../src/settings.ts";
 import type { Contribution, Item } from "../src/store.ts";
 import { texts } from "../src/texts.ts";
 import { MAX_DRAFT } from "../src/updates.ts";
@@ -132,6 +137,7 @@ describe("settings", () => {
         controlSecret: null,
         userToken: null,
         maintainer: "Dennis-Otto",
+        owners: [],
         controlRepository: "Dennis-Otto/control",
         laterHours: 4,
         tokenExpires: "2027-10-07",
@@ -156,6 +162,42 @@ describe("settings", () => {
     expect(
       readSettings({ ...complete, LANGUAGE: "" } as unknown as PagerEnv),
     ).toMatchObject({ settings: { language: "en" } });
+  });
+
+  it("reads the further owners of OWNERS, separated by commas or spaces", () => {
+    expect(
+      readSettings({ ...complete, OWNERS: "" } as unknown as PagerEnv),
+    ).toMatchObject({ settings: { owners: [] } });
+    expect(
+      readSettings({
+        ...complete,
+        OWNERS: " octo-org, Other-Org2  third ",
+      } as unknown as PagerEnv),
+    ).toMatchObject({
+      settings: { owners: ["octo-org", "Other-Org2", "third"] },
+    });
+    expect(ownersOf(undefined)).toEqual([]);
+    expect(ownersOf(",,")).toEqual([]);
+  });
+
+  it("refuses an owner that isn't a login of GitHub", () => {
+    for (const wrong of [
+      "octo_org",
+      "-octo",
+      "octo-",
+      "octo--org",
+      "octo/org",
+      "a".repeat(40),
+    ]) {
+      expect(ownersOf(`fine, ${wrong}`)).toBeNull();
+      expect(
+        readSettings({ ...complete, OWNERS: wrong } as unknown as PagerEnv),
+      ).toEqual({
+        missing: ["OWNERS (accounts of GitHub, separated by commas)"],
+      });
+    }
+    expect(isLogin("a".repeat(39))).toBe(true);
+    expect(isLogin("a-b-c")).toBe(true);
   });
 
   it("names what is missing or wrong, never a value", () => {

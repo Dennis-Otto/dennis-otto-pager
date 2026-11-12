@@ -9,7 +9,7 @@ Der Pager ist ein Cloudflare Worker mit drei Türen und einem Zeitplan: `/github
 
 ## Was zählt
 
-`src/rules.ts` ist die eine Stelle, die entscheidet; ihre Tests gehen jede Regel durch. Ein Ereignis aus einem Repository eines anderen Besitzers oder einer Art, die hier nicht steht, endet ohne Nachricht.
+`src/rules.ts` ist die eine Stelle, die entscheidet; ihre Tests gehen jede Regel durch. Der Pager bedient die Repositorys des Maintainers, `MAINTAINER_LOGIN`, und der weiteren Besitzer, die `OWNERS` nennt, etwa einer Organisation; ein Ereignis aus einem Repository eines anderen Besitzers oder einer Art, die hier nicht steht, endet ohne Nachricht. Wer als der Maintainer gilt, bleibt `MAINTAINER_LOGIN`, auch in den Repositorys von `OWNERS`.
 
 | Ereignis | Zählt, wenn | Wird zu |
 | --- | --- | --- |

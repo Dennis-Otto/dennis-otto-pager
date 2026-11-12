@@ -198,6 +198,7 @@ export async function settings(
     controlSecret: "control-secret",
     userToken: "user-token",
     maintainer: "Dennis-Otto",
+    owners: [],
     controlRepository: "Dennis-Otto/control",
     laterHours: 4,
     tokenExpires: null,

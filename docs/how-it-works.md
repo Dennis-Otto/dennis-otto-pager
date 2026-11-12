@@ -9,7 +9,7 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 
 ## What counts
 
-`src/rules.ts` is the one place that decides; its tests go through each rule. An event of a repository of another owner, or of a kind that isn't listed here, ends without a message.
+`src/rules.ts` is the one place that decides; its tests go through each rule. The pager serves the repositories of the maintainer, `MAINTAINER_LOGIN`, and of the further owners that `OWNERS` names, such as an organization; an event of a repository of another owner, or of a kind that isn't listed here, ends without a message. Who counts as the maintainer stays `MAINTAINER_LOGIN`, in the repositories of `OWNERS` too.
 
 | Event | Counts when | Becomes |
 | --- | --- | --- |

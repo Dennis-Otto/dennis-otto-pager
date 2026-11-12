@@ -20,6 +20,7 @@ Noch ohne Termin; eine Diskussion ist der Ort, um zu sagen, dass dir eine wichti
 
 - **Die Steuerung eines Laufs deiner Agenten.** Ein Agent fragt seine Entscheidungen heute über den Pager und liest die Antwort aus einem Branch des Steuer-Repositorys ([Entscheidung 0008](decisions/0008-an-agent-reads-its-answer-from-a-branch-of-the-control-repository.md)), und ein Lauf schickt seinen Bericht. Der Pager könnte einen langen Lauf auch zeigen, während er läuft, und ihn mit einem Knopf anhalten oder beenden.
 - **Claude Code Channels.** Ein Channel schickt Nachrichten in eine laufende Sitzung von Claude Code. Der Pager könnte einer werden, sodass ein Text im Thema einer Sache eine Sitzung auf dem Rechner des Maintainers direkt erreicht und nicht nur den Workflow des Steuer-Repositorys.
+- **Ein Team einer Organisation.** Der Pager beobachtet die Repositorys einer Organisation mit `OWNERS`, doch nur `MAINTAINER_LOGIN` ist sein Maintainer, also meldet er, was die anderen Mitglieder eröffnen, als Beitrag. Er könnte die Mitglieder eines Teams als seine eigenen nehmen und ein Token je Besitzer halten, damit ✅ **Senden** in den Repositorys von jedem handelt.
 - **Mehr Sprachen.** Der Pager spricht Englisch und Deutsch, aus einem Katalog je Sprache in `src/texts.ts`. Eine weitere Sprache ist ein Katalog mit denselben Schlüsseln, Platzhaltern und Emojis, die der Compiler und `test/texts.test.ts` prüfen ([Entscheidung 0004](decisions/0004-one-language-per-pager-from-a-catalog.md)).
 
 ## Erledigt

@@ -40,6 +40,11 @@ export interface Settings {
   controlSecret: string | null;
   userToken: string | null;
   maintainer: string;
+  /**
+   * The further owners, such as organizations, whose repositories the pager serves
+   * beside those of the maintainer; empty for the maintainer's own alone.
+   */
+  owners: readonly string[];
   controlRepository: string;
   laterHours: number;
   tokenExpires: string | null;
@@ -60,6 +65,20 @@ export const REQUIRED = [
 function optional(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed === "" ? null : trimmed;
+}
+
+/** Whether a text is a login of GitHub: letters, digits and single hyphens inside, at most 39 characters. */
+export function isLogin(value: string): boolean {
+  return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(value);
+}
+
+/**
+ * The owners of OWNERS, separated by commas or spaces, or null when one of them
+ * isn't a login of GitHub.
+ */
+export function ownersOf(value: string | undefined): string[] | null {
+  const owners = (value ?? "").split(/[\s,]+/).filter((owner) => owner !== "");
+  return owners.every(isLogin) ? owners : null;
 }
 
 /**
@@ -88,7 +107,11 @@ export function readSettings(
   if (language === null) {
     missing.push(`LANGUAGE (${LANGUAGES.join(" or ")})`);
   }
-  if (missing.length > 0 || language === null) {
+  const owners = ownersOf(env.OWNERS);
+  if (owners === null) {
+    missing.push("OWNERS (accounts of GitHub, separated by commas)");
+  }
+  if (missing.length > 0 || language === null || owners === null) {
     return { missing };
   }
   return {
@@ -102,6 +125,7 @@ export function readSettings(
       controlSecret: optional(env.CONTROL_SECRET),
       userToken: optional(env.GITHUB_USER_TOKEN),
       maintainer: env.MAINTAINER_LOGIN,
+      owners,
       controlRepository: env.CONTROL_REPOSITORY,
       laterHours,
       tokenExpires: expires,

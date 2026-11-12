@@ -116,11 +116,30 @@ async function bringBack(
         await show(context, item);
         return;
       }
-      await show(context, item, true);
-      done.push(id);
+      await showAgain(context, item, done);
     });
   }
   return done;
+}
+
+/**
+ * Show a thing again in a new message, and count it as shown once that message
+ * went, also when what follows it fails, such as the delete of the old one: a
+ * later step of the run, such as the reminder of a report, leaves it alone then.
+ */
+async function showAgain(
+  context: Context,
+  item: Item,
+  done: string[],
+): Promise<void> {
+  const old = item.messageId;
+  try {
+    await show(context, item, true);
+  } finally {
+    if (item.messageId !== old) {
+      done.push(item.id);
+    }
+  }
 }
 
 /**
@@ -154,8 +173,7 @@ async function noAnswer(
       (item as { state: Item["state"] }).state = before;
       delete item.jobStarted;
       item.note = context.t("note.noAnswer");
-      await show(context, item, true);
-      done.push(id);
+      await showAgain(context, item, done);
     });
   }
   return done;
@@ -226,11 +244,20 @@ export async function runSchedule(context: Context): Promise<string[]> {
       failed = true;
       const said = errorOf(error);
       console.error(`The schedule failed at ${what}:`, said);
-      await context.local.put<Failure>(FAILED, {
-        at: new Date(context.now()).toISOString(),
-        what,
-        error: said,
-      });
+      try {
+        await context.local.put<Failure>(FAILED, {
+          at: new Date(context.now()).toISOString(),
+          what,
+          error: said,
+        });
+      } catch (unnoted) {
+        // The storage failing too stops nothing more: the log has the failure, and
+        // the run, which notes no time, shows in the check of the control repository.
+        console.error(
+          `The schedule couldn't note the failure at ${what}:`,
+          errorOf(unnoted),
+        );
+      }
       return false;
     }
   };

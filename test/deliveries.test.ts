@@ -1039,7 +1039,7 @@ describe("a thing that fails in a run of the schedule", () => {
     w.net.on("POST", /\/deleteMessage$/, () => {
       throw new TypeError("Network connection lost");
     });
-    expect(await runSchedule(w.context)).toEqual([]);
+    expect(await runSchedule(w.context)).toEqual(["i00000000000001"]);
     expect(w.net.telegram("sendMessage")).toHaveLength(1);
     const kept = await w.context.store.get("i00000000000001");
     expect(kept?.messageId).toBe(100);
@@ -1047,6 +1047,26 @@ describe("a thing that fails in a run of the schedule", () => {
     // The next run doesn't send it again, with live buttons on two messages.
     expect(await runSchedule(w.context)).toEqual([]);
     expect(w.net.telegram("sendMessage")).toHaveLength(1);
+  });
+
+  it("goes on when the storage can't note the failure either", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = attempt("broken", 20, 500);
+    const w = listing(await world(), [[broken]]);
+    vi.spyOn(w.context.store, "waiting").mockRejectedValueOnce(
+      new TypeError("KV GET failed"),
+    );
+    vi.spyOn(w.context.local, "put").mockRejectedValueOnce(
+      new TypeError("Durable Object storage failed"),
+    );
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule couldn't note the failure at the texts without an answer:",
+      "TypeError",
+    );
+    // The events that failed still come again.
+    expect(redelivered(w)).toEqual([broken.id]);
+    expect(await w.context.local.get(RAN)).toBeUndefined();
   });
 });
 

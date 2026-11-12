@@ -162,12 +162,16 @@ export async function show(
     item.messageId = await sendThing(context, item, text, buttons);
   }
   try {
-    if (left !== null) {
-      await leaveMainView(context, left, text);
-    } else if (old !== null && fresh) {
-      await context.telegram.remove(old);
+    try {
+      if (left !== null) {
+        await leaveMainView(context, left, text);
+      } else if (old !== null && fresh) {
+        await context.telegram.remove(old);
+      }
+    } finally {
+      // The name of the topic follows the thing also when the old message stays.
+      await retitle(context, item);
     }
-    await retitle(context, item);
   } finally {
     await context.store.put(item);
   }

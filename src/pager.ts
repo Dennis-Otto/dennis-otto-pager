@@ -489,6 +489,53 @@ async function removeEntry(
 }
 
 /**
+ * A release workflow passed. Its entry leaves the alarm only when the pass
+ * belongs to the failure: a later attempt of the run that failed, such as one of
+ * 🔁 Rerun, a run started by hand, which takes up a release that an earlier run
+ * left as a draft, or any pass after which no release of the repository is a
+ * draft any more. A run of a push or of the schedule passes as soon as it finds
+ * nothing to release, also while the release that failed is still a draft, so
+ * such a pass alone keeps the entry. When the releases can't be read, the entry
+ * stays as well: the next rerun or run by hand takes it out.
+ */
+async function releasePassed(
+  context: Context,
+  signal: Extract<Signal, { type: "recovered" }>,
+  release: { run?: number; dispatched: boolean },
+): Promise<string> {
+  const known = (await context.store.get(
+    await itemId(keys.alarm(signal.repo)),
+  )) as Alarm | null;
+  const entry =
+    known === null || isClosed(known)
+      ? undefined
+      : known.entries.find((each) => each.key === signal.key);
+  const sameRun = entry?.run !== undefined && entry.run === release.run;
+  if (entry !== undefined && !sameRun && !release.dispatched) {
+    let draft: boolean;
+    try {
+      draft = await context.github.draftRelease(
+        signal.installation,
+        signal.repo,
+      );
+    } catch (error) {
+      if (!(error instanceof GitHubError)) {
+        throw error;
+      }
+      console.error(
+        "The releases of a repository can't be read:",
+        error.message,
+      );
+      return "a pass of a release whose releases can't be read";
+    }
+    if (draft) {
+      return "a pass that leaves a release a draft";
+    }
+  }
+  return removeEntry(context, "alarm", signal.repo, signal.key);
+}
+
+/**
  * A discussion, or a comment on one, from someone else: a contribution whose draft
  * the pager asks for at once, since its buttons send, edit or ignore that draft. A
  * new comment becomes the message that the reply answers: a thing that is still
@@ -1377,7 +1424,9 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
         signal.type === "still-failing" ? "change" : null,
       );
     case "recovered":
-      return removeEntry(context, "alarm", signal.repo, signal.key);
+      return signal.release === undefined
+        ? removeEntry(context, "alarm", signal.repo, signal.key)
+        : releasePassed(context, signal, signal.release);
     case "check": {
       const required = await context.github.requiredChecks(
         signal.installation,

@@ -689,6 +689,19 @@ export class GitHub {
     return advisory.state;
   }
 
+  /**
+   * Whether one of the ten newest releases of a repository is still a draft, as a
+   * release workflow leaves the release whose publish failed. GitHub lists drafts
+   * only to a token that may write the contents; the pager writes none here.
+   */
+  async draftRelease(installation: number, repo: string): Promise<boolean> {
+    const token = await this.token(installation, repo, { contents: "write" });
+    const releases = await this.json<{ draft?: boolean }[]>(
+      await this.call(token, "GET", `/repos/${repo}/releases?per_page=10`),
+    );
+    return releases.some((each) => each.draft === true);
+  }
+
   /** Send an event to the workflows of a repository, such as the control repository. */
   async dispatch(
     installation: number,

@@ -1,7 +1,7 @@
 // What each signal does to the messages: a new one for a new thing, an edit as the
 // thing changes, bundles per repository, and the steps of a release.
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { press } from "../src/actions.ts";
 import { allowed } from "../src/buttons.ts";
@@ -967,6 +967,71 @@ describe("the alarm of a repository", () => {
     );
     expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
     expect(w.net.telegram("sendMessage")).toHaveLength(3);
+  });
+
+  it("takes a failed release out only with a pass that belongs to it, not with the next push that finds nothing to release", async () => {
+    const w = await world();
+    const key = "workflow:.github/workflows/release.yml";
+    const releases = "/repos/Dennis-Otto/demo/releases?per_page=10";
+    let listed: unknown[] = [{ draft: false }, { draft: true }];
+    w.net.on("GET", releases, () => json(listed));
+    const passed = (run: number | undefined, dispatched = false): Signal => ({
+      ...at,
+      type: "recovered",
+      key,
+      release: { ...(run === undefined ? {} : { run }), dispatched },
+    });
+    const entries = async () =>
+      ((await stored(w, keys.alarm(REPO))) as Alarm).entries.map(
+        (each) => each.key,
+      );
+    expect(await apply(w.context, failing(key, "Release", 3))).toBe(
+      "alarm opened",
+    );
+    // The run of the next push passes and leaves the release a draft: it stays.
+    expect(await apply(w.context, passed(4))).toBe(
+      "a pass that leaves a release a draft",
+    );
+    expect(await entries()).toEqual([key]);
+    // The draft is listed only to a token that may write the contents.
+    expect(w.net.github("/access_tokens").at(-1)?.body.permissions).toEqual({
+      contents: "write",
+    });
+    // Releases that can't be read keep it as well.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    w.net.on("GET", releases, () => json({ message: "Server Error" }, 500));
+    expect(await apply(w.context, passed(4))).toBe(
+      "a pass of a release whose releases can't be read",
+    );
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
+    expect(await entries()).toEqual([key]);
+    // A later attempt of the run that failed takes it out, without a read.
+    const read = w.net.github(releases).length;
+    expect(await apply(w.context, passed(3))).toBe("alarm closed");
+    expect(w.net.github(releases)).toHaveLength(read);
+    // A run by hand takes up the draft and takes the entry out, without a read.
+    await apply(w.context, failing(key, "Release", 5));
+    expect(await apply(w.context, passed(6, true))).toBe("alarm closed");
+    expect(w.net.github(releases)).toHaveLength(read);
+    // Any pass after which no release is a draft takes it out, also of an
+    // entry that names no run.
+    listed = [{ draft: false }, {}];
+    w.net.on("GET", releases, () => json(listed));
+    await apply(w.context, failing(key, "Release"));
+    expect(await apply(w.context, passed(7))).toBe("alarm closed");
+    await apply(w.context, failing(key, "Release", 8));
+    expect(await apply(w.context, passed(undefined))).toBe("alarm closed");
+    // Without an open alarm, or with the entry not part of it, nothing is read.
+    const after = w.net.github(releases).length;
+    expect(await apply(w.context, passed(9))).toBe("no open alarm");
+    await apply(w.context, failing("check:lint"));
+    expect(await apply(w.context, passed(9))).toBe("not part of the alarm");
+    expect(w.net.github(releases)).toHaveLength(after);
+    // An error that isn't one of GitHub is no answer of the releases.
+    await apply(w.context, failing(key, "Release", 10));
+    w.context.github.draftRelease = () => Promise.reject(new TypeError("boom"));
+    await expect(apply(w.context, passed(11))).rejects.toThrow("boom");
   });
 
   it("notifies of a burst of new entries once, and brings a snoozed alarm back with a new one", async () => {

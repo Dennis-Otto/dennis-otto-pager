@@ -86,6 +86,8 @@ async function convert(code) {
   return response.json();
 }
 
+let converting = false;
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   const page = (status, body) => {
@@ -113,7 +115,14 @@ const server = createServer(async (request, response) => {
     page(404, "<p>Not here.</p>");
     return;
   }
-  // The code of the manifest converts once: no second request gets this far.
+  // The code of the manifest converts once. server.close() turns away new
+  // connections only: a reload of this page on a connection the browser keeps
+  // open still reaches here, and gets told to wait for the first one.
+  if (converting) {
+    page(409, "<p>The app is being registered: see the terminal.</p>");
+    return;
+  }
+  converting = true;
   server.close();
   const failed = (message) => {
     page(

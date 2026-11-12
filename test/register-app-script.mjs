@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { describe, it } from "node:test";
@@ -95,6 +96,33 @@ async function confirm(address) {
   ];
 }
 
+/**
+ * A browser that sends the redirect of GitHub twice on one connection, the second
+ * before the first is answered, as a reload while the script stores the secrets.
+ * It sends both at once, so that the script reads both before it answers one.
+ */
+async function confirmTwice(address) {
+  const form = await (await fetch(`${address}/`)).text();
+  const state = /\?state=([0-9a-f]{32})"/.exec(form)?.[1];
+  const { hostname, port } = new URL(address);
+  const request = `GET /done?state=${state}&code=the-code HTTP/1.1\r\nHost: ${hostname}\r\n\r\n`;
+  const answer = await new Promise((resolve, reject) => {
+    let text = "";
+    const socket = connect(Number(port), hostname, () =>
+      socket.write(request + request),
+    );
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      text += chunk;
+    });
+    socket.on("end", () => resolve(text));
+    socket.on("error", reject);
+  });
+  return answer
+    .split(/(?=HTTP\/1\.1 \d{3} )/)
+    .map((page) => ({ status: Number(page.slice(9, 12)), body: page }));
+}
+
 const LIST = ["--no", "--", "wrangler", "secret", "list"];
 const put = (name) => ["--no", "--", "wrangler", "secret", "put", name];
 
@@ -130,6 +158,26 @@ describe("scripts/register-app.mjs", () => {
     assert.match(
       result.output,
       /Done\. Install the app: https:\/\/github\.com/,
+    );
+    assertNoSecret(result);
+  });
+
+  it("converts the code once when the page of the redirect loads twice", async () => {
+    const result = await register([WORKER], {}, confirmTwice);
+    assert.equal(result.code, 0, result.output);
+    const [done, again] = result.pages;
+    assert.equal(done.status, 200);
+    assert.match(done.body, /installations\/new/);
+    assert.equal(again.status, 409);
+    assert.match(again.body, /being registered/);
+    assert.deepEqual(
+      result.calls.map((call) => call.args),
+      [
+        LIST,
+        put("GITHUB_APP_ID"),
+        put("GITHUB_APP_PRIVATE_KEY"),
+        put("GITHUB_WEBHOOK_SECRET"),
+      ],
     );
     assertNoSecret(result);
   });

@@ -1164,6 +1164,29 @@ describe("messages", () => {
     expect(w.net.telegram("setMessageReaction")).toHaveLength(1);
   });
 
+  it("tell a text that reached its run not to be written again when its 👀 fails", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    // A reaction that Telegram refuses passes; one that never reaches it throws.
+    w.net.on("POST", /\/setMessageReaction$/, () => {
+      throw new TypeError("network");
+    });
+    await expect(
+      handleUpdate(w.context, message("What failed tonight?")),
+    ).rejects.toThrow("network");
+    expect(w.net.github("/dispatches")).toHaveLength(1);
+    // Its run has started, and its answer can still come: no 😢, and no message
+    // that asks for the text again, which would start a second run of Claude.
+    expect(
+      w.net.telegram("setMessageReaction").map((call) => call.body.reaction),
+    ).toEqual([[{ type: "emoji", emoji: "👀" }]]);
+    expect(w.net.telegram("sendMessage")).toEqual([]);
+  });
+
   it("send the message that a free text answers along, as its context", async () => {
     const w = await world();
     withControl(w.net).on(

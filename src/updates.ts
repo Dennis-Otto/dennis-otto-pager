@@ -196,11 +196,22 @@ async function answerInWords(
   return "an answer in words";
 }
 
+/**
+ * How far the handling of a text got: once it has reached a run of the control
+ * repository, a later failure must not tell the maintainer to write it again,
+ * which would start a second run of Claude, since the answer of the first can
+ * still come.
+ */
+interface Progress {
+  sent: boolean;
+}
+
 async function freeText(
   context: Context,
   message: Message,
   text: string,
   item: Item | null,
+  progress: Progress,
 ): Promise<string> {
   const thread = threadOf(message);
   const repo = context.settings.controlRepository;
@@ -240,6 +251,7 @@ async function freeText(
     await context.telegram.react(message.message_id, REACTIONS.failed);
     return "free text that GitHub refused";
   }
+  progress.sent = true;
   await context.telegram.react(message.message_id, REACTIONS.taken);
   // Its answer turns the 👀 into 👍, or the schedule into 😢 when none comes; the
   // answer goes into the thread that the text came from, which the store keeps.
@@ -275,9 +287,15 @@ export async function handleUpdate(
   if (text === "") {
     return "a message without text";
   }
+  const progress: Progress = { sent: false };
   try {
-    return await written(context, message, text);
+    return await written(context, message, text, progress);
   } catch (error) {
+    if (progress.sent) {
+      // The text reached its run, whose answer can still come and turn its
+      // reaction into 👍: no 😢 and no "write it again", only the log of the route.
+      throw error;
+    }
     // Every text gets a reaction: one whose handling fails gets 😢 and a message
     // in its thread that says so, and its error goes on to the log of the route.
     await quietly(context.telegram.react(message.message_id, REACTIONS.failed));
@@ -293,6 +311,7 @@ async function written(
   context: Context,
   message: Message,
   text: string,
+  progress: Progress,
 ): Promise<string> {
   if (/^\/(start|help)\b/.test(text)) {
     await context.telegram.say(context.t("chat.help"), threadOf(message));
@@ -310,5 +329,5 @@ async function written(
   if (item?.kind === "decision" && item.state === "open") {
     return answerInWords(context, message, text, item);
   }
-  return freeText(context, message, text, item);
+  return freeText(context, message, text, item, progress);
 }

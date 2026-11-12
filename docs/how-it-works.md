@@ -309,7 +309,7 @@ The script `scripts/ask.mjs` of the control repository does all of it, as its RE
 
 ## The reaction on a text
 
-A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none. A text that never reached a job gets its 😢 at once, with a message in its thread that says why: one that GitHub refused, such as when the app may no longer dispatch to the control repository, names GitHub's reason, and one whose handling failed otherwise, such as on a broken network, says that the pager failed on it. Neither waits for an answer.
+A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none. A text that never reached a job gets its 😢 at once, with a message in its thread that says why: one that GitHub refused, such as when the app may no longer dispatch to the control repository, names GitHub's reason, and one whose handling failed otherwise, such as on a broken network, says that the pager failed on it. Neither waits for an answer. A text that did reach its job gets no such message for a failure after that, such as of its 👀: its answer can still come, and writing it again would start a second run of Claude.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.dark.svg">

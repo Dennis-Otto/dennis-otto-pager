@@ -28,11 +28,14 @@ interface Service {
   service: string;
 }
 
-/** A topic in the list of topics: its name, the color of its icon, its newest line and its time. */
+/**
+ * A topic in the list of topics: its name, the color of its icon, the text of its
+ * message, whose last line the list shows, as Telegram does, and its time.
+ */
 interface Row {
   name: string;
   color: string;
-  last: string;
+  text: string;
   time: string;
 }
 
@@ -167,26 +170,18 @@ function release(language: Language): Release {
   };
 }
 
-/** A message as the chat shows it: the HTML of Telegram, without the addresses of its links. */
+/** The text of a message as the chat shows it: the HTML of Telegram, without the addresses of its links. */
+function shown(item: Item, t: Texts): string {
+  return render(item, START, t).replace(/<a href="[^"]*">/g, "<a>");
+}
+
+/** A message as the chat shows it, with its buttons. */
 function message(item: Item, t: Texts, time: string): Message {
   return {
-    text: render(item, START, t).replace(/<a href="[^"]*">/g, "<a>"),
+    text: shown(item, t),
     buttons: keyboard(item, t).map((row) => row.map((button) => button.text)),
     time,
   };
-}
-
-/** The last line of a message as plain text, as the list of topics shows it. */
-function lastLine(item: Item, t: Texts): string {
-  const lines = render(item, START, t)
-    .replace(/<[^>]*>/g, "")
-    .split("\n")
-    .filter((line) => line.trim() !== "");
-  return (lines.at(-1) ?? "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
 }
 
 /** The things of the list of topics, newest first, each with its time. */
@@ -266,7 +261,7 @@ function scenes(language: Language): Record<string, Scene> {
       topics: topics(language, t).map(([item, time]) => ({
         name: topicName(item, t),
         color: `#${COLORS[item.kind].toString(16).padStart(6, "0")}`,
-        last: lastLine(item, t),
+        text: shown(item, t),
         time,
       })),
     },

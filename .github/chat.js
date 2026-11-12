@@ -84,31 +84,31 @@ window.CHAT = {
         {
           "name": "🚨 repo-blueprint needs you",
           "color": "#fb6f5f",
-          "last": "• Socket Security fails on main",
+          "text": "🚨 <b>Dennis-Otto/repo-blueprint needs you</b>\n• <a>The release fails: Release</a>\n• <a>Socket Security fails on main</a>",
           "time": "10:42"
         },
         {
           "name": "📦 paperless-sync 1.7.0",
           "color": "#8eee98",
-          "last": "Every check is green, and \"Merge\" publishes it.",
+          "text": "📦 <b>Release 1.7.0</b> of <a>Dennis-Otto/paperless-sync</a>: <a>#312</a>\n\n<b>Features</b>\n• Tags renamed in Paperless follow in Nextcloud (<a>#305</a>)\n• A share link for every synced document (<a>#309</a>)\n\nEvery check is green, and \"Merge\" publishes it.",
           "time": "09:15"
         },
         {
           "name": "🙋 paperless-sync#316 Sync stops when a tag has a slash",
           "color": "#6fb9f0",
-          "last": "Since 1.6.2 the sync stops at the first document with a tag like Tax/2026. The log says: invalid path.",
+          "text": "🙋 <b>New issue</b> in <a>Dennis-Otto/paperless-sync</a> by <b>sam-lee</b>\n<a>#316 Sync stops when a tag has a slash</a>\n<blockquote expandable>Since 1.6.2 the sync stops at the first document with a tag like Tax/2026. The log says: invalid path.</blockquote>",
           "time": "08:31"
         },
         {
           "name": "🤔 Decision: Which release goes first?",
           "color": "#cb86db",
-          "last": "Which release goes first?",
+          "text": "🤔 <b>A decision for you</b>\nWhich release goes first?",
           "time": "08:05"
         },
         {
           "name": "✅ 🔴 Links in issue-assistant",
           "color": "#fb6f5f",
-          "last": "✅ Green again.",
+          "text": "🔴 <b>Links fails on main in <a>Dennis-Otto/issue-assistant</a></b>\n<a>The run that failed</a>\nFailed 2 times since 2026-11-04 at 05:00 UTC, the last time on 2026-11-04 at 07:00 UTC.\n✅ Green again.",
           "time": "07:58"
         }
       ]
@@ -198,31 +198,31 @@ window.CHAT = {
         {
           "name": "🚨 repo-blueprint braucht dich",
           "color": "#fb6f5f",
-          "last": "• Socket Security scheitert auf main",
+          "text": "🚨 <b>Dennis-Otto/repo-blueprint braucht dich</b>\n• <a>Das Release scheitert: Release</a>\n• <a>Socket Security scheitert auf main</a>",
           "time": "10:42"
         },
         {
           "name": "📦 paperless-sync 1.7.0",
           "color": "#8eee98",
-          "last": "Alle Checks sind grün, und „Mergen“ veröffentlicht es.",
+          "text": "📦 <b>Release 1.7.0</b> von <a>Dennis-Otto/paperless-sync</a>: <a>#312</a>\n\n<b>Neue Funktionen</b>\n• In Paperless umbenannte Tags folgen in Nextcloud (<a>#305</a>)\n• Ein Freigabelink für jedes synchronisierte Dokument (<a>#309</a>)\n\nAlle Checks sind grün, und „Mergen“ veröffentlicht es.",
           "time": "09:15"
         },
         {
           "name": "🙋 paperless-sync#316 Sync bricht bei einem Tag mit Schrägstrich ab",
           "color": "#6fb9f0",
-          "last": "Seit 1.6.2 bricht der Sync beim ersten Dokument mit einem Tag wie Steuer/2026 ab. Im Log steht: invalid path.",
+          "text": "🙋 <b>Neues Issue</b> in <a>Dennis-Otto/paperless-sync</a> von <b>sam-lee</b>\n<a>#316 Sync bricht bei einem Tag mit Schrägstrich ab</a>\n<blockquote expandable>Seit 1.6.2 bricht der Sync beim ersten Dokument mit einem Tag wie Steuer/2026 ab. Im Log steht: invalid path.</blockquote>",
           "time": "08:31"
         },
         {
           "name": "🤔 Entscheidung: Welches Release geht zuerst?",
           "color": "#cb86db",
-          "last": "Welches Release geht zuerst?",
+          "text": "🤔 <b>Eine Entscheidung für dich</b>\nWelches Release geht zuerst?",
           "time": "08:05"
         },
         {
           "name": "✅ 🔴 Links in issue-assistant",
           "color": "#fb6f5f",
-          "last": "✅ Wieder grün.",
+          "text": "🔴 <b>Links scheitert auf main in <a>Dennis-Otto/issue-assistant</a></b>\n<a>Der gescheiterte Lauf</a>\n2-mal gescheitert seit dem 04.11.2026 um 05:00 UTC, zuletzt am 04.11.2026 um 07:00 UTC.\n✅ Wieder grün.",
           "time": "07:58"
         }
       ]

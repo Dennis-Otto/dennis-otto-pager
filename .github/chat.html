@@ -131,6 +131,14 @@ function plain(text) {
   return node.innerHTML;
 }
 
+/** The last line of a message of the pager as plain text, as the list of topics shows it. */
+function lastLine(html) {
+  const node = document.createElement("div");
+  node.innerHTML = html;
+  const lines = node.textContent.split("\n").filter((line) => line.trim() !== "");
+  return lines.at(-1) ?? "";
+}
+
 /** A message of the pager: its text, its time and its buttons. */
 function message(data) {
   const node = element("div", "message", "");
@@ -163,7 +171,7 @@ function chat(id, language, scene) {
     for (const topic of scene.topics) {
       list.append(element("li", "", `<span class="icon">${icon(topic.color)}</span>
         <span class="topic">${plain(topic.name)}</span><span class="when">${plain(topic.time)}</span>
-        <span class="last">${plain(topic.last)}</span>`));
+        <span class="last">${plain(lastLine(topic.text))}</span>`));
     }
     node.append(list);
   } else {

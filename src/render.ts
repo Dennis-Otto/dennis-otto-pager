@@ -208,11 +208,15 @@ function contributionHead(
   | "message.discussion"
   | "message.comment"
   | "message.issueComment"
-  | "message.pullComment" {
+  | "message.pullComment"
+  | "message.pullReview" {
   if (item.discussion !== undefined) {
     return item.discussion.comment === undefined
       ? "message.discussion"
       : "message.comment";
+  }
+  if (item.comment?.kind === "review") {
+    return "message.pullReview";
   }
   if (item.comment !== undefined) {
     return item.pull ? "message.pullComment" : "message.issueComment";

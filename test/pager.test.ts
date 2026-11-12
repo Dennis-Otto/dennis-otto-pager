@@ -907,6 +907,354 @@ describe("comments on issues and pull requests", () => {
   });
 });
 
+describe("reviews and what else someone does to a pull request or an issue", () => {
+  const PULL = "https://github.com/Dennis-Otto/demo/pull/12";
+  const opened: Signal = {
+    ...at,
+    type: "contribution",
+    number: 12,
+    pull: true,
+    title: "Fix it",
+    url: PULL,
+    author: "octocat",
+    excerpt: "It fixes the crash",
+  };
+  const remark = (
+    comment: number,
+    kind?: "review" | "reviewComment",
+    author = "hubot",
+  ): Extract<Signal, { type: "comment" }> => ({
+    ...at,
+    type: "comment",
+    number: 12,
+    pull: true,
+    title: "Fix it",
+    url: `${PULL}#${kind ?? "issuecomment"}-${comment}`,
+    author,
+    comment,
+    ...(kind === undefined ? {} : { kind }),
+  });
+  const did = (
+    what: "commits" | "reopened" | "ready",
+    changed: string | null = "2026-11-12T08:00:00Z",
+  ): Extract<Signal, { type: "activity" }> => ({
+    ...at,
+    type: "activity",
+    number: 12,
+    pull: true,
+    title: "Fix it",
+    url: PULL,
+    author: "octocat",
+    by: "octocat",
+    what,
+    ...(changed === null ? {} : { changed }),
+    excerpt: "It fixes the crash",
+  });
+
+  async function chat(): Promise<World> {
+    const w = await world();
+    withTopics(w.net);
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    return w;
+  }
+
+  const thing = async (w: World) =>
+    (await stored(w, keys.contribution(REPO, 12))) as Contribution;
+
+  /** A world with the pull request shown, in its topic 900, as message 100. */
+  async function shown(): Promise<World> {
+    const w = await chat();
+    await apply(w.context, opened);
+    return w;
+  }
+
+  it("show a review of someone else as the newest message, and notify once", async () => {
+    const w = await shown();
+    expect(await apply(w.context, remark(7, "review"))).toBe(
+      "comment shown in place",
+    );
+    expect(await thing(w)).toMatchObject({
+      url: `${PULL}#review-7`,
+      author: "hubot",
+      comment: { id: 7, kind: "review", noticed: START },
+    });
+    expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
+      "💬 <b>New review</b> of a pull request in <a href=",
+    );
+    expect(w.net.telegram("sendMessage")[1]?.body).toMatchObject({
+      text: `💬 <b>hubot</b> reviewed: <a href="${PULL}#review-7">#12 Fix it</a>`,
+      message_thread_id: 900,
+    });
+  });
+
+  it("show a reply in the thread of a review as a comment on the pull request", async () => {
+    const w = await shown();
+    expect(await apply(w.context, remark(5, "reviewComment"))).toBe(
+      "comment shown in place",
+    );
+    expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
+      "💬 <b>New comment</b> on a pull request in",
+    );
+    expect(w.net.telegram("sendMessage")[1]?.body.text).toBe(
+      `💬 <b>hubot</b> commented: <a href="${PULL}#reviewComment-5">#12 Fix it</a>`,
+    );
+  });
+
+  it("compare the ids of comments only within their kind", async () => {
+    const w = await shown();
+    await apply(w.context, remark(99));
+    // A review comment has ids of its own, smaller here: it is news all the same.
+    expect(await apply(w.context, remark(5, "reviewComment"))).toBe(
+      "comment shown in place, quietly",
+    );
+    expect((await thing(w)).comment).toEqual({
+      id: 5,
+      kind: "reviewComment",
+      seen: { issueComment: 99, reviewComment: 5 },
+      noticed: START,
+    });
+    const calls = w.net.calls.length;
+    const before = await thing(w);
+    // The same review comment twice, and the older comment of the conversation
+    // that a redelivery brings back, change nothing.
+    expect(await apply(w.context, remark(5, "reviewComment"))).toBe(
+      "comment shown already",
+    );
+    expect(await apply(w.context, remark(98))).toBe("comment shown already");
+    expect(w.net.calls).toHaveLength(calls);
+    expect(await thing(w)).toEqual(before);
+    // A newer one of the first kind still counts, and keeps what the other saw.
+    expect(await apply(w.context, remark(100))).toBe(
+      "comment shown in place, quietly",
+    );
+    expect((await thing(w)).comment).toEqual({
+      id: 100,
+      seen: { issueComment: 100, reviewComment: 5 },
+      noticed: START,
+    });
+  });
+
+  it("read the comment of a thing from before the reviews as one of its conversation", async () => {
+    const w = await shown();
+    await w.context.store.put({
+      ...(await thing(w)),
+      comment: { id: 99, noticed: START },
+    });
+    expect(await apply(w.context, remark(99))).toBe("comment shown already");
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, remark(3, "review"))).toBe(
+      "comment shown in place",
+    );
+    expect((await thing(w)).comment).toMatchObject({
+      id: 3,
+      kind: "review",
+      seen: { issueComment: 99, review: 3 },
+    });
+  });
+
+  it("name a review or a review comment in the draft by its own field", async () => {
+    for (const kind of ["review", "reviewComment"] as const) {
+      const w = await shown();
+      await w.context.store.put({
+        ...(await thing(w)),
+        state: "draft",
+        draft: "Thanks!",
+        draftVersion: 1,
+      });
+      expect(await apply(w.context, remark(7, kind))).toBe(
+        "comment shown in place, drafted again",
+      );
+      expect(w.net.github("/dispatches")[0]?.body.client_payload).toEqual({
+        item: await itemId(keys.contribution(REPO, 12)),
+        repo: REPO,
+        number: 12,
+        pull: true,
+        [kind]: 7,
+        language: "en",
+      });
+    }
+  });
+
+  it("name new commits on an open thing in place, and notify once in its topic", async () => {
+    const w = await shown();
+    await w.context.store.put({
+      ...(await thing(w)),
+      snoozedUntil: START + 3_600_000,
+    });
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown in place",
+    );
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      note: "🔁 New commits by octocat.",
+      noticed: START,
+      snoozedUntil: null,
+      activities: { commits: "2026-11-12T08:00:00Z" },
+      messageId: 100,
+    });
+    expect(w.net.telegram("editMessageText")[0]?.body.text).toContain(
+      "<i>🔁 New commits by octocat.</i>",
+    );
+    expect(w.net.telegram("sendMessage")[1]?.body).toMatchObject({
+      text: `🔁 <b>octocat</b> pushed new commits: <a href="${PULL}">#12 Fix it</a>`,
+      message_thread_id: 900,
+    });
+    // GitHub's second delivery of the same push changes nothing.
+    const calls = w.net.calls.length;
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown already",
+    );
+    expect(w.net.calls).toHaveLength(calls);
+  });
+
+  it("name new commits in a new message, which notifies by itself, when the maintainer deleted the topic", async () => {
+    const w = await shown();
+    withDeletedTopic(w.net, 900, [100]);
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown in a new message",
+    );
+    const messages = w.net.telegram("sendMessage").map((call) => call.body);
+    expect(messages.map((body) => body.message_thread_id)).toEqual([
+      900, 900, 901,
+    ]);
+    expect(messages.at(-1)?.text).toContain(
+      "<i>🔁 New commits by octocat.</i>",
+    );
+  });
+
+  it("notify once for a comment and the commits that follow it quickly", async () => {
+    const w = await shown();
+    await apply(w.context, remark(99));
+    w.clock.now = START + QUIET - 1;
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown in place, quietly",
+    );
+    // And the other way round: a comment soon after the commits is quiet too.
+    w.clock.now = START + QUIET * 2;
+    expect(await apply(w.context, did("ready", "2026-11-12T09:00:00Z"))).toBe(
+      "ready shown in place",
+    );
+    w.clock.now = START + QUIET * 2 + 1;
+    expect(await apply(w.context, remark(100))).toBe(
+      "comment shown in place, quietly",
+    );
+    // The issue, the comment and the notice of ready for review.
+    expect(w.net.telegram("sendMessage")).toHaveLength(3);
+    expect(w.net.telegram("sendMessage")[2]?.body.text).toBe(
+      `👀 <b>octocat</b> made it ready for review: <a href="${PULL}">#12 Fix it</a>`,
+    );
+    // A comment says the news itself, so it takes the note of the activity away.
+    expect(await thing(w)).toMatchObject({ note: null });
+  });
+
+  it("open a done thing again in its topic, keeping what its reply answers", async () => {
+    const w = await shown();
+    await apply(w.context, { ...remark(99), excerpt: "Please rename it" });
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "done",
+      note: "💬 You replied on GitHub, so the pager sends nothing.",
+      draftVersion: 2,
+      topic: { thread: 900, name: "✅ 🙋 demo#12 Fix it" },
+    });
+    expect(await apply(w.context, did("commits"))).toBe("commits shown anew");
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      draft: null,
+      draftVersion: 2,
+      url: `${PULL}#issuecomment-99`,
+      author: "hubot",
+      excerpt: "Please rename it",
+      comment: { id: 99, noticed: START },
+      note: "🔁 New commits by octocat.",
+      noticed: START,
+      messageId: 102,
+      topic: { thread: 900, name: "🙋 demo#12 Fix it" },
+    });
+    const message = w.net.telegram("sendMessage").at(-1)?.body;
+    expect(message).toMatchObject({ message_thread_id: 900 });
+    expect(message.text).toContain("💬 <b>New comment</b> on a pull request");
+    expect(message.text).toContain("<i>🔁 New commits by octocat.</i>");
+    expect(w.net.telegram("deleteMessage")).toHaveLength(0);
+  });
+
+  it("make a new thing of a pull request or an issue that the pager never showed", async () => {
+    const w = await chat();
+    expect(await apply(w.context, did("reopened"))).toBe("reopened shown");
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      pull: true,
+      url: PULL,
+      author: "octocat",
+      excerpt: "It fixes the crash",
+      draftVersion: 0,
+      note: "🔓 Reopened by octocat.",
+      activities: { reopened: "2026-11-12T08:00:00Z" },
+    });
+    expect(await thing(w)).not.toHaveProperty("comment");
+    expect(w.net.telegram("sendMessage")[0]?.body.text).toContain(
+      "🙋 <b>New pull request</b> in",
+    );
+  });
+
+  it("take an activity without its time as news each time", async () => {
+    const w = await shown();
+    expect(await apply(w.context, did("reopened", null))).toBe(
+      "reopened shown in place",
+    );
+    expect(await thing(w)).not.toHaveProperty("activities");
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, did("reopened", null))).toBe(
+      "reopened shown in place",
+    );
+    const fresh = await chat();
+    expect(await apply(fresh.context, did("commits", null))).toBe(
+      "commits shown",
+    );
+    expect(await thing(fresh)).not.toHaveProperty("activities");
+  });
+
+  it("keep the times of the activities when a comment opens the thing again", async () => {
+    const w = await shown();
+    await apply(w.context, did("commits"));
+    await w.context.store.put({ ...(await thing(w)), state: "done" });
+    expect(await apply(w.context, remark(99))).toBe("comment shown anew");
+    expect(await thing(w)).toMatchObject({
+      state: "new",
+      activities: { commits: "2026-11-12T08:00:00Z" },
+    });
+    // So the push that a redelivery brings back changes nothing.
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown already",
+    );
+  });
+
+  it("leave an ignored thing and a discussion alone", async () => {
+    const w = await shown();
+    await w.context.store.put({ ...(await thing(w)), state: "ignored" });
+    const calls = w.net.calls.length;
+    expect(await apply(w.context, did("commits"))).toBe("commits ignored");
+    expect(w.net.calls).toHaveLength(calls);
+    const other = await chat();
+    await apply(other.context, {
+      ...at,
+      type: "discussion",
+      number: 12,
+      title: "How do I start?",
+      url: "https://github.com/Dennis-Otto/demo/discussions/12",
+      author: "octocat",
+      node: "D_1",
+    });
+    expect(await apply(other.context, did("reopened"))).toBe(
+      "no contribution of an issue or a pull request",
+    );
+  });
+});
+
 describe("the alarm of a repository", () => {
   it("bundles what fails, notifies of a new entry, edits a changed one in place and closes when all is green", async () => {
     const w = await world();

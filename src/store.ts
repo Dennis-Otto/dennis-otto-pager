@@ -5,7 +5,7 @@
  */
 import type { ReleaseNotes } from "./content.ts";
 import { sha256Hex } from "./crypto.ts";
-import type { Severity } from "./rules.ts";
+import type { Activity, ReviewKind, Severity } from "./rules.ts";
 import type { Thread } from "./telegram.ts";
 import type { Translation } from "./translations.ts";
 
@@ -91,8 +91,16 @@ export interface Discussion {
  * the comment is what the draft answers, not where the reply goes.
  */
 export interface IssueComment {
-  /** The id of the comment in the REST API of GitHub. */
+  /** The id of the comment in the REST API of GitHub, within its kind. */
   id: number;
+  /** A review or a comment in the code of a pull request; none for a comment of its conversation. */
+  kind?: ReviewKind;
+  /**
+   * The newest id of each kind of comment that the thing saw, once it saw more
+   * than one kind; until then, `id` of `kind` is the newest. GitHub promises no
+   * order of its deliveries, and the ids only grow within a kind.
+   */
+  seen?: Seen;
   /**
    * When a comment last notified the maintainer, in milliseconds since 1970: the
    * comments that follow within QUIET of src/pager.ts edit the message alone.
@@ -137,7 +145,21 @@ export interface Contribution extends Base {
   discussion?: Discussion;
   /** The newest comment of someone else on an issue or a pull request; none for a discussion. */
   comment?: IssueComment;
+  /**
+   * When an activity, such as new commits, last notified the maintainer, in
+   * milliseconds since 1970; with the notice of a comment, it mutes what follows
+   * within QUIET of src/pager.ts.
+   */
+  noticed?: number;
+  /**
+   * When GitHub changed the issue or the pull request with the newest activity of
+   * each kind that the thing showed, so that the same event twice changes nothing.
+   */
+  activities?: Partial<Record<Activity, string>>;
 }
+
+/** The newest id of each kind of comment, by the field of the draft that names it. */
+export type Seen = Partial<Record<ReviewKind | "issueComment", number>>;
 
 /**
  * What the reply of a contribution answers, which may wait for the draft of a newer

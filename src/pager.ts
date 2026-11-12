@@ -33,6 +33,7 @@ import {
   render,
 } from "./render.ts";
 import {
+  type Activity,
   type ContributionEnd,
   type DiscussionEnd,
   FAILED,
@@ -59,6 +60,7 @@ import {
   keys,
   type Pictures,
   type Release,
+  type Seen,
   type Store,
   type Workflow,
 } from "./store.ts";
@@ -217,7 +219,8 @@ export async function askForDraft(
     pull: item.pull,
     // A discussion names the comment that the reply answers, if it answers one,
     // by its id in GraphQL; an issue or a pull request by its id in REST, as
-    // issueComment, which a control repository from before it ignores.
+    // issueComment, or review or reviewComment for a review of a pull request or
+    // a comment in its code, which a control repository from before them ignores.
     ...(discussion === undefined
       ? {}
       : {
@@ -226,7 +229,9 @@ export async function askForDraft(
             ? {}
             : { comment: discussion.comment }),
         }),
-    ...(comment === undefined ? {} : { issueComment: comment.id }),
+    ...(comment === undefined
+      ? {}
+      : { [comment.kind ?? "issueComment"]: comment.id }),
   });
   if (failed === null) {
     item.state = "drafting";
@@ -756,11 +761,16 @@ async function comment(
     return "comment ignored";
   }
   // GitHub promises no order of its deliveries, and a redelivery can bring an
-  // older comment back; the ids of comments only grow.
-  if (known?.comment !== undefined && signal.comment <= known.comment.id) {
+  // older comment back; the ids of comments only grow, each kind on its own.
+  const kind = signal.kind ?? "issueComment";
+  const seen = newest(known?.comment);
+  const newestOfKind = seen[kind];
+  if (newestOfKind !== undefined && signal.comment <= newestOfKind) {
     return "comment shown already";
   }
   const now = context.now();
+  const record = (noticed: number): IssueComment =>
+    issueComment(signal, { ...seen, [kind]: signal.comment }, noticed);
   if (known === null || isClosed(known)) {
     await show(context, {
       ...base(id, signal.repo, signal.installation),
@@ -775,12 +785,15 @@ async function comment(
       draft: null,
       // Counts on, so that no button of an older draft sends the next one.
       draftVersion: known?.draftVersion ?? 0,
-      comment: { id: signal.comment, noticed: now },
+      comment: record(now),
+      ...(known?.activities === undefined
+        ? {}
+        : { activities: known.activities }),
       topic: known?.topic ?? null,
     });
     return known === null ? "comment shown" : "comment shown anew";
   }
-  const last = known.comment?.noticed;
+  const last = lastNotice(known);
   const quiet = last !== undefined && now - last < QUIET;
   known.title = signal.title;
   known.url = signal.url;
@@ -788,7 +801,7 @@ async function comment(
   // The message quotes the comment now, which its reply answers.
   delete known.excerpt;
   Object.assign(known, excerptOf(signal));
-  known.comment = { id: signal.comment, noticed: quiet ? last : now };
+  known.comment = record(quiet ? last : now);
   known.note = null;
   // The comment needs the maintainer now, not once "Later" brings it back.
   known.snoozedUntil = null;
@@ -805,12 +818,149 @@ async function comment(
   await postBelow(
     context,
     known,
-    context.t("message.newComment", {
-      author: html(signal.author, 100),
+    context.t(
+      signal.kind === "review" ? "message.newReview" : "message.newComment",
+      {
+        author: html(signal.author, 100),
+        link: link(`#${signal.number} ${signal.title}`, signal.url),
+      },
+    ),
+  );
+  return `comment shown in place${outcome}`;
+}
+
+/**
+ * The newest id of each kind of comment that a thing saw: a thing that saw one
+ * kind only, such as each from before the reviews, keeps it as its comment.
+ */
+function newest(comment: IssueComment | undefined): Seen {
+  if (comment === undefined) {
+    return {};
+  }
+  return comment.seen ?? { [comment.kind ?? "issueComment"]: comment.id };
+}
+
+/**
+ * The record of the newest comment of a thing, which keeps the newest id of each
+ * kind only once it saw more than one kind, so that a thing of comments of its
+ * conversation alone keeps its record as before.
+ */
+function issueComment(
+  signal: Extract<Signal, { type: "comment" }>,
+  seen: Seen,
+  noticed: number,
+): IssueComment {
+  return {
+    id: signal.comment,
+    ...(signal.kind === undefined ? {} : { kind: signal.kind }),
+    ...(Object.keys(seen).length > 1 ? { seen } : {}),
+    noticed,
+  };
+}
+
+/** When a comment or an activity of a contribution last notified the maintainer, if ever. */
+function lastNotice(known: Contribution): number | undefined {
+  const times = [known.comment?.noticed, known.noticed].filter(
+    (time) => time !== undefined,
+  );
+  return times.length === 0 ? undefined : Math.max(...times);
+}
+
+/** The note that the message of a thing shows for each activity, and the notice below it. */
+const ACTIVITY = {
+  commits: { note: "note.newCommits", notice: "message.newCommits" },
+  reopened: { note: "note.reopened", notice: "message.reopened" },
+  ready: { note: "note.readyForReview", notice: "message.readyForReview" },
+} as const satisfies Record<Activity, { note: string; notice: string }>;
+
+/**
+ * What someone else did to an issue or a pull request of someone else after its
+ * first message, such as the fix that a contributor pushed after a review: news of
+ * the contribution, as a comment is, but without a word to answer or a draft. A
+ * thing that is still open names it in its note, edited in place, and a message
+ * below it notifies, once for whatever follows within QUIET, comments included. A
+ * thing whose reply went, or that GitHub dealt with, such as with a request for
+ * changes, opens again in its topic, as a new message that keeps what its reply
+ * answers, and one that the pager never showed comes as new. An ignored thing
+ * stays ignored, and the same event twice changes nothing.
+ */
+async function activity(
+  context: Context,
+  signal: Extract<Signal, { type: "activity" }>,
+): Promise<string> {
+  const id = await itemId(keys.contribution(signal.repo, signal.number));
+  const known = (await context.store.get(id)) as Contribution | null;
+  if (known?.state === "ignored") {
+    return `${signal.what} ignored`;
+  }
+  if (known?.discussion !== undefined) {
+    return "no contribution of an issue or a pull request";
+  }
+  if (
+    signal.changed !== undefined &&
+    known?.activities?.[signal.what] === signal.changed
+  ) {
+    return `${signal.what} shown already`;
+  }
+  const activities =
+    signal.changed === undefined
+      ? known?.activities
+      : { ...known?.activities, [signal.what]: signal.changed };
+  const now = context.now();
+  const note = context.t(ACTIVITY[signal.what].note, {
+    author: signal.by,
+  });
+  if (known === null || isClosed(known)) {
+    await show(context, {
+      ...base(id, signal.repo, signal.installation),
+      kind: "contribution",
+      state: "new",
+      number: signal.number,
+      pull: signal.pull,
+      title: signal.title,
+      // What the reply answers stays: the issue, the pull request or its newest comment.
+      url: known?.url ?? signal.url,
+      author: known?.author ?? signal.author,
+      ...excerptOf(known ?? signal),
+      draft: null,
+      // Counts on, so that no button of an older draft sends the next one.
+      draftVersion: known?.draftVersion ?? 0,
+      ...(known?.comment === undefined ? {} : { comment: known.comment }),
+      note,
+      noticed: now,
+      ...(activities === undefined ? {} : { activities }),
+      topic: known?.topic ?? null,
+    });
+    return known === null
+      ? `${signal.what} shown`
+      : `${signal.what} shown anew`;
+  }
+  const last = lastNotice(known);
+  const quiet = last !== undefined && now - last < QUIET;
+  known.title = signal.title;
+  known.note = note;
+  known.noticed = quiet ? last : now;
+  if (activities !== undefined) {
+    known.activities = activities;
+  }
+  // The news needs the maintainer now, not once "Later" brings it back.
+  known.snoozedUntil = null;
+  const sent = await show(context, known);
+  if (quiet) {
+    return `${signal.what} shown in place, quietly`;
+  }
+  if (sent) {
+    return `${signal.what} shown in a new message`;
+  }
+  await postBelow(
+    context,
+    known,
+    context.t(ACTIVITY[signal.what].notice, {
+      author: html(signal.by, 100),
       link: link(`#${signal.number} ${signal.title}`, signal.url),
     }),
   );
-  return `comment shown in place${outcome}`;
+  return `${signal.what} shown in place`;
 }
 
 async function releaseItem(
@@ -1418,6 +1568,8 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       return discussionDone(context, signal);
     case "comment":
       return comment(context, signal);
+    case "activity":
+      return activity(context, signal);
     case "contribution-done":
       return contributionDone(context, signal);
     case "failing":

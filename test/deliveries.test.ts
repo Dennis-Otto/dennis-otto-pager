@@ -1218,6 +1218,28 @@ describe("each signal applied twice", () => {
     author: "hubot",
     comment: "DC_7",
   };
+  const issueComment: Extract<Signal, { type: "comment" }> = {
+    ...at,
+    type: "comment",
+    number: 41,
+    pull: false,
+    title: "It breaks",
+    url: `https://github.com/${REPO}/issues/41#issuecomment-5`,
+    author: "octocat",
+    comment: 5,
+  };
+  const commits: Extract<Signal, { type: "activity" }> = {
+    ...at,
+    type: "activity",
+    number: 12,
+    pull: false,
+    title: "It breaks",
+    url: `https://github.com/${REPO}/issues/12`,
+    author: "octocat",
+    by: "octocat",
+    what: "commits",
+    changed: "2026-11-12T08:00:00Z",
+  };
   const failing = (
     key: string,
     title = key,
@@ -1297,19 +1319,35 @@ describe("each signal applied twice", () => {
       [discussion],
       { ...at, type: "discussion-done", number: 31, reason: "closed" },
     ],
+    ["comment", [], issueComment],
     [
-      "comment",
-      [],
-      {
-        ...at,
-        type: "comment",
-        number: 41,
-        pull: false,
-        title: "It breaks",
-        url: `https://github.com/${REPO}/issues/41#issuecomment-5`,
-        author: "octocat",
-        comment: 5,
-      },
+      "comment: a review comment after a newer comment of another kind",
+      [contribution, { ...issueComment, number: 12, comment: 99 }],
+      { ...issueComment, number: 12, comment: 5, kind: "reviewComment" },
+    ],
+    [
+      "comment: an older comment of another kind after a review",
+      [
+        contribution,
+        { ...issueComment, number: 12, comment: 99 },
+        { ...issueComment, number: 12, comment: 7, kind: "review" },
+      ],
+      { ...issueComment, number: 12, comment: 98 },
+    ],
+    ["activity: a thing that it makes", [], commits],
+    ["activity: an open thing", [contribution], commits],
+    [
+      "activity: a thing that it opens again",
+      [
+        contribution,
+        { ...at, type: "contribution-done", number: 12, reason: "replied" },
+      ],
+      commits,
+    ],
+    [
+      "activity: another after a comment",
+      [contribution, commits, { ...issueComment, number: 12, comment: 99 }],
+      { ...commits, what: "ready" },
     ],
     [
       "contribution-done",
@@ -1458,6 +1496,7 @@ describe("each signal applied twice", () => {
       discussion: true,
       "discussion-done": true,
       comment: true,
+      activity: true,
       "contribution-done": true,
       failing: true,
       "still-failing": true,

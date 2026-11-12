@@ -18,7 +18,7 @@ import { RAN } from "./health.ts";
 import { type Context, show } from "./pager.ts";
 import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
-import { remindTokens } from "./tokens.ts";
+import { refreshReminder, remindTokens } from "./tokens.ts";
 import { retitle } from "./topics.ts";
 import { canSettle, settle } from "./workflows.ts";
 
@@ -78,6 +78,13 @@ async function bringBack(context: Context, due: string[]): Promise<string[]> {
       continue;
     }
     item.snoozedUntil = null;
+    if (item.kind === "reminder" && !(await refreshReminder(context, item))) {
+      // Its token was renewed or removed while it was put aside: the reminder of
+      // the old day is over, and its message loses its buttons without a page.
+      item.state = "done";
+      await show(context, item);
+      continue;
+    }
     await show(context, item, true);
     done.push(id);
   }

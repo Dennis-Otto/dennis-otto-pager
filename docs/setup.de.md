@@ -177,7 +177,7 @@ Schreib dem Bot dann eine Frage, etwa *What fails on main?*: Das 👀 sagt, dass
 
 ## Später
 
-- **Deine Tokens laufen ab,** und der Pager erinnert dich drei Wochen vor jedem, in einem eigenen Thema, mit dem Weg, es zu erneuern; ✅ **Erneuert** schließt die Erinnerung:
+- **Deine Tokens laufen ab,** und der Pager erinnert dich drei Wochen vor jedem, in einem eigenen Thema, mit dem Weg, es zu erneuern, und noch einmal an dem Tag, an dem es abläuft; ✅ **Erneuert** schließt die Erinnerung:
   - **Das Token von Claude** im Steuer-Repository: `CLAUDE_TOKEN_EXPIRES` in `wrangler.jsonc` nennt den Tag. Erneuere es mit `claude setup-token` und `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"` und ändere dann den Tag in einem Pull Request.
   - **`GITHUB_USER_TOKEN`** des Workers: GitHub nennt seinen Tag in den Antworten seiner API, die der Pager einmal am Tag liest. Erzeug es auf der Seite deiner [feingranularen Tokens](https://github.com/settings/personal-access-tokens) neu, mit einem neuen Tag, und setz es mit `npx wrangler secret put GITHUB_USER_TOKEN`; nach einem neuen Token fragt der Pager GitHub sofort. Lehnt GitHub das Token ab, weil es abgelaufen ist oder widerrufen wurde, sagt die Erinnerung das, und ✅ **Senden** und 🤖 **Assistent nochmal** auch.
   - **`PAGER_FIX_TOKEN`** des Steuer-Repositorys: Seine tägliche Prüfung *Health* liest den Tag bei GitHub und schickt ihn mit. Erzeug es genauso neu und setz es mit `gh secret set PAGER_FIX_TOKEN -R "$CONTROL"`.

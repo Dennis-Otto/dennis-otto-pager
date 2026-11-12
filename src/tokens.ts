@@ -14,7 +14,7 @@ import { sha256Hex } from "./crypto.ts";
 import { SUBREQUESTS } from "./deliveries.ts";
 import { GitHubError, UserTokenRefused } from "./github.ts";
 import { type Context, show } from "./pager.ts";
-import { itemId, keys } from "./store.ts";
+import { itemId, keys, type Reminder } from "./store.ts";
 import type { Key } from "./texts.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -166,19 +166,24 @@ const TEXTS = {
   },
 } as const satisfies Record<Token, { soon: Key; expired: Key }>;
 
+/** What a reminder of a token that is due says, and whether its day has come. */
+interface Due {
+  text: string;
+  /** Whether the token expired, which pages once more, on its day. */
+  expired: boolean;
+  /** The day that the token expires; none while GitHub refuses it. */
+  expires?: string;
+}
+
 /**
- * The text of the reminder of a token that is due: from three weeks before its
- * day, or while GitHub refuses it, which only GITHUB_USER_TOKEN can be; null
- * while none is due.
+ * What the reminder of a token says now: from three weeks before its day, or
+ * while GitHub refuses it, which only GITHUB_USER_TOKEN can be; null while none
+ * is due.
  */
-function dueText(
-  context: Context,
-  token: Token,
-  state: TokenState,
-): string | null {
+function dueOf(context: Context, token: Token, state: TokenState): Due | null {
   const { t } = context;
   if (state.refused !== undefined) {
-    return t("reminder.userRefused");
+    return { text: t("reminder.userRefused"), expired: false };
   }
   const { expires } = state;
   if (expires === null) {
@@ -193,29 +198,72 @@ function dueText(
   const repo = context.settings.controlRepository;
   const date = t.date(expires);
   if (left <= 0) {
-    return t(TEXTS[token].expired, { repo, date });
+    return {
+      text: t(TEXTS[token].expired, { repo, date }),
+      expired: true,
+      expires,
+    };
   }
-  return t(TEXTS[token].soon, {
-    repo,
-    date,
-    days:
-      left === 1
-        ? t("reminder.days.one")
-        : t("reminder.days.many", { days: left }),
-  });
+  return {
+    text: t(TEXTS[token].soon, {
+      repo,
+      date,
+      days:
+        left === 1
+          ? t("reminder.days.one")
+          : t("reminder.days.many", { days: left }),
+    }),
+    expired: false,
+    expires,
+  };
 }
 
 /**
- * The reminder of one token, once per token and day, or per day since GitHub
- * refuses it. Returns its id, or null when none is due or it came already.
+ * Make the text of the reminder of a token's day anew before it shows again, as
+ * when ⏰ Later brings it back, so that it says how many days are left then, or
+ * that the token expired. A reminder that names no day, such as that of a token
+ * that GitHub refuses or one from before the pager kept the day, keeps its text.
+ * Returns false when the token has another day by now, or is no longer watched,
+ * since it was renewed or removed: the reminder of the old day is then over and
+ * shows nothing new, rather than a countdown to a day that no longer applies.
+ */
+export async function refreshReminder(
+  context: Context,
+  item: Reminder,
+): Promise<boolean> {
+  if (item.expires === undefined) {
+    return true;
+  }
+  const token = item.token ?? "claude";
+  const current = (await watchedTokens(context))[token];
+  if (current?.expires !== item.expires) {
+    return false;
+  }
+  const due = dueOf(context, token, { expires: item.expires });
+  if (due === null) {
+    return true;
+  }
+  item.text = due.text;
+  if (due.expired) {
+    item.expired = true;
+  }
+  return true;
+}
+
+/**
+ * The reminder of one token: once per token and day, or per day since GitHub
+ * refuses it, and once more on the day that the token expires, as a new message
+ * that notifies, whether the first is still open, put aside by ⏰ Later or closed
+ * by ✅ Renewed while the day stayed the same. Returns its id, or null when none
+ * is due or it came already.
  */
 async function remindOf(
   context: Context,
   token: Token,
   state: TokenState,
 ): Promise<string | null> {
-  const text = dueText(context, token, state);
-  if (text === null) {
+  const due = dueOf(context, token, state);
+  if (due === null) {
     return null;
   }
   const name =
@@ -223,8 +271,20 @@ async function remindOf(
       ? `${token}-token:${state.expires}`
       : `${token}-token:refused:${state.refused}`;
   const id = await itemId(keys.reminder(name));
-  if ((await context.store.get(id)) !== null) {
-    return null;
+  // The id of a reminder names no other kind of thing.
+  const known = (await context.store.get(id)) as Reminder | null;
+  if (known !== null) {
+    // A reminder from before the pager kept whether it said that the token
+    // expired has said so when its text is already that of the expired token.
+    if (!due.expired || known.expired === true || known.text === due.text) {
+      return null;
+    }
+    known.state = "open";
+    known.snoozedUntil = null;
+    known.text = due.text;
+    known.expired = true;
+    await show(context, known, true);
+    return id;
   }
   await show(context, {
     id,
@@ -235,8 +295,10 @@ async function remindOf(
     messageId: null,
     note: null,
     snoozedUntil: null,
-    text,
+    text: due.text,
     ...(token === "claude" ? {} : { token }),
+    ...(due.expires === undefined ? {} : { expires: due.expires }),
+    ...(due.expired ? { expired: true as const } : {}),
   });
   return id;
 }

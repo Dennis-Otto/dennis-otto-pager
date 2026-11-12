@@ -48,6 +48,23 @@ export const MAX_REDELIVERIES = 10;
 export const SUBREQUESTS = 50;
 
 /**
+ * The most calls to the network that a thing takes in the schedule to come again
+ * as a new message: a message into its topic, a new topic with its check, its
+ * message and their fallbacks, the delete of its old message and the new name of
+ * the topic.
+ */
+export const SHOW_AGAIN = 8;
+
+/**
+ * Whether a run of the schedule has the calls left for one more thing that comes
+ * again; the rest waits for its next run, rather than reach the limit of the
+ * runtime in the middle of a thing.
+ */
+export function canShow(context: Context): boolean {
+  return SUBREQUESTS - context.subrequests() >= SHOW_AGAIN;
+}
+
+/**
  * The most calls to the network that one change of the alarm takes: the
  * installation of the control repository and the page of the app, and for its
  * message an edit, a message into its topic, a new topic with its check, its

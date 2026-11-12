@@ -11,9 +11,10 @@
  */
 import { describe } from "./context.ts";
 import { sha256Hex } from "./crypto.ts";
-import { SUBREQUESTS } from "./deliveries.ts";
+import { canShow, SUBREQUESTS } from "./deliveries.ts";
 import { GitHubError, UserTokenRefused } from "./github.ts";
 import { type Context, show } from "./pager.ts";
+import type { Apart } from "./schedule.ts";
 import { itemId, keys, type Reminder } from "./store.ts";
 import type { Key } from "./texts.ts";
 
@@ -324,17 +325,29 @@ export async function watchedTokens(
 
 /**
  * The step of the schedule for the tokens: the check of GITHUB_USER_TOKEN once a
- * day, then the reminder of each token that is due. Returns the ids of the
- * reminders that it showed.
+ * day, then the reminder of each token that is due, as far as the calls of this
+ * run reach. Each goes apart from the others: the check that fails, or a reminder,
+ * stops none of the reminders after it, and comes again in the next run. Returns
+ * the ids of the reminders that it showed.
  */
-export async function remindTokens(context: Context): Promise<string[]> {
-  await checkUserToken(context, await readTokens(context));
+export async function remindTokens(
+  context: Context,
+  apart: Apart,
+): Promise<string[]> {
+  await apart("the check of GITHUB_USER_TOKEN", async () => {
+    await checkUserToken(context, await readTokens(context));
+  });
   const shown: string[] = [];
   for (const [token, state] of Object.entries(await watchedTokens(context))) {
-    const id = await remindOf(context, token as Token, state);
-    if (id !== null) {
-      shown.push(id);
+    if (!canShow(context)) {
+      break;
     }
+    await apart(`the reminder of the ${token} token`, async () => {
+      const id = await remindOf(context, token as Token, state);
+      if (id !== null) {
+        shown.push(id);
+      }
+    });
   }
   return shown;
 }

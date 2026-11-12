@@ -82,6 +82,8 @@ export interface Payload {
     user?: Account;
     labels?: { name?: string }[];
     pull_request?: unknown;
+    /** When the issue last changed, such as by the reopen of its event. */
+    updated_at?: string;
   };
   pull_request?: {
     number?: number;
@@ -90,6 +92,8 @@ export interface Payload {
     html_url?: string;
     user?: Account;
     merged?: boolean;
+    /** When the pull request last changed, such as by the push or the reopen of its event. */
+    updated_at?: string;
     head?: { ref?: string; sha?: string; repo?: { full_name?: string } | null };
   };
   check_run?: {
@@ -169,14 +173,24 @@ export interface Payload {
     /** The address of the answer of a discussion of Q&A, once someone chose one. */
     answer_html_url?: string | null;
   };
-  /** The comment of a discussion_comment or an issue_comment event. */
+  /** The comment of a discussion_comment, an issue_comment or a pull_request_review_comment event. */
   comment?: {
-    /** The id of an issue comment in the REST API of GitHub. */
+    /** The id of an issue comment, or of a review comment, in the REST API of GitHub. */
     id?: number;
     node_id?: string;
     html_url?: string;
     body?: string | null;
     user?: Account;
+  };
+  /** The review of a pull_request_review event. */
+  review?: {
+    /** The id of the review in the REST API of GitHub. */
+    id?: number;
+    html_url?: string;
+    body?: string | null;
+    user?: Account;
+    /** What the review says of the pull request: commented, approved or changes_requested. */
+    state?: string;
   };
 }
 
@@ -245,8 +259,25 @@ export type Signal = Where &
         /** The comment, which the reply answers. */
         url: string;
         author: string;
-        /** The id of the comment in the REST API of GitHub. */
+        /** The id of the comment in the REST API of GitHub, within its kind. */
         comment: number;
+        /** A review or a comment in the code of a pull request; none for a comment of the conversation. */
+        kind?: ReviewKind;
+      } & Said)
+    | ({
+        type: "activity";
+        number: number;
+        pull: boolean;
+        title: string;
+        /** The issue or the pull request. */
+        url: string;
+        /** Who opened it, for a thing that the pager doesn't know yet. */
+        author: string;
+        /** Who did it. */
+        by: string;
+        what: Activity;
+        /** When GitHub changed the issue or the pull request with it, which knows its event again; none when GitHub doesn't say. */
+        changed?: string;
       } & Said)
     | {
         type: "contribution-done";
@@ -356,6 +387,28 @@ export type DiscussionEnd = "replied" | "answered" | "closed" | "deleted";
  * the maintainer commented there, or it was closed, or merged.
  */
 export type ContributionEnd = "replied" | "closed" | "merged";
+
+/**
+ * What a comment of someone else on a pull request is, besides one of its
+ * conversation: a review, or a comment in its code, which is also a reply in the
+ * thread of a review. Each has ids of its own, by the field of the draft that names
+ * it, so ids compare only within a kind.
+ */
+export type ReviewKind = "review" | "reviewComment";
+
+/**
+ * What someone else did to an issue or a pull request of someone else after its
+ * first message, without a word: new commits pushed, reopened, or a draft made
+ * ready for review.
+ */
+export type Activity = "commits" | "reopened" | "ready";
+
+/** The actions of an issues or a pull_request event that are an activity. */
+const ACTIVITIES: ReadonlyMap<string, Activity> = new Map([
+  ["synchronize", "commits"],
+  ["reopened", "reopened"],
+  ["ready_for_review", "ready"],
+]);
 
 /** The actions of a discussion event that end the wait for a reply. */
 const DISCUSSION_ENDS: ReadonlySet<string> = new Set([
@@ -626,10 +679,57 @@ function issues(payload: Payload, at: Where, maintainer: string): Outcome {
       ? { ignored: "an issue of the maintainer or of a bot closed" }
       : contributionDone(at, number, "closed");
   }
+  if (payload.action === "reopened") {
+    return activity(payload, at, maintainer, issue, false, "reopened");
+  }
   if (payload.action !== "opened") {
     return { ignored: `an issue ${payload.action}` };
   }
   return contribution(at, issue, false, maintainer);
+}
+
+/**
+ * What someone else did to an issue or a pull request of someone else after its
+ * first message, such as the fix that a contributor pushed after a review of the
+ * maintainer, or an issue that its reporter reopened: an activity of its
+ * contribution, which needs the maintainer again. The pushes and reopens of the
+ * maintainer, and those of a bot, such as a branch brought up to date, mean
+ * nothing, as does anything on an issue or a pull request of either.
+ */
+function activity(
+  payload: Payload,
+  at: Where,
+  maintainer: string,
+  thing: Payload["issue"] | Payload["pull_request"],
+  pull: boolean,
+  what: Activity,
+): Outcome {
+  const kind = pull ? "a pull request" : "an issue";
+  if (isOwn(thing, maintainer)) {
+    return {
+      ignored: `${kind} of the maintainer or of a bot ${payload.action}`,
+    };
+  }
+  const by = payload.sender;
+  if (isMaintainer(by, maintainer) || isBot(by)) {
+    return { ignored: `${kind} ${payload.action} by the maintainer or a bot` };
+  }
+  const changed = thing?.updated_at;
+  return {
+    signal: {
+      ...at,
+      type: "activity",
+      number: thing?.number ?? 0,
+      pull,
+      title: thing?.title ?? "",
+      url: thing?.html_url ?? "",
+      author: thing?.user?.login ?? "",
+      by: by?.login ?? "",
+      what,
+      ...(changed === undefined ? {} : { changed }),
+      ...said(thing?.body),
+    },
+  };
 }
 
 /** Whether an issue or a pull request is one of the maintainer or of a bot, which makes no thing. */
@@ -725,6 +825,10 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
           pull?.merged === true ? "merged" : "closed",
         );
   }
+  const what = ACTIVITIES.get(payload.action ?? "");
+  if (what !== undefined) {
+    return activity(payload, at, maintainer, pull, true, what);
+  }
   if (payload.action !== "opened") {
     return { ignored: `a pull request ${payload.action}` };
   }
@@ -799,19 +903,100 @@ function issueComment(
   maintainer: string,
 ): Outcome {
   const issue = payload.issue;
-  const comment = payload.comment;
   if (payload.action !== "created") {
     return { ignored: `an issue comment ${payload.action}` };
   }
-  if (isOwn(issue, maintainer)) {
-    return { ignored: "a comment on an issue of the maintainer or of a bot" };
+  return remark(at, maintainer, {
+    thing: issue,
+    pull: issue?.pull_request !== undefined,
+    said: payload.comment,
+  });
+}
+
+/**
+ * A review of a pull request of someone else, the thing of a contribution, as
+ * submitted: one of someone else is the newest message, as a comment is, and one
+ * of the maintainer, such as his request for changes, is his reply on GitHub
+ * itself. A review that says nothing but its comments in the code, as GitHub makes
+ * one for each reply in the thread of a review comment, comes as those comments.
+ */
+function review(payload: Payload, at: Where, maintainer: string): Outcome {
+  const found = payload.review;
+  if (payload.action !== "submitted") {
+    return { ignored: `a review ${payload.action}` };
+  }
+  return remark(at, maintainer, {
+    thing: payload.pull_request,
+    pull: true,
+    said: found,
+    kind: "review",
+    // The webhook names the state in small letters, the REST API in capitals.
+    silent:
+      String(found?.state).toLowerCase() === "commented" &&
+      excerpt(found?.body) === undefined,
+  });
+}
+
+/**
+ * A comment in the code of a pull request of someone else, also a reply in the
+ * thread of a review comment, the usual place of an answer to a review: as a
+ * comment of its conversation.
+ */
+function reviewComment(
+  payload: Payload,
+  at: Where,
+  maintainer: string,
+): Outcome {
+  if (payload.action !== "created") {
+    return { ignored: `a review comment ${payload.action}` };
+  }
+  return remark(at, maintainer, {
+    thing: payload.pull_request,
+    pull: true,
+    said: payload.comment,
+    kind: "reviewComment",
+  });
+}
+
+/** What the ignored reason of a remark on a thing of the maintainer or of a bot calls it. */
+const REMARKS = {
+  issueComment: "a comment on an issue",
+  review: "a review of a pull request",
+  reviewComment: "a review comment on a pull request",
+} as const satisfies Record<ReviewKind | "issueComment", string>;
+
+/** A comment or a review, and the issue or the pull request that it is on. */
+interface Remark {
+  thing: Payload["issue"] | Payload["pull_request"];
+  pull: boolean;
+  said: Payload["comment"] | Payload["review"];
+  /** A review or a comment in the code; none for a comment of the conversation. */
+  kind?: ReviewKind;
+  /** Set for a review that says nothing itself, whose comments come on their own. */
+  silent?: boolean;
+}
+
+/**
+ * A comment of someone else, or a review, on an issue or a pull request of
+ * someone else: the newest message of its contribution, which the reply answers,
+ * or, of the maintainer, his reply on GitHub itself.
+ */
+function remark(at: Where, maintainer: string, found: Remark): Outcome {
+  const { thing, said: comment, kind } = found;
+  if (isOwn(thing, maintainer)) {
+    return {
+      ignored: `${REMARKS[kind ?? "issueComment"]} of the maintainer or of a bot`,
+    };
   }
   if (isBot(comment?.user)) {
     return { ignored: "written by a bot" };
   }
-  const number = issue?.number ?? 0;
+  const number = thing?.number ?? 0;
   if (isMaintainer(comment?.user, maintainer)) {
     return contributionDone(at, number, "replied");
+  }
+  if (found.silent === true) {
+    return { ignored: "a review that says nothing but its comments" };
   }
   const id = runId(comment?.id);
   if (id === undefined) {
@@ -822,11 +1007,12 @@ function issueComment(
       ...at,
       type: "comment",
       number,
-      pull: issue?.pull_request !== undefined,
-      title: issue?.title ?? "",
+      pull: found.pull,
+      title: thing?.title ?? "",
       url: comment?.html_url ?? "",
       author: comment?.user?.login ?? "",
       comment: id,
+      ...(kind === undefined ? {} : { kind }),
       ...said(comment?.body),
     },
   };
@@ -1234,6 +1420,10 @@ export function classify(
       return discussion(payload, at, maintainer, payload.comment);
     case "issue_comment":
       return issueComment(payload, at, maintainer);
+    case "pull_request_review":
+      return review(payload, at, maintainer);
+    case "pull_request_review_comment":
+      return reviewComment(payload, at, maintainer);
     case "check_run":
       return checkRun(payload, at);
     case "check_suite":

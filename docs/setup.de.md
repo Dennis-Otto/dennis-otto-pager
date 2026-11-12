@@ -146,9 +146,9 @@ Die App ist privat, nur das Konto, dem sie gehört, kann sie installieren: deins
 | Code scanning alerts | Read | Ein Alarm mit Schweregrad high oder critical |
 | Contents | Read and write | 🔀 Mergen eines Releases; die Ereignisse an das Steuer-Repository; ob ein Release nach einem gescheiterten Release noch ein Entwurf ist, was GitHub nur einem Token zeigt, das die Inhalte schreiben darf |
 | Discussions | Read and write | Eine neue Diskussion oder ein Kommentar zu einer; ✅ Senden einer Antwort in einer Diskussion, als App |
-| Issues | Read | Ein neues Issue, ein Kommentar dazu oder zu einem Pull Request, und sein Ende; ein Issue mit `bot-failure` |
+| Issues | Read | Ein neues Issue, ein Kommentar dazu oder zu einem Pull Request, ein erneutes Öffnen, und sein Ende; ein Issue mit `bot-failure` |
 | Metadata | Read | Verlangt GitHub; die Pflicht-Checks von `main` |
-| Pull requests | Read | Ein neuer Pull Request; der Zustand eines Release-Pull-Requests; wer einen Pull Request eröffnet hat, dessen Bilder sich geändert haben, und sein Head |
+| Pull requests | Read | Ein neuer Pull Request, seine Reviews, die Kommentare in seinem Code, seine neuen Commits, ein erneutes Öffnen und die Freigabe zum Review; der Zustand eines Release-Pull-Requests; wer einen Pull Request eröffnet hat, dessen Bilder sich geändert haben, und sein Head |
 | Repository security advisories | Read | Eine vertrauliche Meldung einer Sicherheitslücke und ihr veröffentlichtes Advisory; an Tag 6, ob eine Meldung noch in der Triage wartet, das einzige Feld, das der Pager von ihr liest |
 | Secret scanning alerts | Read | Eine Warnung des Secret Scannings und die Datei ihres Secrets, nie das Secret |
 
@@ -157,6 +157,8 @@ Eine App, die du vor 🔁 **Neu starten** registriert hast, hat *Actions: Read*:
 Eine App, die du registriert hast, bevor es Diskussionen gab, hat weder *Discussions* noch ihre Ereignisse: Gib ihr in den Einstellungen der App unter *Permissions & events* *Discussions: Read and write*, abonniere die Ereignisse *Discussion* und *Discussion comment* und nimm die neue Berechtigung für jede Installation an. Bis dahin erreicht keine Diskussion den Pager.
 
 Einer App, die du registriert hast, bevor es die Kommentare zu Issues und Pull Requests gab, fehlt ihr Ereignis: Abonniere in den Einstellungen der App unter *Permissions & events* *Issue comment*. Ihre Berechtigungen *Issues* und *Pull requests* decken es ab, also muss keine Installation etwas annehmen. Bis dahin erreicht kein Kommentar zu einem Issue oder Pull Request den Pager, und eine Sache schließt trotzdem mit ihrem Issue oder Pull Request.
+
+Einer App, die du registriert hast, bevor es die Reviews gab, fehlen ihre Ereignisse: Abonniere in den Einstellungen der App unter *Permissions & events* *Pull request review* und *Pull request review comment*. Ihre Berechtigung *Pull requests* deckt sie ab, also muss keine Installation etwas annehmen. Bis dahin erreicht weder ein Review noch eine Antwort im Thread eines Reviews den Pager, während neue Commits, ein erneutes Öffnen und die Freigabe zum Review mit den Ereignissen kommen, die die App hat.
 
 Einer App, die du registriert hast, bevor es die Meldungen von Sicherheitslücken und die Secrets gab, fehlt beides: Gib ihr in den Einstellungen der App unter *Permissions & events* *Repository security advisories: Read* und *Secret scanning alerts: Read*, abonniere die Ereignisse *Repository advisory* und *Secret scanning alert* und nimm die neuen Berechtigungen für jede Installation an. Bis dahin meldet GitHub eine Meldung und ein Secret nur per Mail, wie bisher.
 

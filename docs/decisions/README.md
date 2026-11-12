@@ -31,3 +31,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0023](0023-a-thing-that-fails-in-a-run-of-the-schedule-costs-only-itself.md) | A thing that fails in a run of the schedule costs only itself | accepted |
 | [0024](0024-a-copy-of-the-pager-deploys-every-push-to-its-main.md) | A copy of the pager deploys every push to its main | accepted |
 | [0025](0025-the-pager-watches-the-repositories-of-owners-beside-its-maintainer.md) | The pager watches the repositories of owners beside its maintainer | accepted |
+| [0026](0026-a-review-new-commits-and-a-reopen-are-news-of-a-contribution.md) | A review, new commits and a reopen are news of a contribution | accepted |

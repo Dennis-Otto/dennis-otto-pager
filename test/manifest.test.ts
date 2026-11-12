@@ -40,6 +40,8 @@ describe("the manifest of the GitHub App", () => {
       // The events of issues and of their comments.
       issues: "read",
       metadata: "read",
+      // The events of pull requests, of their reviews and of the comments in
+      // their code.
       pull_requests: "read",
       // The private vulnerability reports, and the state of one in triage,
       // which the reminder on the day before its acknowledgement reads.
@@ -61,6 +63,6 @@ describe("the manifest of the GitHub App", () => {
       );
       expect(outcome).not.toEqual({ ignored: `the event ${event}` });
     }
-    expect(manifest.default_events).toHaveLength(12);
+    expect(manifest.default_events).toHaveLength(14);
   });
 });

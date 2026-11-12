@@ -5,14 +5,14 @@ config:
 ---
 flowchart TB
     accTitle: The comments of a contribution
-    accDescr: Someone other than the maintainer or a bot comments on an issue or a pull request of someone else. A comment on one of the maintainer or of a bot, the same comment again and an ignored thing end there. A thing that is open names the comment in its message, edited in place, and one message below it in its topic notifies, once for a few quick comments; a draft that the maintainer asked for is written again for the comment, while a text that they wrote themselves stays the draft. A thing whose reply went, or that GitHub dealt with, opens again in its topic with Draft a reply, and an issue that the pager never showed comes as a new thing. When the maintainer comments on GitHub itself, or the issue or the pull request closes, the thing is done: its buttons go, and its topic gets a check mark.
+    accDescr: Someone other than the maintainer or a bot comments on, reviews, pushes new commits to, reopens or makes ready for review an issue or a pull request of someone else. One of the maintainer or of a bot, the same event again and an ignored thing end there. A thing that is open names the comment, the review or the news in its message, edited in place, and one message below it in its topic notifies, once for a few quick ones; a draft that the maintainer asked for is written again for a comment or a review, while a text that they wrote themselves stays the draft. A thing whose reply went, or that GitHub dealt with, such as with a request for changes, opens again in its topic with Draft a reply, and an issue that the pager never showed comes as a new thing. When the maintainer comments or reviews on GitHub itself, or the issue or the pull request closes, the thing is done: its buttons go, and its topic gets a check mark.
 
-    asked["`**💬** Someone else comments on an issue or a pull request of someone else`"]
-    quiet["`An issue of the maintainer or of a bot, the same comment again, or an ignored thing: nothing happens`"]
-    open["The message of the open thing names the comment, edited in place, and one message in its topic notifies, once for a few quick comments"]
-    draft["`**✍️** A draft that the maintainer asked for is written again for the comment, while their own text stays the draft`"]
+    asked["`**💬** Someone else comments, reviews, pushes, reopens or marks ready, on an issue or a pull request of someone else`"]
+    quiet["`An issue of the maintainer or of a bot, the same event again, or an ignored thing: nothing happens`"]
+    open["The message of the open thing names the comment, the review or the news, edited in place, and one message in its topic notifies, once for a few quick ones"]
+    draft["`**✍️** A draft that the maintainer asked for is written again for a comment or a review, while their own text stays the draft`"]
     again["`**🙋** The thing opens again in its topic with ✍️ Draft a reply, or comes as a new one`"]
-    ended["`**✅** The maintainer comments on GitHub, or the issue or pull request closes: the thing is done, without buttons`"]
+    ended["`**✅** The maintainer comments or reviews on GitHub, or the issue or pull request closes: the thing is done, without buttons`"]
 
     asked -- "the maintainer's, a bot's, or seen already" --> quiet
     asked -- "its thing is open" --> open

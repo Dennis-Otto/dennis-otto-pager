@@ -443,6 +443,320 @@ describe("comments on issues and pull requests from outside", () => {
   });
 });
 
+describe("reviews of pull requests from outside", () => {
+  const pull = {
+    number: 14,
+    title: "Fix it",
+    html_url: "https://github.com/Dennis-Otto/demo/pull/14",
+    user: stranger,
+    head: { ref: "fix" },
+  };
+  const hubot = { login: "hubot", type: "User" };
+  const found = {
+    id: 7,
+    html_url: "https://github.com/Dennis-Otto/demo/pull/14#pullrequestreview-7",
+    body: "Looks good, one question.",
+    user: hubot,
+    state: "commented",
+  };
+  const comment = {
+    id: 5,
+    html_url: "https://github.com/Dennis-Otto/demo/pull/14#discussion_r5",
+    body: "Done, renamed it.",
+    user: hubot,
+  };
+  const reviewed = (extra: Payload = {}, action = "submitted") =>
+    classify(
+      "pull_request_review",
+      event({ action, pull_request: pull, review: found, ...extra }),
+      ME,
+    );
+  const commented = (extra: Payload = {}, action = "created") =>
+    classify(
+      "pull_request_review_comment",
+      event({ action, pull_request: pull, comment, ...extra }),
+      ME,
+    );
+
+  it("pages for a review of someone else, with its text", () => {
+    expect(reviewed()).toEqual({
+      signal: {
+        ...at,
+        type: "comment",
+        number: 14,
+        pull: true,
+        title: "Fix it",
+        url: found.html_url,
+        author: "hubot",
+        comment: 7,
+        kind: "review",
+        excerpt: "Looks good, one question.",
+      },
+    });
+  });
+
+  it("pages for a reply in the thread of a review, the usual answer to one", () => {
+    expect(commented()).toEqual({
+      signal: {
+        ...at,
+        type: "comment",
+        number: 14,
+        pull: true,
+        title: "Fix it",
+        url: comment.html_url,
+        author: "hubot",
+        comment: 5,
+        kind: "reviewComment",
+        excerpt: "Done, renamed it.",
+      },
+    });
+  });
+
+  it("takes an approval or a request for changes without words as news", () => {
+    for (const state of ["approved", "changes_requested", "APPROVED"]) {
+      const outcome = reviewed({ review: { ...found, state, body: null } });
+      expect(outcome).toMatchObject({
+        signal: { type: "comment", kind: "review", comment: 7 },
+      });
+      expect(outcome).not.toHaveProperty("signal.excerpt");
+    }
+  });
+
+  it("leaves a review that says nothing but its comments to those comments", () => {
+    // GitHub makes such a review for each reply in the thread of a review comment.
+    for (const body of [null, "", "<!-- nothing -->"]) {
+      for (const state of ["commented", "COMMENTED"]) {
+        expect(reviewed({ review: { ...found, state, body } })).toEqual({
+          ignored: "a review that says nothing but its comments",
+        });
+      }
+    }
+  });
+
+  it("ends the wait for a reply when the maintainer reviewed or answered in the code", () => {
+    const done = {
+      signal: {
+        ...at,
+        type: "contribution-done",
+        number: 14,
+        reason: "replied",
+      },
+    };
+    const me = { login: "dennis-otto" };
+    expect(
+      reviewed({ review: { ...found, user: me, state: "changes_requested" } }),
+    ).toEqual(done);
+    // Also his reply in a thread, which comes with a review without words.
+    expect(reviewed({ review: { ...found, user: me, body: "" } })).toEqual(
+      done,
+    );
+    expect(commented({ comment: { ...comment, user: me } })).toEqual(done);
+  });
+
+  it("stays quiet for a bot, and for a pull request of the maintainer or of a bot", () => {
+    expect(reviewed({ review: { ...found, user: bot } })).toEqual({
+      ignored: "written by a bot",
+    });
+    expect(commented({ comment: { ...comment, user: bot } })).toEqual({
+      ignored: "written by a bot",
+    });
+    for (const user of [{ login: ME }, bot]) {
+      expect(reviewed({ pull_request: { ...pull, user } })).toEqual({
+        ignored: "a review of a pull request of the maintainer or of a bot",
+      });
+      expect(commented({ pull_request: { ...pull, user } })).toEqual({
+        ignored:
+          "a review comment on a pull request of the maintainer or of a bot",
+      });
+    }
+  });
+
+  it("stays quiet for a review edited or dismissed, and a review comment edited or deleted", () => {
+    for (const action of ["edited", "dismissed"]) {
+      expect(reviewed({}, action)).toEqual({ ignored: `a review ${action}` });
+    }
+    for (const action of ["edited", "deleted"]) {
+      expect(commented({}, action)).toEqual({
+        ignored: `a review comment ${action}`,
+      });
+    }
+  });
+
+  it("drops a review or a review comment without its id", () => {
+    const { id: _review, ...nameless } = found;
+    expect(reviewed({ review: nameless })).toEqual({
+      ignored: "a comment without its id",
+    });
+    const { id: _comment, ...anonymous } = comment;
+    expect(commented({ comment: anonymous })).toEqual({
+      ignored: "a comment without its id",
+    });
+  });
+
+  it("takes a pull request and a review without their other fields as empty", () => {
+    expect(
+      classify(
+        "pull_request_review",
+        event({ action: "submitted", review: { id: 3 } }),
+        ME,
+      ),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "comment",
+        number: 0,
+        pull: true,
+        title: "",
+        url: "",
+        author: "",
+        comment: 3,
+        kind: "review",
+      },
+    });
+  });
+});
+
+describe("what someone else does to a pull request or an issue after it", () => {
+  const UPDATED = "2026-11-12T08:00:00Z";
+  const pull = {
+    number: 14,
+    title: "Fix it",
+    body: "It fixes the crash.",
+    html_url: "https://github.com/Dennis-Otto/demo/pull/14",
+    user: stranger,
+    head: { ref: "fix" },
+    updated_at: UPDATED,
+  };
+  const issue = {
+    number: 12,
+    title: "It breaks",
+    html_url: "https://github.com/Dennis-Otto/demo/issues/12",
+    user: stranger,
+    updated_at: UPDATED,
+  };
+  const pushed = (action: string, extra: Payload = {}) =>
+    classify(
+      "pull_request",
+      event({ action, pull_request: pull, sender: stranger, ...extra }),
+      ME,
+    );
+
+  it("pages for new commits, a reopen and ready for review of a pull request", () => {
+    const what = {
+      synchronize: "commits",
+      reopened: "reopened",
+      ready_for_review: "ready",
+    };
+    for (const [action, done] of Object.entries(what)) {
+      expect(pushed(action)).toEqual({
+        signal: {
+          ...at,
+          type: "activity",
+          number: 14,
+          pull: true,
+          title: "Fix it",
+          url: pull.html_url,
+          author: "octocat",
+          by: "octocat",
+          what: done,
+          changed: UPDATED,
+          excerpt: "It fixes the crash.",
+        },
+      });
+    }
+  });
+
+  it("names who did it, such as a co-author, beside who opened it", () => {
+    expect(pushed("synchronize", { sender: { login: "hubot" } })).toMatchObject(
+      { signal: { author: "octocat", by: "hubot" } },
+    );
+  });
+
+  it("pages for an issue that someone else reopened", () => {
+    expect(
+      classify(
+        "issues",
+        event({ action: "reopened", issue, sender: stranger }),
+        ME,
+      ),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "activity",
+        number: 12,
+        pull: false,
+        title: "It breaks",
+        url: issue.html_url,
+        author: "octocat",
+        by: "octocat",
+        what: "reopened",
+        changed: UPDATED,
+      },
+    });
+  });
+
+  it("stays quiet for what the maintainer or a bot does, such as a branch brought up to date", () => {
+    for (const sender of [{ login: "dennis-otto" }, bot]) {
+      expect(pushed("synchronize", { sender })).toEqual({
+        ignored: "a pull request synchronize by the maintainer or a bot",
+      });
+      expect(
+        classify("issues", event({ action: "reopened", issue, sender }), ME),
+      ).toEqual({ ignored: "an issue reopened by the maintainer or a bot" });
+    }
+  });
+
+  it("stays quiet for a pull request or an issue of the maintainer or of a bot", () => {
+    for (const user of [{ login: ME }, bot]) {
+      expect(
+        pushed("synchronize", { pull_request: { ...pull, user } }),
+      ).toEqual({
+        ignored: "a pull request of the maintainer or of a bot synchronize",
+      });
+      expect(
+        classify(
+          "issues",
+          event({
+            action: "reopened",
+            issue: { ...issue, user },
+            sender: stranger,
+          }),
+          ME,
+        ),
+      ).toEqual({ ignored: "an issue of the maintainer or of a bot reopened" });
+    }
+  });
+
+  it("takes a pull request without its fields as empty, and without the time of its change", () => {
+    expect(
+      classify("pull_request", event({ action: "synchronize" }), ME),
+    ).toEqual({
+      signal: {
+        ...at,
+        type: "activity",
+        number: 0,
+        pull: true,
+        title: "",
+        url: "",
+        author: "",
+        by: "",
+        what: "commits",
+      },
+    });
+  });
+
+  it("keeps the new commits of a release pull request for the release", () => {
+    expect(
+      pushed("synchronize", {
+        pull_request: {
+          ...pull,
+          head: { ref: "release-please--branches--main", sha: "abc" },
+        },
+      }),
+    ).toMatchObject({ signal: { type: "release-updated" } });
+  });
+});
+
 describe("discussions from outside", () => {
   const discussion = {
     number: 31,
@@ -1860,6 +2174,8 @@ describe("any payload", () => {
       "discussion",
       "discussion_comment",
       "issue_comment",
+      "pull_request_review",
+      "pull_request_review_comment",
       "check_run",
       "check_suite",
       "workflow_run",

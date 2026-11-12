@@ -53,7 +53,14 @@ const en = {
     "💬 <b>New comment</b> on an issue in {repo} by <b>{author}</b>\n{link}",
   "message.pullComment":
     "💬 <b>New comment</b> on a pull request in {repo} by <b>{author}</b>\n{link}",
+  "message.pullReview":
+    "💬 <b>New review</b> of a pull request in {repo} by <b>{author}</b>\n{link}",
   "message.newComment": "💬 <b>{author}</b> commented: {link}",
+  "message.newReview": "💬 <b>{author}</b> reviewed: {link}",
+  "message.newCommits": "🔁 <b>{author}</b> pushed new commits: {link}",
+  "message.reopened": "🔓 <b>{author}</b> reopened: {link}",
+  "message.readyForReview":
+    "👀 <b>{author}</b> made it ready for review: {link}",
   "message.newAlarmEntry": "🚨 New in this alarm: {link}",
   "message.newAlertEntry": "🛡 New in this security message: {link}",
   "message.draft":
@@ -205,6 +212,9 @@ const en = {
     "✏️ A new comment came, and your own text stays the draft: send it, or edit it for the new comment.",
   "note.merged": "🔀 Merged.",
   "note.closed": "Closed without a merge.",
+  "note.newCommits": "🔁 New commits by {author}.",
+  "note.reopened": "🔓 Reopened by {author}.",
+  "note.readyForReview": "👀 Ready for review, says {author}.",
   "note.albumFailed": "Telegram refused the pictures: {detail}",
   "note.noAnswer":
     "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.",
@@ -373,7 +383,14 @@ const de: Catalog = {
     "💬 <b>Neuer Kommentar</b> zu einem Issue in {repo} von <b>{author}</b>\n{link}",
   "message.pullComment":
     "💬 <b>Neuer Kommentar</b> zu einem Pull Request in {repo} von <b>{author}</b>\n{link}",
+  "message.pullReview":
+    "💬 <b>Neues Review</b> zu einem Pull Request in {repo} von <b>{author}</b>\n{link}",
   "message.newComment": "💬 <b>{author}</b> hat kommentiert: {link}",
+  "message.newReview": "💬 <b>{author}</b> hat ein Review geschrieben: {link}",
+  "message.newCommits": "🔁 <b>{author}</b> hat neue Commits gepusht: {link}",
+  "message.reopened": "🔓 <b>{author}</b> hat wieder geöffnet: {link}",
+  "message.readyForReview":
+    "👀 <b>{author}</b> hat ihn zum Review freigegeben: {link}",
   "message.newAlarmEntry": "🚨 Neu in diesem Alarm: {link}",
   "message.newAlertEntry": "🛡 Neu in dieser Sicherheitsmeldung: {link}",
   "message.draft":
@@ -532,6 +549,9 @@ const de: Catalog = {
     "✏️ Ein neuer Kommentar kam, und dein eigener Text bleibt der Entwurf: Sende ihn, oder bearbeite ihn für den neuen Kommentar.",
   "note.merged": "🔀 Gemergt.",
   "note.closed": "Ohne Merge geschlossen.",
+  "note.newCommits": "🔁 Neue Commits von {author}.",
+  "note.reopened": "🔓 Wieder geöffnet von {author}.",
+  "note.readyForReview": "👀 Bereit zum Review, sagt {author}.",
   "note.albumFailed": "Telegram hat die Bilder abgelehnt: {detail}",
   "note.noAnswer":
     "⌛ Keine Antwort vom Steuer-Repository binnen einer Stunde: Sein Lauf im Actions-Tab sagt, warum.",

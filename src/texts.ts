@@ -54,6 +54,8 @@ const en = {
   "message.pullComment":
     "💬 <b>New comment</b> on a pull request in {repo} by <b>{author}</b>\n{link}",
   "message.newComment": "💬 <b>{author}</b> commented: {link}",
+  "message.newAlarmEntry": "🚨 New in this alarm: {link}",
+  "message.newAlertEntry": "🛡 New in this security message: {link}",
   "message.draft":
     '<b>Draft of a reply</b>, which "Send" posts in your name as it stands here:\n<blockquote>{draft}</blockquote>',
   "message.reply":
@@ -364,6 +366,8 @@ const de: Catalog = {
   "message.pullComment":
     "💬 <b>Neuer Kommentar</b> zu einem Pull Request in {repo} von <b>{author}</b>\n{link}",
   "message.newComment": "💬 <b>{author}</b> hat kommentiert: {link}",
+  "message.newAlarmEntry": "🚨 Neu in diesem Alarm: {link}",
+  "message.newAlertEntry": "🛡 Neu in dieser Sicherheitsmeldung: {link}",
   "message.draft":
     "<b>Entwurf einer Antwort</b>, den „Senden“ genau so in deinem Namen postet:\n<blockquote>{draft}</blockquote>",
   "message.reply":

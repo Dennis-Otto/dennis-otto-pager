@@ -17,7 +17,7 @@ import {
   SUBREQUESTS,
 } from "../src/deliveries.ts";
 import type { Delivery } from "../src/github.ts";
-import { apply } from "../src/pager.ts";
+import { apply, QUIET } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
 import { runSchedule } from "../src/schedule.ts";
 import { type Alarm, type Item, itemId, keys } from "../src/store.ts";
@@ -1069,6 +1069,30 @@ describe("each signal applied twice", () => {
             call.url.startsWith("https://api.telegram.org/") ||
             call.url.endsWith("/dispatches"),
         ),
+      ).toEqual([]);
+    });
+  }
+
+  const joining: [string, Signal, Signal, string][] = [
+    ["failing", failing("bot:1"), failing("bot:2"), "alarm"],
+    ["alert-open", alert("alert:1"), alert("alert:2"), "alert"],
+    ["secret-open", alert("alert:1"), secret, "alert"],
+  ];
+  for (const [name, first, signal, kind] of joining) {
+    it(`notifies once of a new entry of an open bundle: ${name}`, async () => {
+      const w = await served();
+      await apply(w.context, first);
+      w.clock.now = START + QUIET;
+      expect(await apply(w.context, signal)).toBe(`new entry in the ${kind}`);
+      const state = await everything();
+      const calls = w.net.calls.length;
+      // GitHub's second delivery of the same event sends no second notice.
+      expect(await apply(w.context, signal)).toBe(`${kind} unchanged`);
+      expect(await everything()).toEqual(state);
+      expect(
+        w.net.calls
+          .slice(calls)
+          .filter((call) => call.url.startsWith("https://api.telegram.org/")),
       ).toEqual([]);
     });
   }

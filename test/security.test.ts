@@ -678,6 +678,34 @@ describe("the security message of a repository", () => {
     expect(allowed(await bundle(w))).toEqual(["fix", "later", "ignore"]);
   });
 
+  it("notifies of a leaked secret that joins a security message open for a day, once", async () => {
+    const w = await security("de");
+    await apply(w.context, {
+      ...at,
+      type: "alert-open",
+      key: "alert:4",
+      label: {
+        key: "entry.alertAt",
+        values: { severity: "high", what: "XSS", path: "src/a.ts" },
+      },
+      url: `https://github.com/${REPO}/security/code-scanning/4`,
+    });
+    w.clock.now = START + 24 * 3_600_000;
+    expect(await apply(w.context, secret(3, false, w.clock.now))).toBe(
+      "new entry in the alert",
+    );
+    const [, notice] = w.net.telegram("sendMessage");
+    expect(notice?.body).toMatchObject({ message_thread_id: 900 });
+    expect(notice?.body.text).toBe(
+      `🛡 Neu in dieser Sicherheitsmeldung: <a href="https://github.com/${REPO}/security/secret-scanning/3">${(await bundle(w)).entries[1]?.label}</a>`,
+    );
+    // GitHub's second delivery of the same alert notifies no more.
+    expect(await apply(w.context, secret(3, false, w.clock.now))).toBe(
+      "alert unchanged",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
   it("says when a secret leaked in public too, and takes a resolved one out", async () => {
     const w = await security();
     await apply(w.context, secret(3));
@@ -708,7 +736,9 @@ describe("the security message of a repository", () => {
     expect(await apply(w.context, secret(3, false, START + 120_000))).toBe(
       "alert opened",
     );
-    expect(await apply(w.context, secret(4))).toBe("alert updated");
+    expect(await apply(w.context, secret(4))).toBe(
+      "new entry in the alert, quietly",
+    );
     // A resolution without a time counts from its arrival; the mark holds its
     // time alone.
     w.clock.now = START + 180_000;

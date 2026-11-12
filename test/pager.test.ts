@@ -908,16 +908,31 @@ describe("comments on issues and pull requests", () => {
 });
 
 describe("the alarm of a repository", () => {
-  it("bundles what fails, edits it in place and closes when all is green", async () => {
+  it("bundles what fails, notifies of a new entry, edits a changed one in place and closes when all is green", async () => {
     const w = await world();
     expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
+    // A day later, with the alarm still open, the release fails: news, which a
+    // message below the alarm tells, since the edit of the alarm notifies nobody.
+    w.clock.now = START + 24 * 3_600_000;
     expect(await apply(w.context, failing("workflow:release"))).toBe(
-      "alarm updated",
+      "new entry in the alarm",
     );
+    const [opened, notice] = w.net.telegram("sendMessage");
+    expect(notice?.body).toMatchObject({
+      chat_id: opened?.body.chat_id,
+      text: '🚨 New in this alarm: <a href="https://github.com/x">A bot fails: workflow:release fails</a>',
+      reply_parameters: { message_id: 100 },
+    });
+    // It notifies, as an edit doesn't.
+    expect(notice?.body).not.toHaveProperty("disable_notification");
+    expect(w.net.telegram("editMessageText")[0]?.body).toMatchObject({
+      message_id: 100,
+    });
+    // A check that fails again is no news: the alarm changes in place, quietly.
     expect(
       await apply(w.context, failing("check:lint", "lint fails again")),
     ).toBe("alarm updated");
-    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
     expect(w.net.telegram("editMessageText")).toHaveLength(2);
     const alarm = await stored(w, keys.alarm(REPO));
     expect(alarm).toMatchObject({
@@ -925,6 +940,7 @@ describe("the alarm of a repository", () => {
         { key: "check:lint", label: "A bot fails: lint fails again" },
         { key: "workflow:release" },
       ],
+      noticed: START + 24 * 3_600_000,
     });
     expect(
       await apply(w.context, { ...at, type: "recovered", key: "check:other" }),
@@ -950,7 +966,70 @@ describe("the alarm of a repository", () => {
       "no open alarm",
     );
     expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
+    expect(w.net.telegram("sendMessage")).toHaveLength(3);
+  });
+
+  it("notifies of a burst of new entries once, and brings a snoozed alarm back with a new one", async () => {
+    const w = await world();
+    const alarmOf = async () => (await stored(w, keys.alarm(REPO))) as Alarm;
+    await apply(w.context, failing("check:lint"));
+    // The opening message notified already: what joins it within QUIET comes quietly.
+    expect(await apply(w.context, failing("check:test"))).toBe(
+      "new entry in the alarm, quietly",
+    );
+    w.clock.now = START + QUIET - 1;
+    expect(await apply(w.context, failing("check:build"))).toBe(
+      "new entry in the alarm, quietly",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    expect(w.net.telegram("editMessageText")).toHaveLength(2);
+    expect(await alarmOf()).toMatchObject({ noticed: START });
+    // "Later" put the alarm aside: a new failure brings it back at once, and notifies.
+    const snoozed = await alarmOf();
+    snoozed.snoozedUntil = START + 4 * 3_600_000;
+    await w.context.store.put(snoozed);
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, failing("workflow:release"))).toBe(
+      "new entry in the alarm",
+    );
+    expect(await alarmOf()).toMatchObject({
+      snoozedUntil: null,
+      noticed: START + QUIET,
+    });
+    expect(w.net.telegram("editMessageText").at(-1)?.body.text).not.toContain(
+      "⏰",
+    );
     expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    // A record from before the notices knows of none: its next new entry notifies.
+    const older = await alarmOf();
+    delete older.noticed;
+    await w.context.store.put(older);
+    expect(await apply(w.context, failing("check:docs"))).toBe(
+      "new entry in the alarm",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(3);
+    expect(w.net.telegram("sendMessage").at(-1)?.body.text).toContain(
+      "🚨 New in this alarm: ",
+    );
+  });
+
+  it("sends no notice when the message of the alarm is gone, since the new one notified", async () => {
+    const w = await world();
+    await apply(w.context, failing("check:lint"));
+    w.net.on("POST", /editMessageText$/, () =>
+      json(
+        { ok: false, description: "Bad Request: message to edit not found" },
+        400,
+      ),
+    );
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, failing("workflow:release"))).toBe(
+      "new entry in the alarm, in a new message",
+    );
+    const sent = w.net.telegram("sendMessage");
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.body.text).toContain("workflow:release fails");
+    expect(sent[1]?.body.text).not.toContain("New in this alarm");
   });
 
   it("keeps the run of an entry, follows it and writes only what changed", async () => {
@@ -1196,12 +1275,29 @@ describe("code-scanning alerts", () => {
       url: "https://github.com/a",
     });
     expect(await apply(w.context, open("alert:1"))).toBe("alert opened");
-    expect(await apply(w.context, open("alert:2"))).toBe("alert updated");
+    // A burst of alerts, such as from a new query, notifies once.
+    expect(await apply(w.context, open("alert:2"))).toBe(
+      "new entry in the alert, quietly",
+    );
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    // One that comes later, while the others wait for their fix, notifies.
+    w.clock.now = START + QUIET;
+    expect(await apply(w.context, open("alert:3"))).toBe(
+      "new entry in the alert",
+    );
+    expect(w.net.telegram("sendMessage").at(-1)?.body).toMatchObject({
+      text: '🛡 New in this security message: <a href="https://github.com/a">high: alert:3</a>',
+      reply_parameters: { message_id: 100 },
+    });
+    expect(await apply(w.context, open("alert:3"))).toBe("alert unchanged");
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    for (const key of ["alert:1", "alert:2"]) {
+      expect(await apply(w.context, { ...at, type: "alert-closed", key })).toBe(
+        "alert updated",
+      );
+    }
     expect(
-      await apply(w.context, { ...at, type: "alert-closed", key: "alert:1" }),
-    ).toBe("alert updated");
-    expect(
-      await apply(w.context, { ...at, type: "alert-closed", key: "alert:2" }),
+      await apply(w.context, { ...at, type: "alert-closed", key: "alert:3" }),
     ).toBe("alert closed");
     expect(await stored(w, keys.alert(REPO))).toMatchObject({
       state: "resolved",

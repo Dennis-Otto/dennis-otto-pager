@@ -299,7 +299,7 @@ describe("one change at a time", () => {
     ]);
     expect(await Promise.all(answers.map((each) => each.text()))).toEqual([
       "alarm opened",
-      "alarm updated",
+      "new entry in the alarm, quietly",
     ]);
     expect(net.telegram("sendMessage")).toHaveLength(1);
     const store = makeContext(await settings(), env as PagerEnv).store;

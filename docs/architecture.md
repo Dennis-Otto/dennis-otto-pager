@@ -9,7 +9,7 @@ How the pager is built: the services around it, the modules of the Worker in `sr
 - **Telegram** sends the updates of the bot to `/telegram`, with the secret header of `setWebhook`. The Worker sends, edits and reacts to the messages of the one chat of the maintainer through the Bot API.
 - **The GitHub App** sends its events to `/github`, signed with the secret of its webhook. The Worker calls the REST API and, for a reply in a discussion, the GraphQL API, with a token for one repository and the permissions of one call.
 - **The private control repository** runs its workflow when the Worker sends it a `repository_dispatch` for a draft, a fix or a free text, and sends its answer to `/control`, signed with `CONTROL_SECRET` over the time and the body.
-- **Cloudflare** runs the Worker on workerd, keeps the state in Workers KV (the binding `PAGER`), runs every change in the Durable Object `Serial` (the binding `SERIAL`) and starts the schedule every 15 minutes. Workers Builds deploys the commit that a release tags.
+- **Cloudflare** runs the Worker on workerd, keeps the state in Workers KV (the binding `PAGER`), runs every change in the Durable Object `Serial` (the binding `SERIAL`) and starts the schedule every 15 minutes. Workers Builds deploys the commit that a release tags; a copy of the pager deploys every push to its own `main` ([decision 0024](decisions/0024-a-copy-of-the-pager-deploys-every-push-to-its-main.md)).
 
 The Worker has no dependency at run time: it uses only the Web APIs of workerd, such as `fetch`, the Web Crypto and the streams that inflate an artifact. The packages of `package.json` are the tools that build, check and test it.
 

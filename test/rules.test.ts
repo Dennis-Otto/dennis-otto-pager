@@ -1687,6 +1687,51 @@ describe("code scanning", () => {
     ).toEqual({ ignored: "an alert of another branch" });
   });
 
+  it("pages for an alert of a pull request once it reaches the default branch", () => {
+    // Code scanning creates the alert in the analysis of the pull request, whose
+    // ref is not the default branch; after the merge, GitHub sends no second
+    // created but appeared_in_branch with the ref of the default branch.
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({ action: "created", alert, ref: "refs/pull/3/merge" }),
+        ME,
+      ),
+    ).toEqual({ ignored: "an alert of another branch" });
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({ action: "appeared_in_branch", alert, ref }),
+        ME,
+      ),
+    ).toMatchObject({
+      signal: { type: "alert-open", key: "alert:4", url: alert.html_url },
+    });
+    const medium = {
+      ...alert,
+      rule: { ...alert.rule, security_severity_level: "medium" },
+    };
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({ action: "appeared_in_branch", alert: medium, ref }),
+        ME,
+      ),
+    ).toEqual({ ignored: "an alert of severity medium" });
+    // A person's dismissal holds on every branch, also one the alert reaches later.
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({
+          action: "appeared_in_branch",
+          alert: { ...alert, state: "dismissed" },
+          ref,
+        }),
+        ME,
+      ),
+    ).toEqual({ ignored: "a dismissed alert" });
+  });
+
   it("drops milder alerts, other branches and other actions", () => {
     const medium = {
       ...alert,
@@ -1717,10 +1762,17 @@ describe("code scanning", () => {
     expect(
       classify(
         "code_scanning_alert",
-        event({ action: "appeared_in_branch", alert, ref }),
+        event({ action: "appeared_in_branch", alert, ref: "refs/heads/topic" }),
         ME,
       ),
-    ).toEqual({ ignored: "an alert appeared_in_branch" });
+    ).toEqual({ ignored: "an alert of another branch" });
+    expect(
+      classify(
+        "code_scanning_alert",
+        event({ action: "edited", alert, ref }),
+        ME,
+      ),
+    ).toEqual({ ignored: "an alert edited" });
     expect(
       classify(
         "code_scanning_alert",

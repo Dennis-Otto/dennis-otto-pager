@@ -137,6 +137,8 @@ export interface Payload {
     created_at?: string;
     updated_at?: string | null;
     resolved_at?: string | null;
+    /** Whether the alert of code scanning is open, dismissed or fixed. */
+    state?: string;
     rule?: {
       id?: string;
       description?: string;
@@ -1055,8 +1057,19 @@ function codeScanning(payload: Payload, at: Where): Outcome {
   if (["fixed", "closed_by_user", "auto_dismissed"].includes(action)) {
     return { signal: { ...at, type: "alert-closed", key } };
   }
-  if (!["created", "reopened", "reopened_by_user"].includes(action)) {
+  // An alert that code scanning found first in a pull request was created on the
+  // ref of that pull request; once it reaches the default branch, by the merge,
+  // GitHub sends appeared_in_branch rather than a second created.
+  if (
+    !["created", "appeared_in_branch", "reopened", "reopened_by_user"].includes(
+      action,
+    )
+  ) {
     return { ignored: `an alert ${action}` };
+  }
+  // A person's dismissal holds on every branch, also one the alert reaches later.
+  if (alert?.state === "dismissed") {
+    return { ignored: "a dismissed alert" };
   }
   const severity = alert?.rule?.security_severity_level ?? "";
   if (!SEVERE.has(severity)) {

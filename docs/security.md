@@ -10,14 +10,14 @@ Releases up to 0.7.0 were built while the repository was called `dennis-otto-pag
 
 - Every request from the internet is untrusted input: the Worker checks its method, path and parameters before it acts, and answers anything else with an error.
 - The secrets of the Worker live in Cloudflare, set with `npx wrangler secret put`, never in the repository, a log or an answer.
-- Cloudflare builds and deploys only the commit of `main` that a release tags, with Workers Builds, and no key of Cloudflare is stored in GitHub.
+- Cloudflare builds and deploys only the commit of `main` that a release tags, with Workers Builds, and no key of Cloudflare is stored in GitHub. A copy of the pager deploys every push to its own `main` instead ([decision 0024](decisions/0024-a-copy-of-the-pager-deploys-every-push-to-its-main.md)), so there its `main` is the gate.
 - The Worker reaches only the bindings of `wrangler.jsonc` and the addresses that its code names.
 
 ## Trust boundaries
 
 1. **Internet → Worker.** Every request, its headers and its body are untrusted input.
 2. **Worker → bindings and other services.** Only those of `wrangler.jsonc` and the addresses that its code names, with the secrets that Cloudflare keeps.
-3. **Repository → Cloudflare.** Workers Builds builds every push to `main`, and only a release goes live.
+3. **Repository → Cloudflare.** Workers Builds builds every push to `main`, and only a release of this repository goes live. A copy of the pager deploys every push to its own `main` ([decision 0024](decisions/0024-a-copy-of-the-pager-deploys-every-push-to-its-main.md)): there, whatever reaches its `main`, a merged pull request too, goes live at once, without a release in between.
 4. **Control repository → Worker.** The private control repository of the maintainer, which `CONTROL_REPOSITORY` of `wrangler.jsonc` names, runs Claude Code and answers at `/control`, signed with `CONTROL_SECRET` over its time and body. What it sends is text: shown, escaped, and never run. It also forwards the questions and reports of the maintainer's own agents, and only those that the owner of the repository sent; the answer to a question is saved there, as a file on a branch of its own, `pager-answers`, which holds no code.
 
 ## Threats and countermeasures

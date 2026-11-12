@@ -29,3 +29,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0021](0021-a-thing-that-telegram-kept-out-of-a-topic-moves-into-it-with-its-next-change.md) | A thing that Telegram kept out of a topic moves into it with its next change | accepted |
 | [0022](0022-a-new-entry-of-an-open-bundle-notifies-once.md) | A new entry of an open bundle notifies, once for a burst | accepted |
 | [0023](0023-a-thing-that-fails-in-a-run-of-the-schedule-costs-only-itself.md) | A thing that fails in a run of the schedule costs only itself | accepted |
+| [0024](0024-a-copy-of-the-pager-deploys-every-push-to-its-main.md) | A copy of the pager deploys every push to its main | accepted |

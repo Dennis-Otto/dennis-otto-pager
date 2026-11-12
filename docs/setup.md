@@ -53,7 +53,7 @@ The template holds the workflows of the control repository and their scripts, an
 
 ## 2. The Worker on Cloudflare
 
-Create the Worker with its first deployment, as [Releases and Cloudflare](releases.md#set-up-cloudflare-once) describes, and connect the repository to Workers Builds there:
+Create the Worker with its first deployment, as [Releases and Cloudflare](releases.md#set-up-cloudflare-once) describes, and connect your copy to Workers Builds there, with the deploy command `npx wrangler deploy`, so that every push to the `main` of your copy goes live: the deploy command `npm run deploy` of this repository deploys only its own releases, and would leave every change of your copy without traffic, as [In a copy of the pager](releases.md#in-a-copy-of-the-pager) explains. Without Workers Builds, you run `npx wrangler deploy` yourself after each change. The first deployment:
 
 ```sh
 npx wrangler login
@@ -185,6 +185,24 @@ Then write a question to the bot, such as *What fails on main?*: the 👀 says t
   - **`PAGER_FIX_TOKEN`** of the control repository: its daily check *Health* reads the day from GitHub and sends it along. Regenerate it the same way and set it with `gh secret set PAGER_FIX_TOKEN -R "$CONTROL"`.
 - **The health of the pager:** the workflow *Health* of the control repository asks the pager once a day how it is, as [How it works](how-it-works.md#when-the-pager-breaks) describes, which takes about a minute of its Actions minutes. Its run fails when the schedule stopped, Telegram refuses the bot or its webhook reported an error in the last day, GitHub refuses the app, or a token expires within a week; GitHub then notifies you of the failed run by itself, also when Telegram or the Worker is what broke. Start it by hand in the Actions tab to check the pager after a change.
 - **A secret that leaked:** set a new one with `npx wrangler secret put NAME`; for the app, make a new private key in its settings and set `GITHUB_APP_PRIVATE_KEY`; for the bot, `/revoke` at @BotFather, then `TELEGRAM_BOT_TOKEN` and step 5 again.
-- **How long "Later" waits** is `LATER_HOURS` in `wrangler.jsonc`.
+- **How long "Later" waits** is `LATER_HOURS` in `wrangler.jsonc`. A change of `wrangler.jsonc` goes live once it is on the `main` of your copy, as [Keep your copy current](#keep-your-copy-current) says.
 - **The mails of GitHub Actions** can go off once the pager pages for every [workflow that fails on `main`](how-it-works.md#a-workflow-that-fails-on-main): in the settings of your account on GitHub, under *Notifications*, *System*, *Actions*, turn off *Email*, but keep *Web and Mobile* on and look at your notifications on github.com or in the GitHub app: the pager can't page a failure of itself, so the failed run of *Health* of the control repository reaches you only that way once *Email* is off. If you would rather keep that one by mail, leave *Email* on and filter your mail instead: keep the mails of Actions of your control repository and drop the others. A run of a pull request still shows on the pull request.
-- **The language** of the pager is `LANGUAGE` in `wrangler.jsonc`: `de` for German, `en` or empty for English. It names every text that the pager sends, and the Worker passes it with each job to the control repository, whose answers follow it. In any language but English, the control repository also translates the notes of each release, with a job for `pager-translate`, once the template of the control repository brings it; until your copy has it, the headings of the notes come in your language and their items stay English ([how it works](how-it-works.md#the-notes-of-a-release-in-your-language)). A message that the pager showed already takes the new words when its thing changes. After a change, deploy the Worker again, as [Releases and Cloudflare](releases.md) describes.
+- **The language** of the pager is `LANGUAGE` in `wrangler.jsonc`: `de` for German, `en` or empty for English. It names every text that the pager sends, and the Worker passes it with each job to the control repository, whose answers follow it. In any language but English, the control repository also translates the notes of each release, with a job for `pager-translate`, once the template of the control repository brings it; until your copy has it, the headings of the notes come in your language and their items stay English ([how it works](how-it-works.md#the-notes-of-a-release-in-your-language)). A message that the pager showed already takes the new words when its thing changes. A change goes live once it is on the `main` of your copy, as [Keep your copy current](#keep-your-copy-current) says.
+
+## Keep your copy current
+
+Each release of Repo Pager is a tag `vX.Y.Z` of this repository, with its notes on the [page of the releases](https://github.com/Dennis-Otto/repo-pager/releases); *Watch*, *Custom* and *Releases* on that page of GitHub tell you of each. Bring a release into the `main` of your copy by its tag, in a checkout of your copy:
+
+```sh
+git remote add upstream https://github.com/Dennis-Otto/repo-pager.git   # once
+git switch main && git pull
+git fetch upstream --tags
+git merge --no-edit vX.Y.Z   # the tag of the release
+```
+
+- **The tag, never `main`:** the `main` of this repository holds changes that no release has yet. *Sync fork* on GitHub merges that `main`, so bring the releases of a fork in by their tags as well.
+- **Your `wrangler.jsonc` stays yours:** where a release changes `wrangler.jsonc` next to one of your values, the merge stops with a conflict there. Keep your values of [the table above](#your-copy), the name of your Worker, the id of your namespace and your settings, and take everything else that the release changes, such as a new setting or binding; then `git add wrangler.jsonc` and `git commit --no-edit`.
+- **Check it:** `npm ci --ignore-scripts && npm test` runs the tests with your values.
+- **What the release asks of you:** its notes name each step beyond the code, such as a new permission or event of the GitHub App, which you accept in the settings of your app, or a new secret of the Worker.
+
+Then `git push`: the push to `main` goes live by itself when Workers Builds deploys your copy with `npx wrangler deploy`; without it, run `npx wrangler deploy` now, as [Releases and Cloudflare](releases.md#in-a-copy-of-the-pager) describes. A change of your own values in `wrangler.jsonc`, such as `LANGUAGE` or `LATER_HOURS`, goes live the same way, and `npx wrangler rollback` takes back a version that misbehaves. Your control repository follows its template by itself, with the pull requests of its workflow *Template* (step 7).

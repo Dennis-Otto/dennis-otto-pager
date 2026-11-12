@@ -303,6 +303,14 @@ export interface Reminder extends Base {
    * PAGER_FIX_TOKEN of the control repository; none for the token of Claude.
    */
   token?: "user" | "fix";
+  /**
+   * The day that the token expires, such as 2026-12-03, from which its text is
+   * made anew whenever the schedule shows it again; none while GitHub refuses
+   * the token.
+   */
+  expires?: string;
+  /** Whether it said that the token expired, which it says once, on the day. */
+  expired?: true;
 }
 
 /**

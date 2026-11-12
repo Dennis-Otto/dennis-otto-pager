@@ -421,3 +421,194 @@ describe("PAGER_FIX_TOKEN", () => {
     expect(await readTokens(w.context)).toEqual({});
   });
 });
+
+describe("the reminder of a token's day", () => {
+  // Three weeks before START (2026-11-04), the token of Claude expires on this day.
+  const EXPIRES = "2026-11-25";
+  const ON_THE_DAY = Date.parse("2026-11-25T08:00:00Z");
+
+  async function press(w: World, action: "later" | "done", id: string) {
+    await handleUpdate(w.context, {
+      callback_query: { id: "q1", from: { id: CHAT }, data: `${action}:${id}` },
+    });
+  }
+
+  function lastText(w: World): unknown {
+    return w.net.telegram("sendMessage").at(-1)?.body.text;
+  }
+
+  it("says that the token expired, in a new message, once, on its day", async () => {
+    const w = await world({ tokenExpires: EXPIRES });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(lastText(w)).toContain("expires in 21 days, on 2026-11-25");
+    const first = (await w.context.store.get(id))?.messageId;
+
+    w.clock.now = Date.parse("2026-11-24T23:50:00Z");
+    expect(await runSchedule(w.context)).toEqual([]);
+    w.clock.now = Date.parse("2026-11-25T00:05:00Z");
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    expect(lastText(w)).toContain("expires on 2026-11-25: it has expired");
+    expect(
+      w.net.telegram("deleteMessage").map((call) => call.body.message_id),
+    ).toEqual([first]);
+    expect(await w.context.store.get(id)).toMatchObject({
+      kind: "reminder",
+      state: "open",
+      expires: EXPIRES,
+      expired: true,
+    });
+
+    w.clock.now += DAY;
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("comes back from ⏰ Later with the days that are left then", async () => {
+    const w = await world({ tokenExpires: EXPIRES, laterHours: 14 * 24 });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    // Five days later, on day 16 before, the maintainer puts it aside for two weeks.
+    w.clock.now = Date.parse("2026-11-09T08:00:00Z");
+    await press(w, "later", id);
+    expect(await runSchedule(w.context)).toEqual([]);
+
+    w.clock.now = Date.parse("2026-11-23T08:00:00Z");
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(lastText(w)).toContain("expires in 2 days, on 2026-11-25.");
+    expect(await w.context.store.get(id)).toMatchObject({
+      state: "open",
+      snoozedUntil: null,
+    });
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("comes back from ⏰ Later on its day once, saying that the token expired", async () => {
+    const w = await world({ tokenExpires: EXPIRES, laterHours: 4 });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    w.clock.now = Date.parse("2026-11-24T21:00:00Z");
+    await press(w, "later", id);
+
+    w.clock.now = Date.parse("2026-11-25T01:00:00Z");
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+    expect(lastText(w)).toContain("expires on 2026-11-25: it has expired");
+    expect(await runSchedule(w.context)).toEqual([]);
+  });
+
+  it("pages on its day when ⏰ Later put it aside past the day", async () => {
+    const w = await world({ tokenExpires: EXPIRES, laterHours: 14 * 24 });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    w.clock.now = Date.parse("2026-11-20T08:00:00Z");
+    await press(w, "later", id);
+
+    w.clock.now = ON_THE_DAY;
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(lastText(w)).toContain("expires on 2026-11-25: it has expired");
+    expect((await w.context.store.get(id))?.snoozedUntil).toBeNull();
+    // Its "Later" is over: nothing comes back when the two weeks are.
+    w.clock.now = Date.parse("2026-12-04T09:00:00Z");
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(2);
+  });
+
+  it("pages on its day after ✅ Renewed when the day stayed the same", async () => {
+    const w = await world({ tokenExpires: EXPIRES });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    await runSchedule(w.context);
+    await press(w, "done", id);
+    expect((await w.context.store.get(id))?.state).toBe("done");
+
+    w.clock.now = ON_THE_DAY;
+    expect(await runSchedule(w.context)).toEqual([id]);
+    expect(lastText(w)).toContain("expires on 2026-11-25: it has expired");
+    expect(await w.context.store.get(id)).toMatchObject({
+      state: "open",
+      expired: true,
+    });
+
+    // A renewed token with a new day closes it for good.
+    const renewed = await withSettings(w, { tokenExpires: "2027-11-25" });
+    await press({ ...w, context: renewed }, "done", id);
+    w.clock.now += DAY;
+    expect(await runSchedule(renewed)).toEqual([]);
+    expect((await renewed.store.get(id))?.state).toBe("done");
+  });
+
+  it("is made anew for PAGER_FIX_TOKEN as well", async () => {
+    const w = await world({ laterHours: 4 });
+    const fix = await reminder("fix-token:2026-11-20");
+    const item: Reminder = {
+      ...base(fix),
+      repo: "Dennis-Otto/control",
+      kind: "reminder",
+      state: "open",
+      text: "PAGER_FIX_TOKEN expires in 16 days",
+      token: "fix",
+      expires: "2026-11-20",
+      snoozedUntil: START - 1,
+    };
+    await w.context.store.put(item);
+    expect(await runSchedule(w.context)).toEqual([fix]);
+    expect(lastText(w)).toContain(
+      "PAGER_FIX_TOKEN in Dennis-Otto/control expires in 16 days, on 2026-11-20",
+    );
+  });
+
+  it("keeps the text of a reminder that names no day, or whose day is far", async () => {
+    const w = await world();
+    const refused = await reminder("user-token:refused:2026-11-01");
+    const far = await reminder("claude-token:2027-06-01");
+    for (const [id, expires] of [
+      [refused, undefined],
+      [far, "2027-06-01"],
+    ] as const) {
+      await w.context.store.put({
+        ...base(id),
+        repo: "Dennis-Otto/control",
+        kind: "reminder",
+        state: "open",
+        text: `Kept ${id}`,
+        ...(expires === undefined ? {} : { expires }),
+        snoozedUntil: START - 1,
+      });
+    }
+    expect((await runSchedule(w.context)).sort()).toEqual(
+      [refused, far].sort(),
+    );
+    const texts = w.net.telegram("sendMessage").map((call) => call.body.text);
+    expect(texts).toEqual(
+      expect.arrayContaining([`🔔 Kept ${refused}`, `🔔 Kept ${far}`]),
+    );
+  });
+
+  it("pages on its day also when it was made before the pager kept its day", async () => {
+    const soon = await world({ tokenExpires: EXPIRES });
+    const id = await reminder(`claude-token:${EXPIRES}`);
+    const old: Reminder = {
+      ...base(id),
+      repo: "Dennis-Otto/control",
+      kind: "reminder",
+      state: "open",
+      text: "The token of Claude expires in 21 days",
+    };
+    await soon.context.store.put(old);
+    soon.clock.now = ON_THE_DAY;
+    expect(await runSchedule(soon.context)).toEqual([id]);
+    expect(lastText(soon)).toContain("expires on 2026-11-25: it has expired");
+
+    // One that said so already says it no second time.
+    const said = await world({ tokenExpires: "2026-11-01" });
+    const before = await reminder("claude-token:2026-11-01");
+    await runSchedule(said.context);
+    const record = (await said.context.store.get(before)) as Reminder;
+    delete record.expires;
+    delete record.expired;
+    await said.context.store.put(record);
+    said.clock.now += DAY;
+    expect(await runSchedule(said.context)).toEqual([]);
+  });
+});

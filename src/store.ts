@@ -154,6 +154,12 @@ export interface Alarm extends Base {
   kind: "alarm";
   state: "open" | "fixing" | "recovered" | "ignored";
   entries: Entry[];
+  /**
+   * When the bundle last notified the maintainer, as it opened or with the notice
+   * of a new entry: the new entries of QUIET of src/pager.ts after it come quietly.
+   * None in a record from before it, whose next new entry notifies.
+   */
+  noticed?: number;
 }
 
 /** A job of a run that failed, by its name and the address of its log. */
@@ -203,6 +209,12 @@ export interface Alert extends Base {
   kind: "alert";
   state: "open" | "fixing" | "resolved" | "ignored";
   entries: Entry[];
+  /**
+   * When the bundle last notified the maintainer, as it opened or with the notice
+   * of a new entry: the new entries of QUIET of src/pager.ts after it come quietly.
+   * None in a record from before it, whose next new entry notifies.
+   */
+  noticed?: number;
 }
 
 /** The release pull request of a repository. */

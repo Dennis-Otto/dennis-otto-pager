@@ -109,9 +109,10 @@ const english = texts("en");
 export const MERGEABLE_TRIES = 3;
 
 /**
- * How long after a comment on an issue or a pull request notified the maintainer
- * the comments that follow only edit the message of its thing, in milliseconds: a
- * few quick comments notify once.
+ * How long after a thing notified the maintainer what follows only edits its
+ * message, in milliseconds: the comments on an issue or a pull request, and the
+ * new entries of an alarm or a security message (decisions 0011 and 0022). A few
+ * quick ones notify once.
  */
 export const QUIET = 10 * 60_000;
 
@@ -124,13 +125,14 @@ const DAY = 24 * 60 * 60 * 1000;
  * that; the name of the topic follows the thing. An open thing that waits in the
  * main view for its topic, such as one whose topic Telegram refused, moves into a
  * new topic instead of the edit, quietly, and its old message goes. Then keep its
- * state.
+ * state. Returns whether a new message went, which notifies, unlike an edit in
+ * place or a move.
  */
 export async function show(
   context: Context,
   item: Item,
   fresh = false,
-): Promise<void> {
+): Promise<boolean> {
   const text = render(item, context.now(), context.t);
   const buttons = keyboard(item, context.t);
   const old = item.messageId;
@@ -160,6 +162,7 @@ export async function show(
   }
   await retitle(context, item);
   await context.store.put(item);
+  return !shown;
 }
 
 /**
@@ -275,7 +278,11 @@ function sameEntry(one: Entry, other: Entry): boolean {
 /**
  * Add an entry to the bundle of a repository, or change the one with its key; a
  * closed bundle opens anew. With only, only an entry of an open bundle changes,
- * and nothing opens. An entry that shows the same writes nothing.
+ * and nothing opens. An entry that shows the same writes nothing. A changed entry,
+ * such as a check that fails again, edits the message in place, which notifies
+ * nobody. A new entry of an open bundle is news: the message, edited in place,
+ * lists it, a short message below it in its topic notifies, once for the new
+ * entries of QUIET, and a snoozed bundle comes back at once.
  */
 async function addEntry(
   context: Context,
@@ -300,6 +307,7 @@ async function addEntry(
       entries: [entry],
       // The bundles of a kind and a repository share one topic.
       topic: known?.topic ?? null,
+      noticed: context.now(),
     } as Alarm | Alert;
     // A bundle that opens again gets a new message, which notifies, in the topic
     // that it had; the old one keeps its last state as history.
@@ -308,18 +316,62 @@ async function addEntry(
   }
   const index = known.entries.findIndex((each) => each.key === entry.key);
   const shown = known.entries[index];
-  if (shown === undefined) {
-    if (only === "change") {
-      return `not part of the ${kind}`;
+  if (shown !== undefined) {
+    if (sameEntry(shown, entry)) {
+      return `${kind} unchanged`;
     }
-    known.entries.push(entry);
-  } else if (sameEntry(shown, entry)) {
-    return `${kind} unchanged`;
-  } else {
     known.entries[index] = entry;
+    await show(context, known);
+    return `${kind} updated`;
   }
-  await show(context, known);
-  return `${kind} updated`;
+  if (only === "change") {
+    return `not part of the ${kind}`;
+  }
+  known.entries.push(entry);
+  // The new entry needs the maintainer now, not once "Later" brings the bundle back.
+  known.snoozedUntil = null;
+  // A burst, such as the alerts of a new query of code scanning or a push that
+  // breaks a few checks at once, notifies once.
+  const now = context.now();
+  const last = known.noticed;
+  const quiet = last !== undefined && now - last < QUIET;
+  if (!quiet) {
+    known.noticed = now;
+  }
+  const sent = await show(context, known);
+  if (quiet) {
+    return `new entry in the ${kind}, quietly`;
+  }
+  if (sent) {
+    // Its message was gone, such as with a topic that the maintainer deleted, and
+    // the new one, which lists the entry, notified already.
+    return `new entry in the ${kind}, in a new message`;
+  }
+  try {
+    await postBelow(
+      context,
+      known,
+      context.t(
+        kind === "alarm" ? "message.newAlarmEntry" : "message.newAlertEntry",
+        {
+          link: link(entry.label, entry.url),
+        },
+      ),
+    );
+  } catch (error) {
+    // Such as too many requests at once: the bundle forgets the entry and the
+    // notice again, so that GitHub's next delivery of the event finds it new and
+    // sends the notice, and no window keeps the entries after it quiet.
+    known.entries = known.entries.filter((each) => each.key !== entry.key);
+    if (last === undefined) {
+      delete known.noticed;
+    } else {
+      known.noticed = last;
+    }
+    await context.store.put(known);
+    throw error;
+  }
+  return `new entry in the ${kind}`;
 }
 
 /**
@@ -681,12 +733,11 @@ async function comment(
   // The comment needs the maintainer now, not once "Later" brings it back.
   known.snoozedUntil = null;
   const outcome = await redraft(context, known);
-  const before = known.messageId;
-  await show(context, known);
+  const sent = await show(context, known);
   if (quiet) {
     return `comment shown in place${outcome}, quietly`;
   }
-  if (known.messageId !== before) {
+  if (sent) {
     // Its message was gone, such as with a topic that the maintainer deleted, and
     // the new one, which names the comment, notified already.
     return `comment shown in a new message${outcome}`;

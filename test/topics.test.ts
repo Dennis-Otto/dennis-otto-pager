@@ -946,6 +946,48 @@ describe("a topic that Telegram refuses", () => {
     warn.mockRestore();
   });
 
+  it("notifies of a comment whose thing moves into its new topic, which a move does quietly", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const w = await chat();
+    await apply(w.context, contribution);
+    withDeletedTopic(w.net, 900, [100]);
+    const refusing = { on: true };
+    w.net.on("POST", /\/createForumTopic$/, () =>
+      refusing.on ? refused(WRONG_HOME)() : undefined,
+    );
+    const comment = (id: number): Signal => ({
+      ...at,
+      type: "comment",
+      number: 12,
+      pull: false,
+      title: "It breaks",
+      url: `https://github.com/${REPO}/issues/12#issuecomment-${id}`,
+      author: "hubot",
+      comment: id,
+    });
+    // Its message went with the topic: the new one in the main view notifies.
+    expect(await apply(w.context, comment(99))).toBe(
+      "comment shown in a new message",
+    );
+    expect(sent(w).at(-1)).not.toHaveProperty("message_thread_id");
+    const before = sent(w).length;
+    // Once topics open again, the next comment moves it into a new topic, quietly,
+    // and the notice of the comment below it notifies.
+    refusing.on = false;
+    w.clock.now += TOPIC_PAUSE;
+    expect(await apply(w.context, comment(120))).toBe("comment shown in place");
+    const [moved, notice, ...more] = sent(w).slice(before);
+    expect(more).toEqual([]);
+    expect(moved).toMatchObject({
+      message_thread_id: 901,
+      disable_notification: true,
+    });
+    expect(notice).toMatchObject({ message_thread_id: 901 });
+    expect(notice).not.toHaveProperty("disable_notification");
+    expect(notice?.text).toContain("💬 <b>hubot</b> commented:");
+    warn.mockRestore();
+  });
+
   it("brings a thing that waits in the main view into its topic with the message below it", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const w = await outage();

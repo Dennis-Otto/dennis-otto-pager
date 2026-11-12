@@ -36,9 +36,10 @@ export const SUBREQUESTS = 50;
  * The most calls to the network that one change of the alarm takes: the
  * installation of the control repository and the page of the app, and for its
  * message an edit, a message into its topic, a new topic with its check, its
- * message and their fallbacks, and the new name of the topic.
+ * message and their fallbacks, the new name of the topic, and the notice of a
+ * new entry below it.
  */
-export const ALARM_CHANGE = 10;
+export const ALARM_CHANGE = 11;
 
 /**
  * The events whose signal a newer one of the same kind and repository can

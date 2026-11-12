@@ -127,6 +127,11 @@ export class Net {
     return json({ message: "Not Found" }, 404);
   };
 
+  /** The id that the fake Bot API gave the last message it sent. */
+  get lastMessageId(): number {
+    return this.nextMessage - 1;
+  }
+
   /** The calls of a method of the Bot API, such as sendMessage. */
   telegram(method: string): Call[] {
     return this.calls.filter((call) =>

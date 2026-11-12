@@ -633,7 +633,7 @@ describe("buttons", () => {
       const w = await world();
       const { answer } = await pressing(w, drafted, `edit:${ID}`);
       expect(answer.text).toBe("Write the new text in reply.");
-      expect(await w.context.store.pendingEdit()).toEqual({
+      expect(await w.context.store.pendingEdit(100)).toEqual({
         item: ID,
         prompt: 100,
       });
@@ -651,7 +651,7 @@ describe("buttons", () => {
         ownDraft: true,
         messageId: 101,
       });
-      expect(await w.context.store.pendingEdit()).toBeNull();
+      expect(await w.context.store.pendingEdit(100)).toBeNull();
       const deleted = w.net
         .telegram("deleteMessage")
         .map((call) => call.body.message_id);
@@ -663,6 +663,81 @@ describe("buttons", () => {
       expect(shown.reply_markup.inline_keyboard[0][0].callback_data).toBe(
         `send:${ID}:3`,
       );
+    });
+
+    it("takes the answer to the prompt of each draft, however many prompts wait", async () => {
+      const w = await world();
+      const other = contribution({
+        ...drafted,
+        id: "i0123456789abcdf",
+        number: 13,
+        url: "https://github.com/Dennis-Otto/demo/issues/13",
+        messageId: 8,
+        draft: "Thanks too!",
+      });
+      await pressing(w, drafted, `edit:${ID}`);
+      await pressing(w, other, `edit:${other.id}`);
+      // Two prompts wait: 100 for the first draft, 101 for the second.
+      expect(
+        await handleUpdate(
+          w.context,
+          message("Words for the first.", {
+            reply_to_message: { message_id: 100 },
+          }),
+        ),
+      ).toBe("draft edited");
+      expect(await w.context.store.get(ID)).toMatchObject({
+        draft: "Words for the first.",
+        draftVersion: 3,
+        ownDraft: true,
+      });
+      expect(await w.context.store.get(other.id)).toMatchObject({
+        draft: "Thanks too!",
+        draftVersion: 2,
+      });
+      // No run of the control repository for a text that was a draft.
+      expect(w.net.github("/dispatches")).toHaveLength(0);
+      expect(await w.context.store.pendingEdit(100)).toBeNull();
+      expect(await w.context.store.pendingEdit(101)).toEqual({
+        item: other.id,
+        prompt: 101,
+      });
+      expect(
+        await handleUpdate(
+          w.context,
+          message("Words for the second.", {
+            reply_to_message: { message_id: 101 },
+          }),
+        ),
+      ).toBe("draft edited");
+      expect(await w.context.store.get(other.id)).toMatchObject({
+        draft: "Words for the second.",
+        draftVersion: 3,
+      });
+      expect(w.net.github("/dispatches")).toHaveLength(0);
+      const deleted = w.net
+        .telegram("deleteMessage")
+        .map((call) => call.body.message_id);
+      expect(deleted).toEqual(expect.arrayContaining([100, 101]));
+    });
+
+    it("takes the answer to an earlier prompt of the same draft", async () => {
+      const w = await world();
+      await pressing(w, drafted, `edit:${ID}`);
+      await pressing(w, drafted, `edit:${ID}`);
+      expect(
+        await handleUpdate(
+          w.context,
+          message("From the first prompt.", {
+            reply_to_message: { message_id: 100 },
+          }),
+        ),
+      ).toBe("draft edited");
+      expect(await w.context.store.get(ID)).toMatchObject({
+        draft: "From the first prompt.",
+        ownDraft: true,
+      });
+      expect(w.net.github("/dispatches")).toHaveLength(0);
     });
 
     it("keeps a text that comes while a newer comment is drafted, as the maintainer's own", async () => {
@@ -745,7 +820,12 @@ describe("buttons", () => {
         message_thread_id: 77,
       });
       await pressing(w, drafted, `edit:${ID}`);
-      const prompt = (await w.context.store.pendingEdit())?.prompt;
+      // The prompt is the message that the press sent last.
+      const prompt = w.net.lastMessageId;
+      expect(await w.context.store.pendingEdit(prompt)).toEqual({
+        item: ID,
+        prompt,
+      });
       await w.context.store.put({ ...drafted, state: "sent" });
       expect(
         await handleUpdate(

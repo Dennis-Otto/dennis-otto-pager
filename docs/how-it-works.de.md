@@ -35,6 +35,11 @@ Ein Bündel, dessen letzter Eintrag verschwunden ist, wird von selbst grün, und
 
 Eine Nachricht zeigt, was ihre Sache sagt, sodass sie keinen Besuch auf GitHub braucht. Ein Beitrag zitiert die ersten 500 Zeichen seines Issues, Pull Requests, seiner Diskussion oder seines Kommentars, ohne die HTML-Kommentare seines Formulars, maskiert und eingeklappt als `<blockquote expandable>`, in dem Platz, den sein Entwurf und seine Notiz unter den 4096 Zeichen von Telegram lassen. Ein Release zeigt die Versionshinweise seines Pull Requests, nach `<!-- The notes of the release follow. -->` oder sonst dem ersten `---`: Überschriften fett, Punkte als *• Text #56* mit verlinkter Nummer und ohne die Links auf Commits, höchstens 15 Zeilen oder 1200 Zeichen und *… und N weitere* für den Rest, unter *⚠️ Inkompatible Änderungen*, wenn die Versionshinweise einen Abschnitt inkompatibler Änderungen haben oder die Hauptversion ab 1 steigt. Ein Pager, der eine andere Sprache als Englisch spricht, zeigt sie in seiner, wie [die Versionshinweise in deiner Sprache](#die-versionshinweise-in-deiner-sprache) sagen.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-contribution-de.dark.png">
+  <img src="images/screenshots/chat-contribution-de.png" alt="Ein neues Issue im Thema seines Beitrags: sam-lee meldet, dass der Sync von paperless-sync bei einem Tag mit Schrägstrich abbricht, zitiert in der Nachricht, mit den Knöpfen Antwort entwerfen, Assistent nochmal, Später und Ignorieren. Eine Minute nach Antwort entwerfen zeigt dieselbe Nachricht, bearbeitet, den Entwurf einer Antwort in der Stimme des Maintainers, mit den Knöpfen Senden, Bearbeiten, Später und Ignorieren">
+</picture>
+
 ## Die Versionshinweise in deiner Sprache
 
 Die Repositorys schreiben ihre Changelogs auf Englisch, und GitHub behält sie so. Ein Pager auf Deutsch zeigt die Versionshinweise eines Release trotzdem auf Deutsch ([Entscheidung 0020](decisions/0020-the-notes-of-a-release-come-in-the-language-of-the-pager.md)):
@@ -44,6 +49,11 @@ Die Repositorys schreiben ihre Changelogs auf Englisch, und GitHub behält sie s
 - **Geprüft, Zeile für Zeile:** Eine übersetzte Zeile, die einen Verweis wie #791 oder einen Namen aus Code wie `anchore/syft`, `v1.56.0`, `node_modules` oder `.github` verloren hat, die nichts sagt oder länger als 450 Zeichen ist, behält ihr Englisch; eine Antwort mit einer anderen Zahl von Zeilen oder mit mehr als 2400 Zeichen insgesamt ändert nichts.
 - **Einmal pro Versionshinweise:** Der Eintrag des Release behält die Übersetzung, sodass eine spätere Änderung seiner Nachricht, etwa *gemergt* oder ein neuer Head mit denselben Versionshinweisen, nicht noch einmal fragt. Versionshinweise, die sich ändern, etwa durch eine Bearbeitung des Pull Requests, fragen neu, und ebenso ein Pager, der seither eine andere Sprache spricht; bis seine Antwort kommt, zeigt er das Englisch. Eine Frage, die scheiterte, etwa an einem kaputten Netz, geht noch einmal mit dem Ereignis, das GitHub erneut zustellt, oder mit der nächsten Prüfung des Release.
 - **Englisch, wenn sie nicht kommt:** Ein Steuer-Repository, das nicht antwortet, oder eines ohne den Job für `pager-translate` lässt das Englisch stehen, und ebenso ein Pager auf Englisch, der nichts fragt.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-release-de.dark.png">
+  <img src="images/screenshots/chat-release-de.png" alt="Die Nachricht des Release 1.7.0 von Dennis-Otto/paperless-sync in seinem Thema: seine Hinweise unter Neue Funktionen, übersetzt, und dass alle Checks grün sind und Mergen es veröffentlicht, mit den Knöpfen Mergen, Später und Ignorieren">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-notes-of-a-release.de.dark.svg">
@@ -83,6 +93,11 @@ Die Repositorys schreiben ihre Changelogs auf Englisch, und GitHub behält sie s
 - **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie, und ein ignorierter Workflow bleibt still, bis ein Lauf von ihm grün wird.
 - **Hat GitHub gehandelt,** behält der Pager das, was immer Telegram antwortet. Ein Knopf, der gemergt, gepostet, einen Lauf von Claude, einen Neustart oder den Issue-Assistenten gestartet oder die Antwort auf eine Frage gespeichert hat, behält den neuen Zustand seiner Sache auch dann, wenn Telegram die Änderung der Nachricht ablehnt, etwa bei einem Ausfall oder mit einem 429, das lange warten lässt: Der Druck bekommt trotzdem seine Antwort, ein zweiter Druck auf einen Knopf, den die alte Nachricht noch zeigt, wird als veraltet abgelehnt, statt auf GitHub zweimal zu handeln, und die nächste Änderung der Sache zeigt die richtige Nachricht.
 - **Jeder Druck bekommt eine Antwort.** Ein Druck, dessen Behandlung unerwartet scheitert, etwa wenn Telegram die Änderung der Nachricht ablehnt, bevor GitHub gefragt wurde, Workers KV versagt oder GitHub nicht erreichbar ist, bekommt den Hinweis *😢 Der Pager ist an diesem Druck gescheitert, und ob er gehandelt hat, ist unklar*, statt eines Knopfs, der lädt, bis Telegram aufgibt; sieh dir die Sache auf GitHub an, dann drück noch einmal. Der Fehler geht wie bisher ins Log des Workers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-alarm-de.dark.png">
+  <img src="images/screenshots/chat-alarm-de.png" alt="Eine Nachricht von Repo Pager in Telegram, im Thema 🚨 repo-blueprint braucht dich: Dennis-Otto/repo-blueprint braucht dich, weil das Release scheitert und Socket Security auf main scheitert, mit den Knöpfen Neu starten und Fix starten, Später und Ignorieren">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.de.dark.svg">
@@ -321,6 +336,11 @@ Die Jobs des Steuer-Repositorys dauern höchstens 40 Minuten, deshalb wartet der
 ## Ein Thema pro Sache
 
 Mit der Bot API 9.4 kann ein Bot in seinem privaten Chat Themen öffnen, mit `createForumTopic`, sobald der Threaded Mode für den Bot in der Mini App von @BotFather an ist ([Einrichten](setup.md#1-der-bot-von-telegram)). Dann öffnet die erste Nachricht jeder Sache ein eigenes Thema, benannt nach ihrem Repository, ohne seinen Besitzer, und dem, was die Sache ist, mit einer Farbe pro Art:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-topics-de.dark.png">
+  <img src="images/screenshots/chat-topics-de.png" alt="Die Liste der Themen von Repo Pager, das neueste oben, jedes in seiner Farbe mit der letzten Zeile seiner Nachricht: 🚨 repo-blueprint braucht dich, 📦 paperless-sync 1.7.0, das Issue von paperless-sync, die Frage eines Agenten 🤔 Entscheidung: Welches Release geht zuerst?, und ✅ 🔴 Links in issue-assistant, das wieder grün ist">
+</picture>
 
 | Sache | Name ihres Themas | Farbe |
 | --- | --- | --- |

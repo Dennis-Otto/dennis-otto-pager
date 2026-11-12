@@ -30,6 +30,7 @@ import {
   base,
   CHAT,
   DELIVERIES,
+  FAILURES,
   json,
   RATE_LIMIT,
   START,
@@ -226,6 +227,7 @@ describe("GITHUB_USER_TOKEN", () => {
     // The rest of the run went on.
     expect(w.net.calls.map((call) => call.url)).toEqual([
       RATE_LIMIT,
+      FAILURES,
       DELIVERIES,
     ]);
     w.net.on("GET", "/rate_limit", limits());

@@ -10,10 +10,15 @@ import { allowed } from "../src/buttons.ts";
 import {
   ALARM_CHANGE,
   entryKey,
+  FAILURE_PAGES,
   failed,
   failedEvents,
   LOOK_BACK,
+  MAX_PAGES,
   MAX_REDELIVERIES,
+  RESERVE,
+  SEEN,
+  type Seen,
   SUBREQUESTS,
 } from "../src/deliveries.ts";
 import type { Delivery } from "../src/github.ts";
@@ -24,6 +29,7 @@ import { type Alarm, type Item, itemId, keys } from "../src/store.ts";
 import {
   base,
   DELIVERIES,
+  FAILURES,
   json,
   REPO,
   START,
@@ -75,22 +81,47 @@ function exhausted(guid: string, event = "pull_request"): Delivery[] {
   ];
 }
 
-/**
- * The simulated app: its webhook lists these pages of deliveries, newest first,
- * each with the cursor of the next in its Link header, GitHub takes each
- * redelivery, and the app is installed on the control repository.
- */
-function listing(w: World, pages: Delivery[][]): World {
+/** Whether GitHub lists a delivery among the failures: a code from 400 to 599. */
+function failure(delivery: Delivery): boolean {
+  return delivery.status_code >= 400 && delivery.status_code <= 599;
+}
+
+/** Serve the pages of a list of the webhook, each with the cursor of the next in its Link header. */
+function serve(w: World, first: string, mark: string, pages: Delivery[][]) {
   pages.forEach((page, index) => {
-    const url = index === 0 ? DELIVERIES : `${DELIVERIES}&cursor=c${index}`;
+    const url = index === 0 ? first : `${first}&cursor=${mark}${index}`;
     const headers: Record<string, string> =
       index + 1 < pages.length
         ? {
-            link: `<https://api.github.com/app/hook/deliveries?per_page=100&cursor=c${index - 1}>; rel="prev", <https://api.github.com/app/hook/deliveries?per_page=100&cursor=c${index + 1}>; rel="next"`,
+            link: `<${first}&cursor=${mark}${index - 1}>; rel="prev", <${first}&cursor=${mark}${index + 1}>; rel="next"`,
           }
         : {};
     w.net.on("GET", url, () => Response.json(page, { headers }));
   });
+}
+
+/** The failures among the pages, as GitHub lists them: on pages of 100 of their own. */
+function failures(pages: Delivery[][]): Delivery[][] {
+  const failed = pages.flat().filter(failure);
+  return Array.from(
+    { length: Math.max(1, Math.ceil(failed.length / 100)) },
+    (_, page) => failed.slice(page * 100, page * 100 + 100),
+  );
+}
+
+/**
+ * The simulated app: its webhook lists these pages of deliveries, newest first,
+ * and the failures among them on pages of their own, unless the test names
+ * those; GitHub takes each redelivery, and the app is installed on the control
+ * repository.
+ */
+function listing(
+  w: World,
+  pages: Delivery[][],
+  failed: Delivery[][] = failures(pages),
+): World {
+  serve(w, DELIVERIES, "c", pages);
+  serve(w, FAILURES, "f", failed);
   w.net
     .on("POST", ATTEMPTS, () => json({}, 202))
     .on("GET", /^https:\/\/api\.github\.com\/app$/, () =>
@@ -101,6 +132,13 @@ function listing(w: World, pages: Delivery[][]): World {
     );
   withControl(w.net);
   return w;
+}
+
+/** The pages of the lists of the webhook that a run read, in order. */
+function lists(w: World): string[] {
+  return w.net.calls
+    .filter((call) => call.method === "GET" && call.url.startsWith(DELIVERIES))
+    .map((call) => call.url);
 }
 
 /** The ids of the deliveries that the pager had GitHub deliver again, in order. */
@@ -327,33 +365,196 @@ describe("an event that the pager failed to handle", () => {
     );
   });
 
-  it("reads three pages at most, and back to three hours", async () => {
+  it("reads the failures on three pages at most, and back to three hours", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const pages = [0, 1, 2, 3].map((page) => [
       attempt(`event-${page}`, 10 + page * 30, 500),
     ]);
-    const w = listing(await world(), pages);
+    const w = listing(await world(), [[]], pages);
     await failedEvents(w.context);
-    const read = w.net.calls.filter((call) => call.url.startsWith(DELIVERIES));
-    expect(read.map((call) => call.url)).toEqual([
+    expect(lists(w)).toEqual([
+      FAILURES,
+      `${FAILURES}&cursor=f1`,
+      `${FAILURES}&cursor=f2`,
       DELIVERIES,
-      `${DELIVERIES}&cursor=c1`,
-      `${DELIVERIES}&cursor=c2`,
     ]);
+    expect(FAILURE_PAGES).toBe(3);
     expect(redelivered(w)).toHaveLength(3);
+    // The next run reads the newest pages again, so the gap stays: the log says so.
+    expect(warn).toHaveBeenCalledWith(
+      `The failures of the webhook were read back to ${pages[2]?.[0]?.delivered_at}, not to three hours: an older failed event gets no more attempts and no entry in the alarm`,
+    );
 
     const old = listing(await world(), [
       [attempt("new", 10, 500), attempt("old", LOOK_BACK / MINUTE + 1, 500)],
       [attempt("older", LOOK_BACK / MINUTE + 30, 500)],
     ]);
     await failedEvents(old.context);
-    expect(
-      old.net.calls.filter((call) => call.url.startsWith(DELIVERIES)),
-    ).toHaveLength(1);
+    expect(lists(old)).toEqual([FAILURES, DELIVERIES]);
     expect(redelivered(old)).toHaveLength(1);
 
-    const empty = listing(await world(), [[], [attempt("next", 10, 500)]]);
+    const empty = listing(
+      await world(),
+      [[]],
+      [[], [attempt("next", 10, 500)]],
+    );
     expect(await failedEvents(empty.context)).toEqual([]);
     expect(redelivered(empty)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds a failed event behind more than 300 deliveries since the run before", async () => {
+    // A rollout of the blueprint over the fleet: hundreds of workflow runs in a
+    // quarter of an hour, each with deliveries of its own, which all passed.
+    const before = attempt("before", 16, 200);
+    const broken = attempt("broken", 14, 500, { event: "issues" });
+    const late = attempt("late", 13, 0, { event: "issues" });
+    const busy = Array.from({ length: 450 }, (_, index) => ({
+      ...attempt(`run-${index}`, 12 - index / 50, 200, {
+        event: "workflow_run",
+        repository: 1 + (index % 10),
+      }),
+      id: late.id + 1000 + index,
+    })).reverse();
+    const all = [...busy, late, broken, before];
+    const w = listing(
+      await world(),
+      Array.from({ length: 5 }, (_, page) =>
+        all.slice(page * 100, page * 100 + 100),
+      ),
+    );
+    await w.context.local.put<Seen>(SEEN, { newest: before.id, kept: [] });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await failedEvents(w.context);
+    // The failure on the list of its own, the answer that didn't come in time on
+    // the pages back to the run before.
+    expect(redelivered(w)).toEqual([broken.id, late.id]);
+    expect(lists(w)).toEqual([
+      FAILURES,
+      DELIVERIES,
+      ...[1, 2, 3, 4].map((page) => `${DELIVERIES}&cursor=c${page}`),
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+    expect((await w.context.local.get<Seen>(SEEN))?.newest).toBe(busy[0]?.id);
+  });
+
+  it("keeps for the next runs what the list of the failures leaves out", async () => {
+    const extra = { url: "https://api.github.com/...", installation_id: 7 };
+    const timeout = { ...attempt("timeout", 50, 0), ...extra };
+    const fixed = attempt("fixed", 40, 200, {
+      redelivery: true,
+      event: "workflow_run",
+      repository: 1,
+    });
+    const fixedFirst = attempt("fixed", 60, 502, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const run = (minutes: number, repository: number) =>
+      attempt(`run-${minutes}`, minutes, 200, {
+        event: "workflow_run",
+        repository,
+      });
+    const newest = run(20, 1);
+    const elsewhere = run(25, 2);
+    const comment = attempt("comment", 10, 200, {
+      event: "issue_comment",
+      repository: 1,
+    });
+    const w = listing(await world(), [
+      [
+        comment,
+        attempt("refused", 15, 401),
+        newest,
+        elsewhere,
+        run(30, 1),
+        attempt("app", 35, 200, { event: "workflow_run" }),
+        fixed,
+        timeout,
+        fixedFirst,
+        attempt("expired", LOOK_BACK / MINUTE + 1, 0),
+      ],
+    ]);
+    await failedEvents(w.context);
+    // Only the fields that the pager reads; not the failures, which their own
+    // list brings again, nor a delivery older than three hours, nor a pass that
+    // overtakes nothing or that a newer one of its kind and repository stands for.
+    const { url: _, installation_id: __, ...compact } = timeout;
+    expect(await w.context.local.get<Seen>(SEEN)).toEqual({
+      newest: comment.id,
+      kept: [fixed, compact, newest, elsewhere],
+    });
+
+    // The next run reads only what came since, and still knows the older ones:
+    // the stale run is overtaken, the answer that didn't come in time counts its
+    // attempts, and the pass of the redelivery takes its entry out of the alarm.
+    const stale = attempt("stale", 45, 500, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const again = attempt("timeout", 5, 0, { redelivery: true });
+    const next = listing(await world(), [[again, comment]], [[stale]]);
+    await next.context.local.put(SEEN, await w.context.local.get<Seen>(SEEN));
+    const id = await itemId(keys.alarm(CONTROL));
+    await next.context.store.put({
+      ...base(id),
+      repo: CONTROL,
+      kind: "alarm",
+      state: "open",
+      entries: [
+        { key: entryKey("fixed"), label: "old", url: ADVANCED },
+        { key: entryKey("other"), label: "old", url: ADVANCED },
+      ],
+    } as Item);
+    await failedEvents(next.context);
+    expect(redelivered(next)).toEqual([again.id]);
+    expect((await theAlarm(next))?.entries.map((entry) => entry.key)).toEqual([
+      entryKey("other"),
+    ]);
+    expect((await next.context.local.get<Seen>(SEEN))?.kept).toEqual([
+      fixed,
+      compact,
+      again,
+      newest,
+      elsewhere,
+    ]);
+  });
+
+  it("says in the log when it can't read back to the run before, and waits when there is no room", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const pages = [0, 1, 2].map((page) => [
+      attempt(`event-${page}`, 1 + page, 200),
+    ]);
+    const w = listing(await world(), pages);
+    await w.context.local.put<Seen>(SEEN, { newest: 1, kept: [] });
+    // Room for the failures, one page of every outcome and what it leaves.
+    spent(w, SUBREQUESTS - 2 - RESERVE);
+    await failedEvents(w.context);
+    expect(lists(w)).toEqual([FAILURES, DELIVERIES]);
+    expect(warn).toHaveBeenCalledWith(
+      `The deliveries of the webhook were read back to ${pages[0]?.[0]?.delivered_at}, not to delivery 1 of the run before: an answer that didn't come in time before then is missed, and so is an attempt that passed`,
+    );
+    expect((await w.context.local.get<Seen>(SEEN))?.newest).toBe(
+      pages[0]?.[0]?.id,
+    );
+
+    // No room for any page of every outcome: the next run reads them all.
+    const full = listing(await world(), pages);
+    await full.context.local.put<Seen>(SEEN, { newest: 1, kept: [] });
+    spent(full, SUBREQUESTS - 1 - RESERVE);
+    await failedEvents(full.context);
+    expect(lists(full)).toEqual([FAILURES]);
+    expect((await full.context.local.get<Seen>(SEEN))?.newest).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    // The first run reads back three hours, as far as the pages go.
+    const first = listing(await world(), pages);
+    spent(first, SUBREQUESTS - 2 - RESERVE);
+    await failedEvents(first.context);
+    expect(warn).toHaveBeenLastCalledWith(
+      `The deliveries of the webhook were read back to ${pages[0]?.[0]?.delivered_at}, not to three hours: an answer that didn't come in time before then is missed, and so is an attempt that passed`,
+    );
+    expect(MAX_PAGES).toBe(20);
   });
 
   it("gives no more attempts to an event whose first delivery is no longer on the pages", async () => {
@@ -505,7 +706,9 @@ describe("an event that the pager failed to handle", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const w = await world({ tokenExpires: "2026-11-10" });
     listing(w, [[attempt("event", 10, 500)]]);
-    w.net.on("GET", DELIVERIES, () => json({ message: "Server Error" }, 502));
+    for (const list of [DELIVERIES, FAILURES]) {
+      w.net.on("GET", list, () => json({ message: "Server Error" }, 502));
+    }
     // The steps before it ran: the reminder of the token came.
     const reminder = await itemId(keys.reminder("claude-token:2026-11-10"));
     expect(await runSchedule(w.context)).toEqual([reminder]);
@@ -513,17 +716,23 @@ describe("an event that the pager failed to handle", () => {
       "The deliveries of the webhook can't be read:",
       "GitHub answered 502: Server Error",
     );
+    expect(error).toHaveBeenCalledTimes(2);
     expect(redelivered(w)).toEqual([]);
+    // Nothing was read: the next run reads back to where the run before stopped.
+    expect(await w.context.local.get<Seen>(SEEN)).toEqual({
+      newest: null,
+      kept: [],
+    });
 
-    const second = listing(await world(), [
-      [attempt("event", 10, 500)],
-      [attempt("older", 20, 500)],
-    ]);
-    second.net.on("GET", `${DELIVERIES}&cursor=c1`, () =>
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const pages = [[attempt("event", 10, 500)], [attempt("older", 20, 500)]];
+    const second = listing(await world(), pages, pages);
+    second.net.on("GET", `${FAILURES}&cursor=f1`, () =>
       json({ message: "Server Error" }, 500),
     );
     await failedEvents(second.context);
-    expect(redelivered(second)).toHaveLength(1);
+    expect(redelivered(second)).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it("goes on after a redelivery that GitHub refuses", async () => {
@@ -557,15 +766,22 @@ describe("an event that the pager failed to handle", () => {
 
 describe("the calls of a run of the schedule", () => {
   it("stay under the limit of the free plan in a dry run, with the alarm and ten redeliveries", async () => {
+    const thrice = exhausted("thrice");
+    const again = exhausted("again");
     const w = listing(await world({ tokenExpires: "2026-11-10" }), [
       [
-        ...exhausted("thrice"),
-        ...exhausted("again"),
+        ...thrice,
+        ...again,
         ...Array.from({ length: 12 }, (_, index) =>
           attempt(`event-${index}`, 10 + index, 500),
         ),
       ],
     ]);
+    // The answers that didn't come in time, as the run before kept them.
+    await w.context.local.put<Seen>(SEEN, {
+      newest: null,
+      kept: [thrice[0], again[0]] as Delivery[],
+    });
     withTopics(w.net);
     // Things that "Later" put aside come back, each as a new message that
     // replaces the old one.
@@ -609,18 +825,29 @@ describe("the calls of a run of the schedule", () => {
   });
 
   it("put off what doesn't fit into the alarm until the next run", async () => {
-    const w = listing(await world(), [
-      [...exhausted("thrice"), ...exhausted("again")],
-    ]);
-    // Room for one page and one change of the alarm.
+    const thrice = exhausted("thrice");
+    const again = exhausted("again");
+    const w = listing(await world(), [[...thrice, ...again]]);
+    // The answers that didn't come in time, as the run before kept them, and
+    // room for the failures and one change of the alarm, which the pages of
+    // every outcome leave to it.
+    await w.context.local.put<Seen>(SEEN, {
+      newest: null,
+      kept: [thrice[0], again[0]] as Delivery[],
+    });
+    expect(RESERVE).toBe(MAX_REDELIVERIES + ALARM_CHANGE);
     spent(w, SUBREQUESTS - 1 - ALARM_CHANGE);
     const id = await itemId(keys.alarm(CONTROL));
     expect(await failedEvents(w.context)).toEqual([id]);
     expect((await theAlarm(w))?.entries).toHaveLength(1);
 
-    const out = listing(await world(), [
-      [attempt("thrice", 1, 200, { redelivery: true })],
-    ]);
+    // An attempt that passed, which the run before kept: there is room for the
+    // failures, and none for the change of the alarm.
+    const out = listing(await world(), [[]]);
+    await out.context.local.put<Seen>(SEEN, {
+      newest: null,
+      kept: [attempt("thrice", 1, 200, { redelivery: true })],
+    });
     await out.context.store.put({
       ...base(id),
       repo: CONTROL,

@@ -4,6 +4,7 @@
  * and writes only through the few calls of github.ts.
  */
 import { allowed, headTag, type Press } from "./buttons.ts";
+import { describe } from "./context.ts";
 import { GitHubError, NoUserToken, UserTokenRefused } from "./github.ts";
 import { askForDraft, type Context, show, toControl } from "./pager.ts";
 import { PASSED, releaseBlocker } from "./rules.ts";
@@ -26,6 +27,26 @@ export interface Reply {
 
 const done = (text: string): Reply => ({ text, alert: false });
 const refused = (text: string): Reply => ({ text, alert: true });
+
+/**
+ * Show a thing whose action went through on GitHub, such as a reply that it posted
+ * or a fix that it started. Its new state is kept also when the message can't show
+ * it, such as when Telegram answers a 429 that asks to wait long or a 5xx, or can't
+ * be reached: a second press of a button that the message still shows is then
+ * refused as out of date, rather than acting on GitHub twice, the press still gets
+ * the answer of its action, and the next change of the thing shows the right
+ * message.
+ */
+async function acted(context: Context, item: Item): Promise<void> {
+  try {
+    await show(context, item);
+  } catch (error) {
+    console.warn(
+      `Telegram shows no change after an action on GitHub: ${describe(error)}; kept the new state`,
+    );
+    await context.store.put(item);
+  }
+}
 
 async function merge(
   context: Context,
@@ -64,7 +85,7 @@ async function merge(
     item.sha,
   );
   item.state = "merging";
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.merging"));
 }
 
@@ -88,7 +109,7 @@ async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
   }
   item.state = "fixing";
   item.jobStarted = context.now();
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.fixing"));
 }
 
@@ -129,7 +150,7 @@ async function rerun(context: Context, item: Alarm): Promise<Reply> {
           entry.rerun = true;
         }
       }
-      await show(context, item);
+      await acted(context, item);
     }
   }
   if (started.size > 0) {
@@ -159,7 +180,7 @@ async function rerunWorkflow(context: Context, item: Workflow): Promise<Reply> {
   }
   await context.github.rerunFailedJobs(item.installation, item.repo, item.run);
   item.state = "rerunning";
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.rerunWorkflow"));
 }
 
@@ -168,7 +189,7 @@ async function draft(context: Context, item: Contribution): Promise<Reply> {
   if (failed !== null) {
     return refused(failed);
   }
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.drafting"));
 }
 
@@ -182,7 +203,7 @@ async function assistant(context: Context, item: Contribution): Promise<Reply> {
     throw error;
   }
   item.note = context.t("note.assistant");
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.assistant"));
 }
 
@@ -209,7 +230,7 @@ async function send(
     item.note = context.t("note.replied");
   }
   item.state = "sent";
-  await show(context, item);
+  await acted(context, item);
   return done(context.t("answer.sent"));
 }
 
@@ -251,7 +272,7 @@ export async function answerDecision(
   if (choice === null) {
     item.ownAnswer = answer;
   }
-  await show(context, item);
+  await acted(context, item);
 }
 
 /** Save the option of a decision whose button the maintainer pressed. */

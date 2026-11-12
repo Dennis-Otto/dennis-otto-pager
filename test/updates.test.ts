@@ -756,6 +756,175 @@ describe("buttons", () => {
   });
 });
 
+describe("an action that went through on GitHub", () => {
+  const t = texts("en");
+
+  /**
+   * A Telegram that takes the press but no change of its message: a 5xx of its
+   * servers, a 429 that asks to wait longer than the pager does, or no answer.
+   */
+  function refusingEdits(w: World, how: "502" | "429" | "unreachable"): void {
+    w.net.on("POST", /\/editMessageText$/, () => {
+      if (how === "unreachable") {
+        throw new TypeError("fetch failed");
+      }
+      return how === "502"
+        ? json({ ok: false, error_code: 502, description: "Bad Gateway" }, 502)
+        : json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 30",
+              parameters: { retry_after: 30 },
+            },
+            429,
+          );
+    });
+  }
+
+  /** Press the button again, on what the pager kept of the first press. */
+  async function again(w: World, data: string) {
+    await handleUpdate(w.context, {
+      callback_query: { id: "q2", from: { id: CHAT }, data },
+    });
+    return w.net.telegram("answerCallbackQuery").at(-1)?.body;
+  }
+
+  const outdated = { text: t("answer.outdated"), show_alert: true };
+
+  it("posts a reply in a discussion once, though Telegram refused to show it", async () => {
+    const w = await world({ userToken: null });
+    refusingEdits(w, "502");
+    w.net.on("POST", "/graphql", () =>
+      json({ data: { addDiscussionComment: { comment: { id: "DC_9" } } } }),
+    );
+    const discussion = contribution({
+      state: "draft",
+      draft: "Read the README.",
+      draftVersion: 2,
+      url: "https://github.com/Dennis-Otto/demo/discussions/31",
+      discussion: { node: "D_1" },
+    });
+    const sent = await pressing(w, discussion, `send:${ID}:2`);
+    expect(w.net.telegram("editMessageText")).toHaveLength(1);
+    expect(sent.answer).toMatchObject({ text: "Sent.", show_alert: false });
+    expect(sent.item).toMatchObject({
+      state: "sent",
+      note: "Posted in the discussion as the app of the pager.",
+      messageId: 7,
+    });
+    expect(await again(w, `send:${ID}:2`)).toMatchObject(outdated);
+    expect(w.net.github("/graphql")).toHaveLength(1);
+  });
+
+  it("posts a comment once, though Telegram asked to wait too long", async () => {
+    const w = await world();
+    refusingEdits(w, "429");
+    w.net.on("POST", "/repos/Dennis-Otto/demo/issues/12/comments", () =>
+      json({ html_url: "https://github.com/c" }, 201),
+    );
+    const drafted = contribution({
+      state: "draft",
+      draft: "Thanks!",
+      draftVersion: 2,
+    });
+    const sent = await pressing(w, drafted, `send:${ID}:2`);
+    expect(sent.answer.text).toBe("Sent.");
+    expect(sent.item).toMatchObject({ state: "sent" });
+    expect(await again(w, `send:${ID}:2`)).toMatchObject(outdated);
+    expect(w.net.github("/comments")).toHaveLength(1);
+  });
+
+  it("starts a fix and asks for a draft once, though Telegram can't be reached", async () => {
+    const w = await world();
+    refusingEdits(w, "unreachable");
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    const fixing = await pressing(w, alarm, `fix:${ID}`);
+    expect(fixing.answer).toMatchObject({
+      text: t("answer.fixing"),
+      show_alert: false,
+    });
+    expect(fixing.item).toMatchObject({ state: "fixing", jobStarted: START });
+    expect(await again(w, `fix:${ID}`)).toMatchObject(outdated);
+    const drafting = await pressing(w, contribution(), `draft:${ID}`);
+    expect(drafting.answer.text).toBe(t("answer.drafting"));
+    expect(drafting.item).toMatchObject({ state: "drafting" });
+    expect(await again(w, `draft:${ID}`)).toMatchObject(outdated);
+    expect(
+      w.net.github("/dispatches").map((call) => call.body.event_type),
+    ).toEqual(["pager-fix", "pager-draft"]);
+  });
+
+  it("merges a release once, though Telegram refused to show it", async () => {
+    const w = await world();
+    refusingEdits(w, "502");
+    w.net
+      .on("GET", "/repos/Dennis-Otto/demo/pulls/30", () =>
+        json({
+          number: 30,
+          state: "open",
+          title: "chore: release 1.2.3",
+          mergeable_state: "clean",
+          head: { ref: "release-please--branches--main", sha: "abc" },
+          base: { ref: "main", repo: { default_branch: "main" } },
+        }),
+      )
+      .on("PUT", "/repos/Dennis-Otto/demo/pulls/30/merge", () =>
+        json({ merged: true }),
+      );
+    const data = callbackData("merge", release);
+    const merging = await pressing(w, release, data);
+    expect(merging.answer.text).toBe("Merging.");
+    expect(merging.item).toMatchObject({ state: "merging" });
+    expect(await again(w, data)).toMatchObject(outdated);
+    expect(w.net.github("/pulls/30/merge")).toHaveLength(1);
+  });
+
+  it("keeps what the issue assistant and a rerun did, though Telegram refused to show it", async () => {
+    const w = await world();
+    refusingEdits(w, "502");
+    w.net
+      .on(
+        "POST",
+        /issue-assistant\.yml\/dispatches$/,
+        () => new Response(null, { status: 204 }),
+      )
+      .on("GET", "/repos/Dennis-Otto/demo/actions/runs/31", () =>
+        json({ status: "completed", conclusion: "failure" }),
+      )
+      .on(
+        "POST",
+        "/repos/Dennis-Otto/demo/actions/runs/31/rerun-failed-jobs",
+        () => new Response(null, { status: 201 }),
+      );
+    const assisted = await pressing(w, contribution(), `assistant:${ID}`);
+    expect(assisted.answer.text).toBe("The issue assistant runs.");
+    expect(assisted.item?.note).toBe("🤖 The issue assistant answers again.");
+    const failing: Alarm = {
+      ...alarm,
+      entries: [{ ...alarm.entries[0], run: 31 }] as Alarm["entries"],
+    };
+    const rerun = await pressing(w, failing, `rerun:${ID}`);
+    expect(rerun.answer.text).toBe(t("answer.rerun"));
+    expect(rerun.item).toMatchObject({ entries: [{ run: 31, rerun: true }] });
+  });
+
+  it("still acts and keeps nothing when the message failed before GitHub was asked", async () => {
+    // Later changes nothing on GitHub: a press that Telegram can't show stays
+    // unanswered and unsaved, and the next press puts the thing aside again.
+    const w = await world();
+    refusingEdits(w, "502");
+    await expect(pressing(w, alarm, `later:${ID}`)).rejects.toThrow(
+      "Bad Gateway",
+    );
+    expect(await w.context.store.get(ID)).toMatchObject({ snoozedUntil: null });
+  });
+});
+
 describe("messages", () => {
   it("answer /start and /help", async () => {
     const w = await world();

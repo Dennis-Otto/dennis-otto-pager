@@ -125,8 +125,10 @@ const DAY = 24 * 60 * 60 * 1000;
  * that; the name of the topic follows the thing. An open thing that waits in the
  * main view for its topic, such as one whose topic Telegram refused, moves into a
  * new topic instead of the edit, quietly, and its old message goes. Then keep its
- * state. Returns whether a new message went, which notifies, unlike an edit in
- * place or a move.
+ * state, also when what follows the new message fails, such as the delete of the
+ * old one: the record names the message that Telegram shows, so that nothing sends
+ * the thing again, with live buttons on two messages. Returns whether a new
+ * message went, which notifies, unlike an edit in place or a move.
  */
 export async function show(
   context: Context,
@@ -137,6 +139,8 @@ export async function show(
   const buttons = keyboard(item, context.t);
   const old = item.messageId;
   let shown = false;
+  // The message in the main view that a move into a topic leaves.
+  let left: number | null = null;
   if (old !== null && !fresh) {
     let moved: number | null = null;
     try {
@@ -150,18 +154,27 @@ export async function show(
     }
     if (moved !== null) {
       item.messageId = moved;
-      await leaveMainView(context, old, text);
+      left = old;
     }
     shown = moved !== null || (await context.telegram.edit(old, text, buttons));
   }
   if (!shown) {
     item.messageId = await sendThing(context, item, text, buttons);
-    if (old !== null && fresh) {
-      await context.telegram.remove(old);
-    }
   }
-  await retitle(context, item);
-  await context.store.put(item);
+  try {
+    try {
+      if (left !== null) {
+        await leaveMainView(context, left, text);
+      } else if (old !== null && fresh) {
+        await context.telegram.remove(old);
+      }
+    } finally {
+      // The name of the topic follows the thing also when the old message stays.
+      await retitle(context, item);
+    }
+  } finally {
+    await context.store.put(item);
+  }
   return !shown;
 }
 

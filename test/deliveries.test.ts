@@ -19,12 +19,14 @@ import {
   RESERVE,
   SEEN,
   type Seen,
+  SHOW_AGAIN,
   SUBREQUESTS,
 } from "../src/deliveries.ts";
 import type { Delivery } from "../src/github.ts";
+import { FAILED, type Failure, health, RAN } from "../src/health.ts";
 import { apply, QUIET } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
-import { runSchedule } from "../src/schedule.ts";
+import { ANSWER_WITHIN, runSchedule } from "../src/schedule.ts";
 import { type Alarm, type Item, itemId, keys } from "../src/store.ts";
 import {
   base,
@@ -903,6 +905,168 @@ describe("the calls of a run of the schedule", () => {
     expect(await failedEvents(both.context)).toEqual([id]);
     expect(redelivered(both)).toHaveLength(MAX_REDELIVERIES);
     expect((await theAlarm(both))?.entries).toHaveLength(1);
+  });
+
+  it("leave the things that no longer fit to the next run, each whole", async () => {
+    const w = await world({ tokenExpires: "2026-11-10" });
+    await later(w, "i00000000000001", "First");
+    await later(w, "i00000000000002", "Second");
+    await w.context.store.put({
+      ...base("i00000000000003"),
+      kind: "alarm",
+      state: "fixing",
+      entries: [{ key: "bot:3", label: "Third bot fails", url: "https://x" }],
+      jobStarted: START - ANSWER_WITHIN - 1,
+    } as Item);
+    // Room for one thing that comes again as a new message, and not for two.
+    spent(w, SUBREQUESTS - SHOW_AGAIN);
+    expect(await runSchedule(w.context)).toEqual(["i00000000000001"]);
+    expect(w.context.subrequests()).toBeLessThanOrEqual(SUBREQUESTS);
+    // The others wait, unchanged, for the next run.
+    expect((await w.context.store.get("i00000000000002"))?.snoozedUntil).toBe(
+      START - 1,
+    );
+    expect((await w.context.store.get("i00000000000003"))?.state).toBe(
+      "fixing",
+    );
+    expect(
+      await w.context.store.get(
+        await itemId(keys.reminder("claude-token:2026-11-10")),
+      ),
+    ).toBeNull();
+  });
+});
+
+/** An alarm that "Later" put aside and whose time is up: its label names it. */
+async function later(w: World, id: string, label: string): Promise<void> {
+  await w.context.store.put({
+    ...base(id),
+    kind: "alarm",
+    state: "open",
+    entries: [{ key: "bot:1", label: `${label} bot fails`, url: "https://x" }],
+    snoozedUntil: START - 1,
+  } as Item);
+}
+
+describe("a thing that fails in a run of the schedule", () => {
+  it("costs only itself: the other things, the later steps and the redeliveries go on", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = attempt("broken", 20, 500);
+    const w = listing(await world({ tokenExpires: "2026-11-10" }), [[broken]]);
+    await later(w, "i00000000000001", "Refused");
+    await later(w, "i00000000000002", "Second");
+    w.net.on("POST", /\/sendMessage$/, (call) =>
+      String(call.body.text).includes("Refused bot fails")
+        ? json(
+            {
+              ok: false,
+              error_code: 400,
+              description: "Bad Request: message is too long",
+            },
+            400,
+          )
+        : undefined,
+    );
+    const reminder = await itemId(keys.reminder("claude-token:2026-11-10"));
+    expect(await runSchedule(w.context)).toEqual(["i00000000000002", reminder]);
+    // The event that failed comes again, after the thing that failed.
+    expect(redelivered(w)).toEqual([broken.id]);
+    const failure: Failure = {
+      at: new Date(START).toISOString(),
+      what: "the things that come back, thing i00000000000001",
+      error: "Telegram sendMessage: Bad Request: message is too long",
+    };
+    expect(error).toHaveBeenCalledWith(
+      `The schedule failed at ${failure.what}:`,
+      failure.error,
+    );
+    // The thing that failed is due in the next run as well.
+    expect((await w.context.store.get("i00000000000001"))?.snoozedUntil).toBe(
+      START - 1,
+    );
+    // The run didn't come to its end, and the health answer says why.
+    expect(await w.context.local.get(RAN)).toBeUndefined();
+    expect(await w.context.local.get(FAILED)).toEqual(failure);
+    expect((await health(w.context)).failure).toEqual(failure);
+  });
+
+  it("goes on after a check that a network that breaks stops", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = attempt("broken", 20, 500);
+    const w = listing(
+      await world({ tokenExpires: "2026-11-10", userToken: "ghp_test" }),
+      [[broken]],
+    );
+    vi.spyOn(w.context.github, "userTokenExpiration").mockRejectedValueOnce(
+      new TypeError("Network connection lost"),
+    );
+    const reminder = await itemId(keys.reminder("claude-token:2026-11-10"));
+    expect(await runSchedule(w.context)).toEqual([reminder]);
+    expect(redelivered(w)).toEqual([broken.id]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule failed at the reminders of the tokens, the check of GITHUB_USER_TOKEN:",
+      "TypeError",
+    );
+    expect(await w.context.local.get(RAN)).toBeUndefined();
+    // The next run that comes to its end notes its time; the health answer
+    // keeps the last failure, with its own time.
+    await runSchedule(w.context);
+    expect(await w.context.local.get(RAN)).toBe(START);
+    expect((await health(w.context)).failure?.at).toBe(
+      new Date(START).toISOString(),
+    );
+  });
+
+  it("goes on after a step that fails as a whole", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const w = await world({ tokenExpires: "2026-11-10" });
+    vi.spyOn(w.context.store, "waiting").mockRejectedValueOnce(
+      new TypeError("KV GET failed"),
+    );
+    const reminder = await itemId(keys.reminder("claude-token:2026-11-10"));
+    expect(await runSchedule(w.context)).toEqual([reminder]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule failed at the texts without an answer:",
+      "TypeError",
+    );
+    expect(await w.context.local.get(RAN)).toBeUndefined();
+  });
+
+  it("keeps its new message in its record when what follows the send fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const w = await world();
+    await later(w, "i00000000000001", "First");
+    w.net.on("POST", /\/deleteMessage$/, () => {
+      throw new TypeError("Network connection lost");
+    });
+    expect(await runSchedule(w.context)).toEqual(["i00000000000001"]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+    const kept = await w.context.store.get("i00000000000001");
+    expect(kept?.messageId).toBe(100);
+    expect(kept?.snoozedUntil).toBeNull();
+    // The next run doesn't send it again, with live buttons on two messages.
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(1);
+  });
+
+  it("goes on when the storage can't note the failure either", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = attempt("broken", 20, 500);
+    const w = listing(await world(), [[broken]]);
+    vi.spyOn(w.context.store, "waiting").mockRejectedValueOnce(
+      new TypeError("KV GET failed"),
+    );
+    vi.spyOn(w.context.local, "put").mockRejectedValueOnce(
+      new TypeError("Durable Object storage failed"),
+    );
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      "The schedule couldn't note the failure at the texts without an answer:",
+      "TypeError",
+    );
+    // The events that failed still come again.
+    expect(redelivered(w)).toEqual([broken.id]);
+    expect(await w.context.local.get(RAN)).toBeUndefined();
   });
 });
 

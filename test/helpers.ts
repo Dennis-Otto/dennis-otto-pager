@@ -7,11 +7,18 @@ import { env } from "cloudflare:test";
 import { makeContext } from "../src/context.ts";
 import { forget } from "../src/github.ts";
 import type { Context } from "../src/pager.ts";
+import type { Apart } from "../src/schedule.ts";
 import type { PagerEnv, Settings } from "../src/settings.ts";
 import type { Item } from "../src/store.ts";
 import type { Fetch } from "../src/telegram.ts";
 
 export const CHAT = 4242;
+
+/** A step of the schedule called on its own, outside a run: an error of a thing passes on. */
+export const directly: Apart = async (_thing, work) => {
+  await work();
+  return true;
+};
 export const START = Date.parse("2026-11-04T08:00:00Z");
 /** The first page of the deliveries of the app's webhook, which each run of the schedule reads. */
 export const DELIVERIES =

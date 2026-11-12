@@ -2,8 +2,8 @@
  * The health of the pager, which the control repository asks for once a day with
  * the signed body {"type": "health"}: the pager writes only when something needs
  * its maintainer, so a quiet day looks the same whether all is well or the pager
- * is dead. The answer says when the schedule last ran to its end, whether Telegram
- * takes the token of the bot and delivers the updates of its webhook, whether
+ * is dead. The answer says when the schedule last ran to its end and what last
+ * failed in it, whether Telegram takes the token of the bot and delivers the updates of its webhook, whether
  * GitHub takes the key of the app, and when the tokens of the maintainer expire.
  * It names no secret and nothing that an issue says, and changes nothing.
  */
@@ -17,6 +17,22 @@ export const RAN = "schedule";
 /** The longest message of an error that the answer carries, in characters. */
 export const MAX_ERROR = 200;
 
+/**
+ * The key of the last thing that failed in a run of the schedule, in the storage
+ * of the Durable Object (src/schedule.ts).
+ */
+export const FAILED = "scheduleFailure";
+
+/** The last thing that failed in a run of the schedule. */
+export interface Failure {
+  /** When, in ISO 8601. */
+  at: string;
+  /** The step of the run and the thing, by its id, never by what it says. */
+  what: string;
+  /** What Telegram or GitHub answered, or the name of the error, cut to MAX_ERROR. */
+  error: string;
+}
+
 /** What getWebhookInfo of the Bot API says, as far as the health reads it. */
 interface WebhookInfo {
   url?: unknown;
@@ -29,6 +45,12 @@ interface WebhookInfo {
 export interface Health {
   /** When the schedule last ran to its end, in ISO 8601, or null when it never did. */
   schedule: string | null;
+  /**
+   * The last thing that failed in a run of the schedule, or null when none ever
+   * did. A run where one did doesn't come to its end, so a failure after
+   * `schedule` is one that the runs since haven't got past.
+   */
+  failure: Failure | null;
   telegram:
     | {
         ok: true;
@@ -46,7 +68,7 @@ export interface Health {
 }
 
 /** What a log or an answer may say of an error, cut to its first characters. */
-function errorOf(error: unknown): string {
+export function errorOf(error: unknown): string {
   return describe(error).slice(0, MAX_ERROR);
 }
 
@@ -93,6 +115,7 @@ export async function health(context: Context): Promise<Health> {
   const ran = await context.local.get<number>(RAN);
   return {
     schedule: ran === undefined ? null : new Date(ran).toISOString(),
+    failure: (await context.local.get<Failure>(FAILED)) ?? null,
     telegram: await telegram(context),
     github: await github(context),
     tokens: await watchedTokens(context),

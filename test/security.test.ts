@@ -26,6 +26,7 @@ import { about } from "../src/topics.ts";
 import {
   appKey,
   CHAT,
+  directly,
   json,
   Net,
   REPO,
@@ -622,9 +623,29 @@ describe("the reminder of a vulnerability report", () => {
     const busy = await due("triage");
     busy.context.subrequests = () => SUBREQUESTS - REMINDER_CALLS + 1;
     expect(
-      await remindAdvisories(busy.context, [(await advisory(busy)).id]),
+      await remindAdvisories(
+        busy.context,
+        [(await advisory(busy)).id],
+        directly,
+      ),
     ).toEqual([]);
     expect((await advisory(busy)).remindAt).toBe(START + 6 * DAY);
+  });
+
+  it("waits for the next run also when the delete of its old message fails as it comes back from Later", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const w = await due("triage");
+    const item = await advisory(w);
+    item.snoozedUntil = START + 6 * DAY;
+    await w.context.store.put(item);
+    w.net.on("POST", /\/deleteMessage$/, () => {
+      throw new TypeError("Network connection lost");
+    });
+    const before = sent(w).length;
+    expect(await runSchedule(w.context)).toEqual([item.id]);
+    // One new message, and no reminder on top of it in the same run.
+    expect(sent(w)).toHaveLength(before + 1);
+    expect(w.net.github(STATE)).toHaveLength(0);
   });
 
   it("looks at its record, which the list may lag behind", async () => {
@@ -632,10 +653,11 @@ describe("the reminder of a vulnerability report", () => {
     const item = await advisory(w);
     await apply(w.context, secret(1));
     expect(
-      await remindAdvisories(w.context, [
-        "i000000000000000",
-        (await bundle(w)).id,
-      ]),
+      await remindAdvisories(
+        w.context,
+        ["i000000000000000", (await bundle(w)).id],
+        directly,
+      ),
     ).toEqual([]);
     for (const changed of [
       { ...item, remindAt: START + 7 * DAY },
@@ -643,7 +665,9 @@ describe("the reminder of a vulnerability report", () => {
       { ...item, state: "ignored" as const },
     ]) {
       await w.context.store.put(changed);
-      expect(await remindAdvisories(w.context, [item.id])).toEqual([]);
+      expect(await remindAdvisories(w.context, [item.id], directly)).toEqual(
+        [],
+      );
     }
     expect(w.net.github(STATE)).toHaveLength(0);
   });

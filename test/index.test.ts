@@ -14,6 +14,7 @@ import { describe as describeError, makeContext } from "../src/context.ts";
 import { hmacHex } from "../src/crypto.ts";
 import { forget, GitHubError } from "../src/github.ts";
 import worker from "../src/index.ts";
+import { schedule } from "../src/routes.ts";
 import type { PagerEnv } from "../src/settings.ts";
 import { type Contribution, itemId, keys } from "../src/store.ts";
 import { TelegramError } from "../src/telegram.ts";
@@ -428,7 +429,7 @@ describe("the schedule", () => {
     );
   });
 
-  it("logs a run that failed", async () => {
+  it("logs a thing that failed, and a run that failed", async () => {
     net.on("POST", /sendMessage$/, () =>
       json({ ok: false, description: "Forbidden" }, 403),
     );
@@ -440,8 +441,17 @@ describe("the schedule", () => {
     await worker.scheduled(createScheduledController(), environment, running);
     await waitOnExecutionContext(running);
     expect(errors).toEqual([
-      "The schedule failed: Telegram sendMessage: Forbidden",
+      "The schedule failed at the reminders of the tokens, the reminder of the claude token: Telegram sendMessage: Forbidden",
     ]);
+
+    // Without the list of the things, the run can't start.
+    errors = [];
+    const context = makeContext(await settings(), env as PagerEnv, net.fetch);
+    vi.spyOn(context.store, "pending").mockRejectedValueOnce(
+      new TypeError("KV list failed"),
+    );
+    await schedule(context);
+    expect(errors).toEqual(["The schedule failed: TypeError"]);
   });
 });
 

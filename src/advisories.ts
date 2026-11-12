@@ -11,6 +11,7 @@ import { describe } from "./context.ts";
 import { SUBREQUESTS } from "./deliveries.ts";
 import { type Context, show } from "./pager.ts";
 import { ACKNOWLEDGE_DAYS, dayAfter } from "./render.ts";
+import type { Apart } from "./schedule.ts";
 import type { Advisory } from "./store.ts";
 
 /**
@@ -75,31 +76,35 @@ async function remind(context: Context, item: Advisory): Promise<boolean> {
 
 /**
  * Remind of the reports whose day before the acknowledgement came, as far as the
- * calls of this run reach; the rest wait for the next run. Returns the ids of the
- * things that got a new message.
+ * calls of this run reach; the rest wait for the next run. Each report goes apart
+ * from the others: one that fails comes again in the next run. Returns the ids of
+ * the things that got a new message.
  */
 export async function remindAdvisories(
   context: Context,
   due: string[],
+  apart: Apart,
 ): Promise<string[]> {
   const shown: string[] = [];
   for (const id of due) {
     if (context.subrequests() + REMINDER_CALLS > SUBREQUESTS) {
       break;
     }
-    // The list may lag behind a write: only the record says whether it is due.
-    const item = await context.store.get(id);
-    if (
-      item?.kind !== "advisory" ||
-      item.state !== "open" ||
-      item.remindAt === undefined ||
-      item.remindAt > context.now()
-    ) {
-      continue;
-    }
-    if (await remind(context, item)) {
-      shown.push(id);
-    }
+    await apart(`thing ${id}`, async () => {
+      // The list may lag behind a write: only the record says whether it is due.
+      const item = await context.store.get(id);
+      if (
+        item?.kind !== "advisory" ||
+        item.state !== "open" ||
+        item.remindAt === undefined ||
+        item.remindAt > context.now()
+      ) {
+        return;
+      }
+      if (await remind(context, item)) {
+        shown.push(id);
+      }
+    });
   }
   return shown;
 }

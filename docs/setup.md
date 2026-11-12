@@ -25,6 +25,8 @@ Make a copy of this repository: a fork, or a repository of your own. `wrangler.j
 | `LANGUAGE` | `de` for German, `en` or empty for English |
 | `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
 
+The tests of your copy pass with your values: they take them from `wrangler.jsonc`, and `bash scripts/check.sh` runs them once more with those of another instance, so that a change of your own and an update come through a green pull request.
+
 The commands below name your control repository with a variable of the shell. Create it now, private, from [the template of the control repository](https://github.com/Dennis-Otto/repo-pager-control-template), because step 3 gives it a secret and step 4 installs the app on it; step 7 sets up the rest:
 
 ```sh

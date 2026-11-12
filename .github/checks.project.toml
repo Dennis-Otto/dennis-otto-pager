@@ -50,3 +50,18 @@
 # title = "The size of the card"
 # about = """The size of `dist/card.js` against that of main."""
 # replaces = "<!-- card-size -->"
+
+[step."Checks of this project"]
+problem = """A test of the Worker passes with the values of `wrangler.jsonc` but fails with
+those of another instance, which `scripts/check-project.sh` sets by
+`scripts/another-instance.config.ts`: the output above names the test."""
+why = """`wrangler.jsonc` holds the values of one instance, and every copy sets its own
+there, as `docs/setup.md` asks. A test that holds on to one maintainer, control
+repository or language fails the checks of every other copy, which then can't merge a
+change of its own or take an update."""
+fix = """Take the value from `env` of `cloudflare:test` in the test, as `test/index.test.ts`
+does, or set it in the environment that the test passes, then run the checks again:"""
+commands = ["bash scripts/check-project.sh"]
+docs = ".github/agents.project.md"
+autofix = """A test that holds on to the values of one instance needs a person, who
+decides which value it means."""

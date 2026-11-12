@@ -35,6 +35,11 @@ A bundle whose last entry is gone turns green by itself, and a new failure after
 
 A message shows what its thing says, so that it needs no visit to GitHub. A contribution quotes the first 500 characters of its issue, pull request, discussion or comment, without the HTML comments of its form, escaped and folded as `<blockquote expandable>`, in the room that its draft and its note leave below the 4096 characters of Telegram. A release shows the notes of its pull request, after `<!-- The notes of the release follow. -->` or else the first `---`: headings in bold, items as *• text #56* with the number linked and the links to commits left out, at most 15 lines or 1200 characters and *… and N more* for the rest, below *⚠️ Breaking changes* when the notes have a section of breaking changes or the major version goes up from 1 or above. A pager that speaks another language than English shows them in its own, as [the notes of a release in your language](#the-notes-of-a-release-in-your-language) says.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-contribution-en.dark.png">
+  <img src="images/screenshots/chat-contribution-en.png" alt="A new issue in the topic of its contribution: sam-lee reports that the sync of paperless-sync stops when a tag has a slash, quoted in the message, with the buttons Draft a reply, Assistant again, Later and Ignore. A minute after Draft a reply, the same message, edited, shows the draft of a reply in the maintainer's voice, with the buttons Send, Edit, Later and Ignore">
+</picture>
+
 ## The notes of a release in your language
 
 The repositories write their changelogs in English, and GitHub keeps them so. A pager in German shows the notes of a release in German all the same ([decision 0020](decisions/0020-the-notes-of-a-release-come-in-the-language-of-the-pager.md)):
@@ -44,6 +49,11 @@ The repositories write their changelogs in English, and GitHub keeps them so. A 
 - **Checked, line by line:** a translated line that lost a reference, such as #791, or a name of code, such as `anchore/syft`, `v1.56.0`, `node_modules` or `.github`, that says nothing or is longer than 450 characters keeps its English; an answer with another number of lines, or longer than 2400 characters in all, changes nothing.
 - **Once per notes:** the record of the release keeps the translation, so a later change of its message, such as *merged* or a new head with the same notes, asks nothing again. Notes that change, such as by an edit of the pull request, ask anew, and so does a pager that speaks another language since; until its answer comes, it shows the English. An ask that failed, such as on a broken network, goes again with the event that GitHub delivers again, or with the next check of the release.
 - **English when it doesn't come:** a control repository that doesn't answer, or one without the job for `pager-translate`, leaves the English, and so does a pager in English, which asks for nothing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-release-en.dark.png">
+  <img src="images/screenshots/chat-release-en.png" alt="The message of the release 1.7.0 of Dennis-Otto/paperless-sync in its topic: its notes under Features, and that every check is green and Merge publishes it, with the buttons Merge, Later and Ignore">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-notes-of-a-release.dark.svg">
@@ -83,6 +93,11 @@ The repositories write their changelogs in English, and GitHub keeps them so. A 
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it, and an ignored workflow stays quiet until a run of it passes.
 - **Once GitHub has acted,** the pager keeps it, whatever Telegram answers. A button that merged, posted, started a run of Claude, a rerun or the issue assistant, or saved the answer to a question, keeps the new state of its thing also when Telegram refuses the change of the message, such as in an outage or with a 429 that asks to wait long: the press still gets its answer, a second press of a button that the old message still shows is refused as out of date instead of acting on GitHub twice, and the next change of the thing shows the right message.
 - **Every press gets an answer.** A press whose handling fails unexpectedly, such as when Telegram refuses the change of the message before GitHub was asked, Workers KV fails or GitHub can't be reached, gets the alert *😢 The pager failed on this press, and whether it acted is uncertain*, instead of a button that shows its loading state until Telegram gives up; look at the thing on GitHub, then press again. The error goes to the log of the Worker, as before.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-alarm-en.dark.png">
+  <img src="images/screenshots/chat-alarm-en.png" alt="A message of Repo Pager in Telegram, in the topic 🚨 repo-blueprint needs you: Dennis-Otto/repo-blueprint needs you, since the release fails and Socket Security fails on main, with the buttons Rerun and Start fix, Later and Ignore">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.dark.svg">
@@ -321,6 +336,11 @@ The jobs of the control repository take 40 minutes at most, so the pager waits a
 ## A topic per thing
 
 Telegram's Bot API 9.4 lets a bot open topics in its private chat, with `createForumTopic`, once Threaded Mode is on for the bot in the Mini App of @BotFather ([Set up](setup.md#1-the-bot-of-telegram)). Then the first message of each thing opens a topic of its own, named after its repository, without its owner, and what the thing is, with a color per kind:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-topics-en.dark.png">
+  <img src="images/screenshots/chat-topics-en.png" alt="The list of the topics of Repo Pager, the newest first, each in its color with the last line of its message: 🚨 repo-blueprint needs you, 📦 paperless-sync 1.7.0, the issue of paperless-sync, the question of an agent 🤔 Decision: Which release goes first?, and ✅ 🔴 Links in issue-assistant, which is green again">
+</picture>
 
 | Thing | Name of its topic | Color |
 | --- | --- | --- |

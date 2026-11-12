@@ -27,7 +27,7 @@ import type { Texts } from "./texts.ts";
 export const MAX_TOPIC_NAME = 128;
 
 /** The color of the icon of each kind of thing's topic. */
-const COLORS: Readonly<Record<Kind, TopicColor>> = {
+export const COLORS: Readonly<Record<Kind, TopicColor>> = {
   contribution: TOPIC_COLORS.blue,
   alarm: TOPIC_COLORS.red,
   workflow: TOPIC_COLORS.red,

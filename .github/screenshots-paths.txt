@@ -9,10 +9,7 @@
 scripts/social-preview.sh
 # The browser that takes the pictures.
 .github/screenshots-browser-requirements.txt
-# The website: its pages and settings, and its theme, which the blueprint keeps
-# current; not the pictures that the script takes.
-mkdocs.yml
-docs/**
-!docs/images/screenshots/**
-.github/mkdocs*
-.github/docs-requirements.txt
+# The chats of the pager: the page that draws them, and what they say, which
+# test/chat.test.ts writes from the texts of the pager.
+.github/chat.html
+.github/chat.js

@@ -13,6 +13,11 @@
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshots/chat-alarm-de.dark.png">
+  <img src="docs/images/screenshots/chat-alarm-de.png" alt="Eine Nachricht von Repo Pager in Telegram, im Thema 🚨 repo-blueprint braucht dich: Dennis-Otto/repo-blueprint braucht dich, weil das Release scheitert und Socket Security auf main scheitert, mit den Knöpfen Neu starten und Fix starten, Später und Ignorieren">
+</picture>
+
 Die Dokumentation steht auf der [Website](https://dennis-otto.github.io/repo-pager/de/). English: [README.md](README.md).
 
 <sub>💛 Wenn dir Repo Pager nützt, kannst du [seine Entwicklung unterstützen](https://github.com/sponsors/Dennis-Otto).</sub>

@@ -2,6 +2,11 @@
 
 Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/screenshots/chat-alarm-de.dark.png">
+  <img src="images/screenshots/chat-alarm-de.png" alt="Eine Nachricht von Repo Pager in Telegram, im Thema 🚨 repo-blueprint braucht dich: Dennis-Otto/repo-blueprint braucht dich, weil das Release scheitert und Socket Security auf main scheitert, mit den Knöpfen Neu starten und Fix starten, Später und Ignorieren">
+</picture>
+
 Der Pager schreibt nur, wenn etwas den Maintainer braucht, nie, um zu sagen, dass alles gut ist: ein Beitrag von außen und jeder Kommentar von jemand anderem dazu, eine Diskussion oder ein Kommentar zu einer von jemand anderem, ein fehlschlagendes `main`, ein scheiterndes Release, ein Code-Scanning-Alarm mit Schweregrad high oder critical, ein Secret, das das Secret Scanning fand, eine vertrauliche Meldung einer Sicherheitslücke ohne ein Wort dessen, was sie sagt, ein grüner Release-Pull-Request, die Bilder eines Pull Requests des Maintainers oder eines Bots, der ändert, wie etwas aussieht, vorher und nachher, und das Token von Claude im Steuer-Repository, bevor es abläuft. Jede Sache bekommt **eine Nachricht** mit ihren Knöpfen, in einem eigenen Thema, sobald der Threaded Mode für den Bot an ist, die der Pager an Ort und Stelle ändert, wenn sich die Sache ändert; was in einem Repository fehlschlägt, wird gebündelt, und nur eine neue Sache, ein neuer Kommentar zu einer Diskussion, einem Issue oder einem Pull Request, die Antwort auf einen Entwurf oder Fix und das Album eines neueren Heads eines Pull Requests benachrichtigen. Eine Frage im Thema einer Sache geht mit dieser Sache an das Steuer-Repository, und eine erledigte Sache bekommt ein ✅ vor ihr Thema: Eine Diskussion, ein Issue oder ein Pull Request erledigt sich selbst, sobald der Maintainer auf GitHub antwortet oder es geschlossen wird, eine Diskussion auch, sobald eine Antwort markiert wird, und ein Text von ✏️ Bearbeiten bleibt der eigene Entwurf des Maintainers.
 
 | Knopf | Was er tut |

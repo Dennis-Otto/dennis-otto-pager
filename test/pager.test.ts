@@ -1218,6 +1218,45 @@ describe("reviews and what else someone does to a pull request or an issue", () 
     expect(await thing(fresh)).not.toHaveProperty("activities");
   });
 
+  it("forget an activity whose notice failed, so that the next delivery notifies", async () => {
+    const w = await shown();
+    let busy = true;
+    w.net.on("POST", /\/sendMessage$/, () =>
+      busy
+        ? json(
+            { ok: false, description: "Too Many Requests: retry after 5" },
+            429,
+          )
+        : undefined,
+    );
+    const first = await thing(w);
+    await expect(apply(w.context, did("commits"))).rejects.toThrow(
+      "Too Many Requests",
+    );
+    // The thing knew of no activity and no notice before, and still knows of none.
+    let after = await thing(w);
+    expect(after).not.toHaveProperty("activities");
+    expect(after.noticed).toBe(first.noticed);
+    busy = false;
+    expect(await apply(w.context, did("commits"))).toBe(
+      "commits shown in place",
+    );
+    // A later activity whose notice fails gives back what the thing knew.
+    w.clock.now = START + QUIET;
+    busy = true;
+    await expect(
+      apply(w.context, did("reopened", "2026-11-12T09:00:00Z")),
+    ).rejects.toThrow("Too Many Requests");
+    after = await thing(w);
+    expect(after.activities).toEqual({ commits: "2026-11-12T08:00:00Z" });
+    expect(after.noticed).toBe(START);
+    busy = false;
+    expect(
+      await apply(w.context, did("reopened", "2026-11-12T09:00:00Z")),
+    ).toBe("reopened shown in place");
+    expect(w.net.telegram("sendMessage").at(-1)?.body.text).toContain("Fix it");
+  });
+
   it("keep the times of the activities when a comment opens the thing again", async () => {
     const w = await shown();
     await apply(w.context, did("commits"));

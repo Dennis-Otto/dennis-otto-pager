@@ -54,7 +54,12 @@ async function github(context: Context, request: Request): Promise<Response> {
   } catch {
     return new Response("Bad Request", { status: 400 });
   }
-  const outcome = classify(event, payload, context.settings.maintainer);
+  const outcome = classify(
+    event,
+    payload,
+    context.settings.maintainer,
+    context.settings.owners,
+  );
   if ("ignored" in outcome) {
     return new Response(`ignored: ${outcome.ignored}`);
   }

@@ -13,6 +13,7 @@ import {
   isBot,
   isMaintainer,
   isRequired,
+  isServed,
   type Payload,
   picturesBlocker,
   releaseBlocker,
@@ -78,6 +79,68 @@ describe("where an event comes from", () => {
     expect(classify("issues", foreign, ME)).toEqual({
       ignored: "a repository of another owner",
     });
+  });
+
+  it("serves the repositories of the further owners of OWNERS as well", () => {
+    const ORG = "octo-org";
+    const ofTheOrganization = event({
+      repository: {
+        ...repository,
+        full_name: `${ORG}/demo`,
+        owner: { login: "Octo-Org", type: "Organization" },
+      },
+      action: "opened",
+      issue: { number: 1, user: stranger },
+    });
+    expect(classify("issues", ofTheOrganization, ME, [ORG])).toMatchObject({
+      signal: { repo: `${ORG}/demo`, type: "contribution", author: "octocat" },
+    });
+    // Without OWNERS, the organization is another owner, and so is any owner
+    // that OWNERS doesn't name.
+    expect(classify("issues", ofTheOrganization, ME)).toEqual({
+      ignored: "a repository of another owner",
+    });
+    expect(classify("issues", ofTheOrganization, ME, ["other-org"])).toEqual({
+      ignored: "a repository of another owner",
+    });
+    // The maintainer's own repositories stay served beside them.
+    expect(
+      classify(
+        "issues",
+        event({ action: "opened", issue: { number: 1, user: stranger } }),
+        ME,
+        [ORG],
+      ),
+    ).toMatchObject({ signal: { type: "contribution" } });
+  });
+
+  it("keeps the maintainer alone the maintainer in a repository of an organization", () => {
+    const repo = {
+      ...repository,
+      full_name: "octo-org/demo",
+      owner: { login: "octo-org", type: "Organization" },
+    };
+    const opened = (user: { login: string }) =>
+      event({
+        repository: repo,
+        action: "opened",
+        issue: { number: 1, user },
+      });
+    expect(classify("issues", opened({ login: ME }), ME, ["octo-org"])).toEqual(
+      { ignored: "opened by the maintainer" },
+    );
+    // The organization serves, but is nobody's own: what it opens, as anyone
+    // else, is a contribution.
+    expect(
+      classify("issues", opened({ login: "octo-org" }), ME, ["octo-org"]),
+    ).toMatchObject({ signal: { type: "contribution", author: "octo-org" } });
+  });
+
+  it("knows whom it serves without regard to case", () => {
+    expect(isServed({ login: "dennis-otto" }, ME, [])).toBe(true);
+    expect(isServed({ login: "OCTO-ORG" }, ME, ["octo-org"])).toBe(true);
+    expect(isServed(stranger, ME, ["octo-org"])).toBe(false);
+    expect(isServed(undefined, ME, ["octo-org"])).toBe(false);
   });
 
   it("knows no other event", () => {

@@ -937,6 +937,7 @@ async function activity(
   }
   const last = lastNotice(known);
   const quiet = last !== undefined && now - last < QUIET;
+  const before = { activities: known.activities, noticed: known.noticed };
   known.title = signal.title;
   known.note = note;
   known.noticed = quiet ? last : now;
@@ -952,14 +953,32 @@ async function activity(
   if (sent) {
     return `${signal.what} shown in a new message`;
   }
-  await postBelow(
-    context,
-    known,
-    context.t(ACTIVITY[signal.what].notice, {
-      author: html(signal.by, 100),
-      link: link(`#${signal.number} ${signal.title}`, signal.url),
-    }),
-  );
+  try {
+    await postBelow(
+      context,
+      known,
+      context.t(ACTIVITY[signal.what].notice, {
+        author: html(signal.by, 100),
+        link: link(`#${signal.number} ${signal.title}`, signal.url),
+      }),
+    );
+  } catch (error) {
+    // Such as too many requests at once: the thing forgets the activity and the
+    // notice again, so that GitHub's next delivery of the event finds it new and
+    // sends the notice, as addEntry() does.
+    if (before.activities === undefined) {
+      delete known.activities;
+    } else {
+      known.activities = before.activities;
+    }
+    if (before.noticed === undefined) {
+      delete known.noticed;
+    } else {
+      known.noticed = before.noticed;
+    }
+    await context.store.put(known);
+    throw error;
+  }
   return `${signal.what} shown in place`;
 }
 

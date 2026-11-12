@@ -20,6 +20,7 @@ Not planned for a date yet; a discussion is the place to say that one matters to
 
 - **Control of a run of your agents.** An agent asks its decisions through the pager today and reads the answer from a branch of the control repository ([decision 0008](decisions/0008-an-agent-reads-its-answer-from-a-branch-of-the-control-repository.md)), and a run sends its report. The pager could also show a long run as it goes, and pause or stop it with a button.
 - **Claude Code Channels.** A channel pushes messages into a running session of Claude Code. The pager could become one, so that a text in the topic of a thing reaches a session on the maintainer's computer directly, and not only the workflow of the control repository.
+- **A team of an organization.** The pager watches the repositories of an organization with `OWNERS`, yet only `MAINTAINER_LOGIN` is its maintainer, so what the other members open pages as a contribution. It could take the members of a team as its own, and keep a token for each owner, so that ✅ **Send** acts in the repositories of each.
 - **More languages.** The pager speaks English and German, from one catalog per language in `src/texts.ts`. Another language is a catalog with the same keys, placeholders and emojis, which the compiler and `test/texts.test.ts` check ([decision 0004](decisions/0004-one-language-per-pager-from-a-catalog.md)).
 
 ## Done

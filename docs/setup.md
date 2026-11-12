@@ -10,6 +10,7 @@ There is no app of Repo Pager to install and no pager that serves several people
 
 - **Your tokens and your events stay yours.** A shared app would receive the events of every user's repositories, private ones included, and hold the tokens that act in their names. Your own app sends the events of your repositories to your Worker alone, and its secrets live in your account of Cloudflare.
 - **One pager serves one chat.** The Worker serves only the chat that `TELEGRAM_CHAT_ID` names and acts for one account, `MAINTAINER_LOGIN`; its state is that of one maintainer.
+- **It watches the repositories of your account,** and those of an organization only when you name it in `OWNERS` and its app can be installed there, as [Repositories of an organization](#repositories-of-an-organization) describes. In the organization too, only you are the maintainer: what the other members open pages as a contribution.
 - **Your subscription answers.** The drafts, the fixes and the free text run with Claude Code and your own subscription, in your own private control repository, never with the key of a shared service.
 
 ## Your copy
@@ -21,11 +22,28 @@ Make a copy of this repository: a fork, or a repository of your own. `wrangler.j
 | `name` | The name of your Worker, such as `repo-pager`, which its address takes |
 | `kv_namespaces` | No `id`: the one there names the namespace of the maintainer's instance, and your first deployment creates your own and writes its id there |
 | `MAINTAINER_LOGIN` | Your account on GitHub |
+| `OWNERS` | Empty, or the organizations whose repositories the pager watches as well, separated by commas, such as `octo-org`: read [Repositories of an organization](#repositories-of-an-organization) first |
 | `CONTROL_REPOSITORY` | Your private control repository, which you create below and set up in step 7, such as `octocat/repo-pager-control` |
 | `LANGUAGE` | `de` for German, `en` or empty for English |
 | `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
 
 The tests of your copy pass with your values: they take them from `wrangler.jsonc`, and `bash scripts/check.sh` runs them once more with those of another instance, so that a change of your own and an update come through a green pull request.
+
+### Repositories of an organization
+
+The pager watches the repositories of `MAINTAINER_LOGIN` and of each owner that `OWNERS` names; it drops the events of every other repository without a message ([decision 0025](decisions/0025-the-pager-watches-the-repositories-of-owners-beside-its-maintainer.md)). Who counts as you stays `MAINTAINER_LOGIN`, in the organization's repositories too: what you open there is yours, and what anyone else opens, a member of the organization as well, is a contribution, with its message.
+
+Which repositories send their events is decided by the installations of the GitHub App, and a private app, as `github-app.json` registers it, can only be installed on the account that owns it. So decide before step 4:
+
+| The pager watches | The GitHub App | The control repository |
+| --- | --- | --- |
+| The repositories of your account | Yours, private, as step 4 registers it | In your account |
+| The repositories of one organization | The organization's, private: `node scripts/register-app.mjs "$WORKER" --org ORGANIZATION`, which needs the right to manage the organization's apps | In the organization |
+| Those of your account and of organizations | Yours or an organization's, made public in its settings, under *Advanced* → *Make public*, and installed on each account | In your account |
+
+A public app can be installed by anyone, yet it holds none of your secrets, and nothing that its other installations send reaches your chat: the Worker serves only the repositories of `MAINTAINER_LOGIN` and `OWNERS`. With a control repository in an organization, the questions and reports of your own agents don't pass: its workflow *Agents* forwards only what the owner of the repository sent, and an organization sends nothing.
+
+A fine-grained token has one owner, your account or one organization, which may have to approve it first: `GITHUB_USER_TOKEN` of step 3 and `PAGER_FIX_TOKEN` of step 7 act only in the repositories of the owner that you choose for them. Choose the organization when the pager watches its repositories alone.
 
 The commands below name your control repository with a variable of the shell. Create it now, private, from [the template of the control repository](https://github.com/Dennis-Otto/repo-pager-control-template), because step 3 gives it a secret and step 4 installs the app on it; step 7 sets up the rest:
 
@@ -115,9 +133,9 @@ The app sends the events of your repositories to the Worker and merges a release
 node scripts/register-app.mjs "$WORKER"
 ```
 
-Open the address that it prints, in the browser that is signed in to GitHub, and confirm the app. GitHub shows its name, *Repo Pager*, in a field above the button: an app's name is unique on GitHub, so give yours one of your own there, of at most 34 characters, such as *Repo Pager of octocat*. The script puts its App ID, private key and webhook secret into the secrets of the Worker, without a file, and prints the page that installs it. **Install the app** on the repositories that the pager watches **and on your control repository**, where it sends the drafts, the fixes and the free text.
+For the app of an organization, add `--org ORGANIZATION`, as [Repositories of an organization](#repositories-of-an-organization) says. Open the address that it prints, in the browser that is signed in to GitHub, and confirm the app. GitHub shows its name, *Repo Pager*, in a field above the button: an app's name is unique on GitHub, so give yours one of your own there, of at most 34 characters, such as *Repo Pager of octocat*. The script puts its App ID, private key and webhook secret into the secrets of the Worker, without a file, and prints the page that installs it. **Install the app** on the repositories that the pager watches **and on your control repository**, where it sends the drafts, the fixes and the free text.
 
-The app is private, so only your account can install it. Its permissions:
+The app is private, so only the account that owns it can install it: yours, or the organization of `--org`. To install it on more than one account, make it public, as [Repositories of an organization](#repositories-of-an-organization) describes. Its permissions:
 
 | Permission | Access | For |
 | --- | --- | --- |

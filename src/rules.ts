@@ -516,13 +516,35 @@ export function releaseBlocker(
   return null;
 }
 
-function where(payload: Payload, maintainer: string): Where | string {
+/**
+ * Whether the pager serves the repositories of an account: the maintainer's own,
+ * and those of the further owners of OWNERS, such as an organization; GitHub
+ * compares logins without case.
+ */
+export function isServed(
+  account: Account | undefined,
+  maintainer: string,
+  owners: readonly string[],
+): boolean {
+  return [maintainer, ...owners].some((owner) => isMaintainer(account, owner));
+}
+
+/**
+ * The repository and installation of an event, or why the pager doesn't serve it.
+ * Whose repository it is decides only this; who counts as the maintainer stays
+ * MAINTAINER_LOGIN alone, also in a repository of an organization.
+ */
+function where(
+  payload: Payload,
+  maintainer: string,
+  owners: readonly string[],
+): Where | string {
   const repo = payload.repository?.full_name;
   const installation = payload.installation?.id;
   if (repo === undefined || installation === undefined) {
     return "no repository or installation";
   }
-  if (!isMaintainer(payload.repository?.owner, maintainer)) {
+  if (!isServed(payload.repository?.owner, maintainer, owners)) {
     return "a repository of another owner";
   }
   return { repo, installation };
@@ -1372,13 +1394,18 @@ function release(payload: Payload, at: Where): Outcome {
   };
 }
 
-/** What an event of GitHub means for the maintainer: a signal, or why it means nothing. */
+/**
+ * What an event of GitHub means for the maintainer: a signal, or why it means
+ * nothing. The pager serves the repositories of the maintainer and of the further
+ * owners of OWNERS, none by default.
+ */
 export function classify(
   event: string,
   payload: Payload,
   maintainer: string,
+  owners: readonly string[] = [],
 ): Outcome {
-  const at = where(payload, maintainer);
+  const at = where(payload, maintainer, owners);
   if (typeof at === "string") {
     return { ignored: at };
   }

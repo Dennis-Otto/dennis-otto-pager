@@ -42,8 +42,12 @@
   // personal, so it lives in Cloudflare only, as TELEGRAM_CHAT_ID.
   "vars": {
     // The GitHub account of the maintainer: what they open is no contribution from
-    // outside, and only their repositories are served.
+    // outside, and their repositories are served.
     "MAINTAINER_LOGIN": "Dennis-Otto",
+    // The further owners whose repositories are served, such as an organization,
+    // separated by commas; empty for the maintainer's own alone. Who counts as the
+    // maintainer stays MAINTAINER_LOGIN, in these repositories too.
+    "OWNERS": "",
     // The private repository whose workflow drafts the replies, starts the fixes and
     // reads the free text, as docs/how-it-works.md describes.
     "CONTROL_REPOSITORY": "Dennis-Otto/repo-pager-control",

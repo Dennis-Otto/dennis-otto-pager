@@ -7,19 +7,25 @@
 //
 //   node scripts/register-app.mjs https://repo-pager.ACCOUNT.workers.dev
 //
+// The app belongs to your personal account. With `--org ORGANIZATION`, it belongs
+// to that organization instead, whose apps you may manage, so that it can be
+// installed on the organization's repositories; docs/setup.md says which to take.
+//
 // It needs `npx wrangler login` before, as the first deployment does.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
-const worker = process.argv[2]?.replace(/\/+$/, "") ?? "";
-if (!/^https:\/\/[a-z0-9.-]+$/i.test(worker)) {
-  console.error(
-    "Name the address of the Worker, such as https://repo-pager.ACCOUNT.workers.dev",
-  );
+import { newAppPage, registration, USAGE } from "./app-address.ts";
+
+const asked = registration(process.argv.slice(2));
+if (typeof asked === "string") {
+  console.error(asked);
+  console.error(`Usage: ${USAGE}`);
   process.exit(2);
 }
+const { worker, organization } = asked;
 
 const manifest = JSON.parse(
   readFileSync(new URL("../github-app.json", import.meta.url), "utf8"),
@@ -83,7 +89,7 @@ const server = createServer(async (request, response) => {
     const form = htmlText(JSON.stringify(manifest));
     page(
       200,
-      `<form method="post" action="https://github.com/settings/apps/new?state=${state}">
+      `<form method="post" action="${htmlText(newAppPage(organization, state))}">
 <input type="hidden" name="manifest" value="${form}">
 <p>This page sends the manifest of the pager's GitHub App to GitHub, where you confirm it.</p>
 <button>Create the app on GitHub</button></form>

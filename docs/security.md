@@ -29,6 +29,7 @@ Releases up to 0.7.0 were built while the repository was called `dennis-otto-pag
 | A change goes live without its checks | Only a release deploys, from `main`, which takes no change without every required check |
 | A key of Cloudflare leaks from GitHub | None is stored there: Cloudflare builds and deploys with Workers Builds |
 | An issue, a comment or a log steers Claude | Claude reads them as data, with tools that only read, behind a firewall; both sides check its answer against the allowlist, and only a press acts |
+| Someone else installs the GitHub App, once the maintainer made it public to watch an organization | The app holds no secret; the Worker serves only the repositories of `MAINTAINER_LOGIN` and `OWNERS`, and ends every other event without a message, a record or a call to GitHub |
 | A forged answer of the control repository | The Worker takes only a body signed with `CONTROL_SECRET` within five minutes; a proposal gets a button only while its thing offers the action |
 | Someone else asks a question in the maintainer's name, or an answer runs | The control repository is private, and its workflow forwards only the events of its owner; an option is a label and an answer is data, a file that the agent reads, and neither acts on GitHub |
 | A private vulnerability report leaks through the chat before its advisory is published | The pager keeps only its id, severity and day: its summary and description reach no message, record, log, answer to GitHub or the control repository |

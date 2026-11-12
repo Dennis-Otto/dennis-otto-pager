@@ -24,6 +24,7 @@ const language = /"LANGUAGE"\s*:\s*"([^"]*)"/.exec(
 // docs/setup.md asks a copy to set, so that none of them is that of wrangler.jsonc.
 const ANOTHER_INSTANCE = {
   MAINTAINER_LOGIN: "another-maintainer",
+  OWNERS: "another-organization",
   CONTROL_REPOSITORY: "another-maintainer/pager-control",
   LANGUAGE: language?.trim().toLowerCase() === "de" ? "en" : "de",
   CLAUDE_TOKEN_EXPIRES: "",

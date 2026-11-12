@@ -209,6 +209,37 @@ describe("the webhook of GitHub", () => {
     expect(await (await call(nameless)).text()).toBe("ignored: the event ");
   });
 
+  it("serves the repositories of the owners of OWNERS, and no other owner's", async () => {
+    const of = (owner: string) => ({
+      ...opened,
+      repository: {
+        ...repository,
+        full_name: `${owner}/demo`,
+        owner: { login: owner, type: "Organization" },
+      },
+    });
+    const organization = {
+      ...(await secrets()),
+      OWNERS: "pager-test-org",
+    } as unknown as PagerEnv;
+    expect(
+      await (
+        await call(
+          await fromGitHub("issues", of("pager-test-org")),
+          organization,
+        )
+      ).text(),
+    ).toBe("contribution shown");
+    expect(
+      await (
+        await call(
+          await fromGitHub("issues", of("pager-test-stranger")),
+          organization,
+        )
+      ).text(),
+    ).toBe("ignored: a repository of another owner");
+  });
+
   it("pages for what counts, in the language of wrangler.jsonc", async () => {
     const response = await call(await fromGitHub("issues", opened));
     expect(await response.text()).toBe("contribution shown");

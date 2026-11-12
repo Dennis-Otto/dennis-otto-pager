@@ -10,6 +10,7 @@ Es gibt keine App von Repo Pager zum Installieren und keinen Pager, der mehrere 
 
 - **Deine Tokens und deine Ereignisse bleiben deine.** Eine gemeinsame App bekäme die Ereignisse der Repositorys aller Nutzer, auch der privaten, und hielte die Tokens, die in ihrem Namen handeln. Deine eigene App schickt die Ereignisse deiner Repositorys nur an deinen Worker, und ihre Geheimnisse liegen in deinem Konto bei Cloudflare.
 - **Ein Pager bedient einen Chat.** Der Worker bedient nur den Chat, den `TELEGRAM_CHAT_ID` nennt, und handelt für ein Konto, `MAINTAINER_LOGIN`; sein Zustand ist der eines Maintainers.
+- **Er beobachtet die Repositorys deines Kontos,** und die einer Organisation nur, wenn du sie in `OWNERS` nennst und ihre App dort installiert werden kann, wie [Repositorys einer Organisation](#repositorys-einer-organisation) beschreibt. Auch in der Organisation bist nur du der Maintainer: Was die anderen Mitglieder eröffnen, meldet er als Beitrag.
 - **Dein Abo antwortet.** Die Entwürfe, die Fixes und der freie Text laufen mit Claude Code und deinem eigenen Abo, in deinem eigenen privaten Steuer-Repository, nie mit dem Schlüssel eines gemeinsamen Dienstes.
 
 ## Deine Kopie
@@ -21,11 +22,28 @@ Leg eine Kopie dieses Repositorys an: einen Fork oder ein eigenes Repository. `w
 | `name` | Der Name deines Workers, etwa `repo-pager`, den seine Adresse trägt |
 | `kv_namespaces` | Ohne `id`: Die dort nennt den Namensraum der Instanz des Maintainers, und dein erstes Deployment legt deinen eigenen an und schreibt seine Id dorthin |
 | `MAINTAINER_LOGIN` | Dein Konto auf GitHub |
+| `OWNERS` | Leer, oder die Organisationen, deren Repositorys der Pager auch beobachtet, durch Kommas getrennt, etwa `octo-org`: Lies zuerst [Repositorys einer Organisation](#repositorys-einer-organisation) |
 | `CONTROL_REPOSITORY` | Dein privates Steuer-Repository, das du unten anlegst und in Schritt 7 einrichtest, etwa `octocat/repo-pager-control` |
 | `LANGUAGE` | `de` für Deutsch, `en` oder leer für Englisch |
 | `CLAUDE_TOKEN_EXPIRES` | Der Tag, an dem dein Token von Claude abläuft, oder leer |
 
 Die Tests deiner Kopie bestehen mit deinen Werten: Sie nehmen sie aus `wrangler.jsonc`, und `bash scripts/check.sh` lässt sie noch einmal mit denen einer anderen Instanz laufen, damit eine eigene Änderung und ein Update durch einen grünen Pull-Request kommen.
+
+### Repositorys einer Organisation
+
+Der Pager beobachtet die Repositorys von `MAINTAINER_LOGIN` und von jedem Besitzer, den `OWNERS` nennt; die Ereignisse jedes anderen Repositorys verwirft er ohne Nachricht ([Entscheidung 0025](decisions/0025-the-pager-watches-the-repositories-of-owners-beside-its-maintainer.md)). Wer als du gilt, bleibt `MAINTAINER_LOGIN`, auch in den Repositorys der Organisation: Was du dort eröffnest, ist deins, und was jemand anderes eröffnet, auch ein Mitglied der Organisation, ist ein Beitrag, mit seiner Nachricht.
+
+Welche Repositorys ihre Ereignisse schicken, entscheiden die Installationen der GitHub-App, und eine private App, wie `github-app.json` sie anlegt, lässt sich nur auf dem Konto installieren, dem sie gehört. Entscheide also vor Schritt 4:
+
+| Der Pager beobachtet | Die GitHub-App | Das Steuer-Repository |
+| --- | --- | --- |
+| Die Repositorys deines Kontos | Deine, privat, wie Schritt 4 sie anlegt | In deinem Konto |
+| Die Repositorys einer Organisation | Die der Organisation, privat: `node scripts/register-app.mjs "$WORKER" --org ORGANISATION`, das das Recht braucht, die Apps der Organisation zu verwalten | In der Organisation |
+| Die deines Kontos und die von Organisationen | Deine oder die einer Organisation, in ihren Einstellungen unter *Advanced* → *Make public* öffentlich gemacht und auf jedem Konto installiert | In deinem Konto |
+
+Eine öffentliche App kann jeder installieren, doch sie hält keins deiner Geheimnisse, und nichts, was ihre anderen Installationen schicken, erreicht deinen Chat: Der Worker bedient nur die Repositorys von `MAINTAINER_LOGIN` und `OWNERS`. Mit einem Steuer-Repository in einer Organisation kommen die Fragen und Berichte deiner eigenen Agenten nicht durch: Sein Workflow *Agents* leitet nur weiter, was der Besitzer des Repositorys geschickt hat, und eine Organisation schickt nichts.
+
+Ein fein granuliertes Token hat einen Besitzer, dein Konto oder eine Organisation, die es vielleicht erst genehmigen muss: `GITHUB_USER_TOKEN` aus Schritt 3 und `PAGER_FIX_TOKEN` aus Schritt 7 handeln nur in den Repositorys des Besitzers, den du für sie wählst. Wähl die Organisation, wenn der Pager nur ihre Repositorys beobachtet.
 
 Die Befehle unten nennen dein Steuer-Repository mit einer Variablen der Shell. Leg es jetzt an, privat, aus [der Vorlage des Steuer-Repositorys](https://github.com/Dennis-Otto/repo-pager-control-template), denn Schritt 3 gibt ihm ein Geheimnis und Schritt 4 installiert die App darauf; Schritt 7 richtet den Rest ein:
 
@@ -115,9 +133,11 @@ Die App schickt die Ereignisse deiner Repositorys an den Worker und merged ein R
 node scripts/register-app.mjs "$WORKER"
 ```
 
+Für die App einer Organisation häng `--org ORGANISATION` an, wie [Repositorys einer Organisation](#repositorys-einer-organisation) sagt.
+
 Öffne die Adresse, die es ausgibt, in dem Browser, der bei GitHub angemeldet ist, und bestätige die App. GitHub zeigt ihren Namen, *Repo Pager*, in einem Feld über dem Knopf: Der Name einer App ist auf GitHub einmalig, also gib deiner dort einen eigenen, mit höchstens 34 Zeichen, etwa *Repo Pager of octocat*. Das Skript legt ihre App-ID, ihren privaten Schlüssel und das Geheimnis ihres Webhooks in die Geheimnisse des Workers, ohne Datei, und nennt die Seite, die sie installiert. **Installiere die App** auf den Repositorys, die der Pager beobachtet, **und auf deinem Steuer-Repository**, wohin er die Entwürfe, die Fixes und den freien Text schickt.
 
-Die App ist privat, nur dein Konto kann sie installieren. Ihre Rechte:
+Die App ist privat, nur das Konto, dem sie gehört, kann sie installieren: deins oder die Organisation von `--org`. Um sie auf mehr als einem Konto zu installieren, mach sie öffentlich, wie [Repositorys einer Organisation](#repositorys-einer-organisation) beschreibt. Ihre Rechte:
 
 | Recht | Zugriff | Für |
 | --- | --- | --- |

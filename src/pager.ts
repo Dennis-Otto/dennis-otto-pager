@@ -109,9 +109,10 @@ const english = texts("en");
 export const MERGEABLE_TRIES = 3;
 
 /**
- * How long after a comment on an issue or a pull request notified the maintainer
- * the comments that follow only edit the message of its thing, in milliseconds: a
- * few quick comments notify once.
+ * How long after a thing notified the maintainer what follows only edits its
+ * message, in milliseconds: the comments on an issue or a pull request, and the
+ * new entries of an alarm or a security message (decisions 0011 and 0022). A few
+ * quick ones notify once.
  */
 export const QUIET = 10 * 60_000;
 
@@ -346,16 +347,30 @@ async function addEntry(
     // the new one, which lists the entry, notified already.
     return `new entry in the ${kind}, in a new message`;
   }
-  await postBelow(
-    context,
-    known,
-    context.t(
-      kind === "alarm" ? "message.newAlarmEntry" : "message.newAlertEntry",
-      {
-        link: link(entry.label, entry.url),
-      },
-    ),
-  );
+  try {
+    await postBelow(
+      context,
+      known,
+      context.t(
+        kind === "alarm" ? "message.newAlarmEntry" : "message.newAlertEntry",
+        {
+          link: link(entry.label, entry.url),
+        },
+      ),
+    );
+  } catch (error) {
+    // Such as too many requests at once: the bundle forgets the entry and the
+    // notice again, so that GitHub's next delivery of the event finds it new and
+    // sends the notice, and no window keeps the entries after it quiet.
+    known.entries = known.entries.filter((each) => each.key !== entry.key);
+    if (last === undefined) {
+      delete known.noticed;
+    } else {
+      known.noticed = last;
+    }
+    await context.store.put(known);
+    throw error;
+  }
   return `new entry in the ${kind}`;
 }
 

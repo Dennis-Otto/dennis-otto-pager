@@ -1032,6 +1032,52 @@ describe("the alarm of a repository", () => {
     expect(sent[1]?.body.text).not.toContain("New in this alarm");
   });
 
+  it("forgets a new entry whose notice failed, so that the next delivery notifies", async () => {
+    const w = await world();
+    const alarmOf = async () => (await stored(w, keys.alarm(REPO))) as Alarm;
+    let busy = false;
+    w.net.on("POST", /\/sendMessage$/, () =>
+      busy
+        ? json(
+            { ok: false, description: "Too Many Requests: retry after 5" },
+            429,
+          )
+        : undefined,
+    );
+    await apply(w.context, failing("check:lint"));
+    w.clock.now = START + QUIET;
+    busy = true;
+    await expect(apply(w.context, failing("workflow:release"))).rejects.toThrow(
+      "Too Many Requests",
+    );
+    expect(await alarmOf()).toMatchObject({
+      entries: [{ key: "check:lint" }],
+      noticed: START,
+    });
+    // GitHub delivers the event again, and the notice goes this time.
+    busy = false;
+    expect(await apply(w.context, failing("workflow:release"))).toBe(
+      "new entry in the alarm",
+    );
+    expect(w.net.telegram("sendMessage").at(-1)?.body.text).toContain(
+      "🚨 New in this alarm: ",
+    );
+    // A record from before the notices knows of none, and still knows of none.
+    const older = await alarmOf();
+    delete older.noticed;
+    await w.context.store.put(older);
+    busy = true;
+    await expect(apply(w.context, failing("check:docs"))).rejects.toThrow(
+      "Too Many Requests",
+    );
+    const after = await alarmOf();
+    expect(after).not.toHaveProperty("noticed");
+    expect(after.entries.map((each) => each.key)).toEqual([
+      "check:lint",
+      "workflow:release",
+    ]);
+  });
+
   it("keeps the run of an entry, follows it and writes only what changed", async () => {
     const w = await world();
     const bot = (type: "failing" | "still-failing", run: number) =>

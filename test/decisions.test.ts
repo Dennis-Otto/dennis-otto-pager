@@ -297,6 +297,26 @@ describe("a question of an agent", () => {
     expect(await stored(w)).toMatchObject({ state: "open", choice: null });
   });
 
+  it("keeps an answer that GitHub saved, though Telegram refused to show it", async () => {
+    const w = await world();
+    withoutBranch(withControl(w.net));
+    await send(w, QUESTION);
+    w.net.on("POST", /\/editMessageText$/, () =>
+      json({ ok: false, error_code: 502, description: "Bad Gateway" }, 502),
+    );
+    const id = await idOf();
+    await press(w, `choose:${id}:0`);
+    await press(w, `choose:${id}:1`);
+    expect(answered(w)).toEqual([
+      { text: "Saved for your agent: The blueprint", alert: false },
+      { text: "This button is out of date.", alert: true },
+    ]);
+    expect(
+      w.net.github(FILE).filter((call) => call.method === "PUT"),
+    ).toHaveLength(1);
+    expect(await stored(w)).toMatchObject({ state: "answered", choice: 0 });
+  });
+
   it("refuses a button of no option, and every button once it is answered", async () => {
     const w = await world();
     withoutBranch(withControl(w.net));

@@ -57,8 +57,8 @@ export const SUBREQUESTS = 50;
 export const ALARM_CHANGE = 11;
 
 /**
- * The calls that the pages of every outcome after the first leave for the
- * redeliveries and one change of the alarm.
+ * The calls that each page of every outcome leaves for the redeliveries and one
+ * change of the alarm.
  */
 export const RESERVE = MAX_REDELIVERIES + ALARM_CHANGE;
 
@@ -247,11 +247,14 @@ function keep(deliveries: Delivery[]): Delivery[] {
 /**
  * The deliveries of the last LOOK_BACK that a run needs: the failures, those of
  * every outcome back to the newest that the run before read, and what the runs
- * before kept of the older ones. The failures come first, and the pages of every
- * outcome after the first leave the calls of the redeliveries and of a change of
- * the alarm. Keeps what the next runs need.
+ * before kept of the older ones. The failures come first, and each page of every
+ * outcome leaves the calls of the redeliveries and of a change of the alarm.
+ * Keeps what the next runs need. Without a page of every outcome, the run
+ * doesn't see what passed since the run before, so it must not act on them.
  */
-async function recent(context: Context): Promise<Delivery[]> {
+async function recent(
+  context: Context,
+): Promise<{ found: Delivery[]; complete: boolean }> {
   const since = context.now() - LOOK_BACK;
   const old = (delivery: Delivery) => Date.parse(delivery.delivered_at) < since;
   const before = await context.local.get<Seen>(SEEN);
@@ -290,7 +293,7 @@ async function recent(context: Context): Promise<Delivery[]> {
     newest: ids.length === 0 ? newest : Math.max(...ids),
     kept: keep(found),
   });
-  return found;
+  return { found, complete: all.reached || ids.length > 0 };
 }
 
 /** The events of the deliveries, by their guid, each with its newest attempt by id. */
@@ -433,7 +436,14 @@ async function alarm(
  * of the alarm. Returns the id of the alarm when it changed.
  */
 export async function failedEvents(context: Context): Promise<string[]> {
-  const found = events(await recent(context));
+  const { found: deliveries, complete } = await recent(context);
+  if (!complete) {
+    // A newer pass that overtakes a failed event, or an attempt that passed
+    // already, may be among the deliveries that this run couldn't read: the
+    // next run reads them and decides.
+    return [];
+  }
+  const found = events(deliveries);
   const failing = found.filter(
     (event) =>
       event.first !== null && failed(event.newest) && !overtaken(event, found),

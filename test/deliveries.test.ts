@@ -547,6 +547,23 @@ describe("an event that the pager failed to handle", () => {
     expect((await full.context.local.get<Seen>(SEEN))?.newest).toBe(1);
     expect(warn).toHaveBeenCalledTimes(1);
 
+    // Nor does it act on the failures alone: a newer pass that only the list of
+    // every outcome shows would overtake the failed run.
+    const stale = attempt("stale", 40, 500, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const newer = attempt("newer", 30, 200, {
+      event: "workflow_run",
+      repository: 1,
+    });
+    const blind = listing(await world(), [[newer, stale]]);
+    await blind.context.local.put<Seen>(SEEN, { newest: 1, kept: [] });
+    spent(blind, SUBREQUESTS - 1 - RESERVE);
+    expect(await failedEvents(blind.context)).toEqual([]);
+    expect(lists(blind)).toEqual([FAILURES]);
+    expect(redelivered(blind)).toEqual([]);
+
     // The first run reads back three hours, as far as the pages go.
     const first = listing(await world(), pages);
     spent(first, SUBREQUESTS - 2 - RESERVE);
@@ -784,8 +801,9 @@ describe("the calls of a run of the schedule", () => {
     });
     withTopics(w.net);
     // Things that "Later" put aside come back, each as a new message that
-    // replaces the old one.
-    for (let index = 0; index < 12; index += 1) {
+    // replaces the old one: as many as leave room for the failures and one page
+    // of every outcome.
+    for (let index = 0; index < 11; index += 1) {
       await w.context.store.put({
         ...base(`i0000000000000${String(index).padStart(2, "0")}`),
         kind: "alarm",
@@ -795,7 +813,8 @@ describe("the calls of a run of the schedule", () => {
       } as Item);
     }
     const shown = await runSchedule(w.context);
-    expect(shown).toHaveLength(14);
+    expect(shown).toHaveLength(13);
+    expect(lists(w)).toEqual([FAILURES, DELIVERIES]);
     expect(w.context.subrequests()).toBe(w.net.calls.length);
     expect(w.net.calls.length).toBeLessThanOrEqual(SUBREQUESTS);
     expect(redelivered(w)).toHaveLength(MAX_REDELIVERIES);
@@ -803,7 +822,7 @@ describe("the calls of a run of the schedule", () => {
     expect((await theAlarm(w))?.entries).toHaveLength(1);
   });
 
-  it("leave the redeliveries what the steps before them left, and the alarm what is left then", async () => {
+  it("leave the redeliveries and the alarm to the next run when no page of every outcome fits", async () => {
     const w = listing(await world(), [
       [
         ...exhausted("thrice"),
@@ -813,9 +832,11 @@ describe("the calls of a run of the schedule", () => {
       ],
     ]);
     spent(w, SUBREQUESTS - 6);
-    await failedEvents(w.context);
-    // One page, five redeliveries, and no room for the alarm.
-    expect(redelivered(w)).toHaveLength(5);
+    expect(await failedEvents(w.context)).toEqual([]);
+    // The failures, and no room for a page of every outcome: what passed since
+    // the run before is unknown, so nothing comes again and the alarm waits.
+    expect(lists(w)).toEqual([FAILURES]);
+    expect(redelivered(w)).toEqual([]);
     expect(await theAlarm(w)).toBeNull();
 
     const none = listing(await world(), [[attempt("event", 10, 500)]]);
@@ -827,22 +848,22 @@ describe("the calls of a run of the schedule", () => {
   it("put off what doesn't fit into the alarm until the next run", async () => {
     const thrice = exhausted("thrice");
     const again = exhausted("again");
-    const w = listing(await world(), [[...thrice, ...again]]);
-    // The answers that didn't come in time, as the run before kept them, and
-    // room for the failures and one change of the alarm, which the pages of
-    // every outcome leave to it.
-    await w.context.local.put<Seen>(SEEN, {
-      newest: null,
-      kept: [thrice[0], again[0]] as Delivery[],
-    });
+    const fresh = Array.from({ length: MAX_REDELIVERIES }, (_, index) =>
+      attempt(`fresh-${index}`, 50 + index, 500),
+    );
+    const w = listing(await world(), [[...thrice, ...again, ...fresh]]);
+    // Room for the failures and one page of every outcome, which leaves the
+    // redeliveries and one change of the alarm.
     expect(RESERVE).toBe(MAX_REDELIVERIES + ALARM_CHANGE);
-    spent(w, SUBREQUESTS - 1 - ALARM_CHANGE);
+    spent(w, SUBREQUESTS - 2 - RESERVE);
     const id = await itemId(keys.alarm(CONTROL));
     expect(await failedEvents(w.context)).toEqual([id]);
+    expect(redelivered(w)).toHaveLength(MAX_REDELIVERIES);
     expect((await theAlarm(w))?.entries).toHaveLength(1);
 
     // An attempt that passed, which the run before kept: there is room for the
-    // failures, and none for the change of the alarm.
+    // failures, and none for the pages of every outcome, which the run leaves
+    // to the next together with the change of the alarm.
     const out = listing(await world(), [[]]);
     await out.context.local.put<Seen>(SEEN, {
       newest: null,
@@ -858,6 +879,30 @@ describe("the calls of a run of the schedule", () => {
     spent(out, SUBREQUESTS - ALARM_CHANGE);
     expect(await failedEvents(out.context)).toEqual([]);
     expect((await theAlarm(out))?.entries).toHaveLength(1);
+
+    // Two attempts that passed, and ten redeliveries before them: room for one
+    // change of the alarm, and the second entry leaves in the next run.
+    const both = listing(await world(), [
+      [
+        attempt("thrice", 1, 200, { redelivery: true }),
+        attempt("again", 2, 200, { redelivery: true }),
+        ...fresh,
+      ],
+    ]);
+    await both.context.store.put({
+      ...base(id),
+      repo: CONTROL,
+      kind: "alarm",
+      state: "open",
+      entries: [
+        { key: entryKey("thrice"), label: "old", url: ADVANCED },
+        { key: entryKey("again"), label: "old", url: ADVANCED },
+      ],
+    } as Item);
+    spent(both, SUBREQUESTS - 2 - RESERVE);
+    expect(await failedEvents(both.context)).toEqual([id]);
+    expect(redelivered(both)).toHaveLength(MAX_REDELIVERIES);
+    expect((await theAlarm(both))?.entries).toHaveLength(1);
   });
 });
 

@@ -75,6 +75,18 @@ function message(text: string, extra: object = {}) {
   };
 }
 
+/** A message of the maintainer without text, such as a photo or a voice message. */
+function media(extra: object) {
+  return {
+    message: {
+      message_id: 500,
+      chat: { id: CHAT },
+      from: { id: CHAT },
+      ...extra,
+    },
+  };
+}
+
 describe("buttons", () => {
   it("put a thing aside with Later", async () => {
     const w = await world();
@@ -1259,6 +1271,96 @@ describe("messages", () => {
       message: 500,
       language: "en",
     });
+  });
+
+  it("send the words below a photo or a file as a text", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    const photo = [{ file_id: "p1", width: 90, height: 60 }];
+    const shown = { photo, caption: " Is this the bug they mean? " };
+    expect(await handleUpdate(w.context, media(shown))).toBe("free text sent");
+    const file = { file_id: "d1", file_name: "run.log" };
+    await handleUpdate(w.context, media({ document: file, caption: "Why?" }));
+    expect(
+      w.net.github("/dispatches").map((call) => call.body.client_payload),
+    ).toEqual([
+      { text: "Is this the bug they mean?", message: 500, language: "en" },
+      { text: "Why?", message: 500, language: "en" },
+    ]);
+    expect(w.net.telegram("setMessageReaction")).toHaveLength(2);
+    // Its text decides when a message has both, as Telegram never sends.
+    await handleUpdate(w.context, message("Text", { caption: "Caption" }));
+    expect(w.net.github("/dispatches")[2]?.body.client_payload.text).toBe(
+      "Text",
+    );
+  });
+
+  it("send the caption of a picture that a text answers along, as its context", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    await handleUpdate(
+      w.context,
+      message("Is that blue?", {
+        reply_to_message: { message_id: 30, caption: " After: home.png " },
+      }),
+    );
+    expect(w.net.github("/dispatches")[0]?.body.client_payload).toEqual({
+      text: "Is that blue?",
+      message: 500,
+      reply: "After: home.png",
+      language: "en",
+    });
+  });
+
+  it("answer a photo, a file or a voice message without words in its thread", async () => {
+    const w = await world();
+    const topic = { message_thread_id: 77, is_topic_message: true };
+    const photo = [{ file_id: "p1", width: 90, height: 60 }];
+    expect(await handleUpdate(w.context, media({ photo, ...topic }))).toBe(
+      "a message without words",
+    );
+    const voice = { file_id: "v1", duration: 4 };
+    expect(await handleUpdate(w.context, media({ voice }))).toBe(
+      "a message without words",
+    );
+    const file = { file_id: "d1", file_name: "run.log" };
+    expect(
+      await handleUpdate(w.context, media({ document: file, caption: "  " })),
+    ).toBe("a message without words");
+    const sent = w.net.telegram("sendMessage").map((call) => call.body);
+    expect(sent.map((body) => body.text)).toEqual(
+      Array(3).fill(texts("en")("chat.textOnly")),
+    );
+    expect(sent.map((body) => body.message_thread_id)).toEqual([
+      77,
+      undefined,
+      undefined,
+    ]);
+    // Nothing went to the control repository, and nothing waits for an answer.
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(w.net.telegram("setMessageReaction")).toHaveLength(0);
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+  });
+
+  it("drop the service message of a topic and one of a stranger's photo without an answer", async () => {
+    const w = await world();
+    const renamed = { forum_topic_edited: { name: "Mine" } };
+    expect(await handleUpdate(w.context, media(renamed))).toBe(
+      "a message without text",
+    );
+    const photo = [{ file_id: "p1", width: 90, height: 60 }];
+    expect(
+      await handleUpdate(w.context, media({ photo, from: { id: 1 } })),
+    ).toBe("a message of a stranger");
+    expect(w.net.calls).toHaveLength(0);
   });
 
   it("send a text that answers no prompt as free text", async () => {

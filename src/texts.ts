@@ -222,13 +222,15 @@ const en = {
     "😢 Not saved for your agent: GitHub refused: {detail}. The question stays open: write your answer again, or press an option.",
 
   "chat.help":
-    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
+    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here, and so do the words below a photo or a file; the pager reads text only, not the picture, the file or a voice message itself; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
   "chat.noControl":
     "Free text goes to the workflow of {repo}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.",
   "chat.notSent":
     "😢 Not sent to the control repository: GitHub refused: {detail}. Write your text again once that is fixed.",
   "chat.failed":
     "😢 The pager failed on this text, and whether it acted on it is uncertain: look whether it did, then write it again.",
+  "chat.textOnly":
+    "The pager reads text only: write it as a message, or put your words below the photo or the file.",
 
   "usage.one": "1 turn",
   "usage.many": "{turns} turns",
@@ -474,6 +476,8 @@ const de: Catalog = {
     "😢 Nicht ans Steuer-Repository gesendet: GitHub lehnt ab: {detail}. Schreib deinen Text noch einmal, sobald das behoben ist.",
   "chat.failed":
     "😢 Der Pager ist an diesem Text gescheitert, und ob er danach gehandelt hat, ist unklar: Sieh nach, ob er es tat, dann schreib ihn noch einmal.",
+  "chat.textOnly":
+    "Der Pager liest nur Text: Schreib es als Nachricht, oder setz deine Worte unter das Foto oder die Datei.",
   "answer.releaseMoved":
     "Das Release hat sich seit dieser Nachricht geändert: Nimm seine neueste Nachricht.",
   "answer.releaseChanged":
@@ -545,7 +549,7 @@ const de: Catalog = {
     "😢 Nicht für deinen Agenten gespeichert: GitHub lehnt ab: {detail}. Die Frage bleibt offen: Schreib deine Antwort noch einmal, oder drück eine Option.",
 
   "chat.help":
-    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.",
+    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet, und so auch die Worte unter einem Foto oder einer Datei; der Pager liest nur Text, nicht das Bild, die Datei oder eine Sprachnachricht selbst; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.",
   "chat.noControl":
     "Freier Text geht an den Workflow von {repo}, wo die GitHub-App noch nicht installiert ist: Installier sie dort, wie docs/setup.md es beschreibt.",
 

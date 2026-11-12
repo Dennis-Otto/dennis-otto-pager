@@ -191,7 +191,7 @@ The workflow of the maintainer's private control repository, which `CONTROL_REPO
 | `pager-draft` | ✍️ Draft a reply, and a discussion or a comment on one as it comes | `item`, `repo`, `number`, `pull`, `language`; for a discussion also `discussion`: `true` and `comment`, the GraphQL id of the comment that the reply answers, if any; for an issue or a pull request that a comment opened or changed, `issueComment`, the id of that comment in the REST API, which a control repository from before it ignores |
 | `pager-fix` | 🛠 Start fix | `item`, `repo`, `kind` (`alarm` or `alert`), `entries` with `label` and `url`, without a secret and without the upload of the social preview, `language`. The `url` of a release run that failed names its attempt, such as `…/actions/runs/3/attempts/2`, so that the fix reads the jobs of that attempt and not those of a rerun that still runs |
 | `pager-translate` | The message of a release in a pager that doesn't speak English, once per notes ([above](#the-notes-of-a-release-in-your-language)) | `item`, `repo`, `number`, `version`, `of` (the key of the notes, which the answer names), `lines` (the words of each item, without its scope, at most 15), `language` |
-| `pager-text` | A text that answers no prompt and no [open question of an agent](#questions-and-reports-of-your-agents) | `text`, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
+| `pager-text` | A text that answers no prompt and no [open question of an agent](#questions-and-reports-of-your-agents) | `text`, the words below a photo or a file as well, `message` (its id in the chat), `reply`: the first 1000 characters of the message that the text answers, or of the caption of a picture, if any, and `thing`: the thing whose topic the text came from, if any; `language` |
 
 `language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
@@ -332,6 +332,8 @@ A text to the bot shows where it is with one reaction, which the pager changes a
 </picture>
 
 The jobs of the control repository take 40 minutes at most, so the pager waits an hour for the answer: the schedule, every 15 minutes, gives the 😢 to a text that still waits after that, between 60 and 75 minutes after it went. An answer that comes later still turns it into 👍, in the thread of its text.
+
+The pager reads text only. The words below a photo, a file or a voice message, which Telegram sends as its caption, are its text, with the same reaction, while the picture, the file or the voice itself stays in Telegram: a screenshot with *is this the bug they mean?* reaches the control repository as those words. One that has no words gets no reaction, but an answer in its thread at once, *The pager reads text only: write it as a message, or put your words below the photo or the file.*, and `/help` says the same, so that nothing the maintainer sends goes without a sign. The service message of a topic, such as one that the maintainer opened or renamed, stays without an answer.
 
 ## A topic per thing
 

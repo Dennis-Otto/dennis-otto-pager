@@ -15,12 +15,38 @@ import { answering, type Decision, type Item, MAX_ANSWER } from "./store.ts";
 import { REACTIONS, threadOf } from "./telegram.ts";
 import { about } from "./topics.ts";
 
-interface Message {
+/**
+ * The fields of a message of Telegram that carry what the pager can't read: a
+ * photo, a file, a voice message and the like. Their words, if any, come in
+ * `caption`. A service message, such as a topic that the maintainer renamed,
+ * has none of them, and stays without an answer.
+ */
+const UNREAD = [
+  "photo",
+  "document",
+  "voice",
+  "audio",
+  "video",
+  "video_note",
+  "animation",
+  "sticker",
+  "location",
+  "venue",
+  "contact",
+  "poll",
+  "dice",
+  "story",
+  "paid_media",
+] as const;
+
+interface Message extends Partial<Record<(typeof UNREAD)[number], unknown>> {
   message_id: number;
   chat?: { id?: number };
   from?: { id?: number };
   text?: string;
-  reply_to_message?: { message_id?: number; text?: string };
+  /** The words below a photo, a file or a voice message, which has no text. */
+  caption?: string;
+  reply_to_message?: { message_id?: number; text?: string; caption?: string };
   /** The thread that the message came from, in Threaded Mode. */
   message_thread_id?: number;
   /** Set as well in a thread; the id alone decides, as threadOf() says. */
@@ -228,7 +254,10 @@ async function freeText(
     // the thing whose topic the text came from: the control repository reads both
     // as data, as everything else. A topic that the maintainer opened, and
     // General, have no thing: the text starts a conversation of its own.
-    const answered = message.reply_to_message?.text?.trim() ?? "";
+    // A picture of the visual check, which the pager sends with a caption, has no
+    // text, so its caption says what the reply is about.
+    const replied = message.reply_to_message;
+    const answered = (replied?.text ?? replied?.caption)?.trim() ?? "";
     await context.github.dispatch(installation, repo, "pager-text", {
       text,
       message: message.message_id,
@@ -283,8 +312,16 @@ export async function handleUpdate(
     // Its texts come with the id of the topic, and their answers go into it.
     return "a topic of the maintainer";
   }
-  const text = message.text?.trim() ?? "";
+  // Telegram puts the words of a photo or a file into its caption, never into
+  // its text: they go on as a text does.
+  const text = (message.text ?? message.caption)?.trim() ?? "";
   if (text === "") {
+    if (UNREAD.some((field) => message[field] !== undefined)) {
+      // A photo, a file or a voice message without words would get no reaction
+      // at all and look like a dead pager: the answer says what it reads.
+      await context.telegram.say(context.t("chat.textOnly"), threadOf(message));
+      return "a message without words";
+    }
     return "a message without text";
   }
   const progress: Progress = { sent: false };

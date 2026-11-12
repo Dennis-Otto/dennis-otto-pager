@@ -188,6 +188,8 @@ const en = {
     'GitHub refuses GITHUB_USER_TOKEN: it expired or was revoked. Make a new one and set it with "npx wrangler secret put GITHUB_USER_TOKEN", as docs/setup.md says.',
   "answer.unknown": "This button is unknown.",
   "answer.gone": "This thing is gone.",
+  "answer.failed":
+    "😢 The pager failed on this press, and whether it acted is uncertain: look at the thing on GitHub, then press again.",
 
   "note.assistant": "🤖 The issue assistant answers again.",
   "note.sent": "Posted in your name.",
@@ -223,6 +225,10 @@ const en = {
     "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
   "chat.noControl":
     "Free text goes to the workflow of {repo}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.",
+  "chat.notSent":
+    "😢 Not sent to the control repository: GitHub refused: {detail}. Write your text again once that is fixed.",
+  "chat.failed":
+    "😢 The pager failed on this text, and whether it acted on it is uncertain: look whether it did, then write it again.",
 
   "usage.one": "1 turn",
   "usage.many": "{turns} turns",
@@ -464,6 +470,10 @@ const de: Catalog = {
 
   "answer.notInstalled":
     "Die GitHub-App ist auf {repo} nicht installiert, und dieses Repository erledigt das: Installier sie dort, wie docs/setup.md es beschreibt.",
+  "chat.notSent":
+    "😢 Nicht ans Steuer-Repository gesendet: GitHub lehnt ab: {detail}. Schreib deinen Text noch einmal, sobald das behoben ist.",
+  "chat.failed":
+    "😢 Der Pager ist an diesem Text gescheitert, und ob er danach gehandelt hat, ist unklar: Sieh nach, ob er es tat, dann schreib ihn noch einmal.",
   "answer.releaseMoved":
     "Das Release hat sich seit dieser Nachricht geändert: Nimm seine neueste Nachricht.",
   "answer.releaseChanged":
@@ -501,6 +511,8 @@ const de: Catalog = {
     "GitHub lehnt GITHUB_USER_TOKEN ab: Das Token ist abgelaufen oder wurde widerrufen. Erstell ein neues und setz es mit „npx wrangler secret put GITHUB_USER_TOKEN“, wie docs/setup.md es beschreibt.",
   "answer.unknown": "Diesen Knopf kenne ich nicht.",
   "answer.gone": "Die Sache gibt es nicht mehr.",
+  "answer.failed":
+    "😢 Der Pager ist an diesem Druck gescheitert, und ob er gehandelt hat, ist unklar: Sieh dir die Sache auf GitHub an, dann drück noch einmal.",
 
   "note.assistant": "🤖 Der Issue-Assistent antwortet noch einmal.",
   "note.sent": "In deinem Namen gepostet.",

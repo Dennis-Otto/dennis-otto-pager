@@ -82,6 +82,7 @@ The repositories write their changelogs in English, and GitHub keeps them so. A 
 - **One button per option** answers the [question of an agent](#questions-and-reports-of-your-agents) and saves the answer; a text in its topic answers it in the maintainer's own words.
 - **⏰ Later** brings the thing back as a new message after `LATER_HOURS`; **✖ Ignore** closes it, and an ignored workflow stays quiet until a run of it passes.
 - **Once GitHub has acted,** the pager keeps it, whatever Telegram answers. A button that merged, posted, started a run of Claude, a rerun or the issue assistant, or saved the answer to a question, keeps the new state of its thing also when Telegram refuses the change of the message, such as in an outage or with a 429 that asks to wait long: the press still gets its answer, a second press of a button that the old message still shows is refused as out of date instead of acting on GitHub twice, and the next change of the thing shows the right message.
+- **Every press gets an answer.** A press whose handling fails unexpectedly, such as when Telegram refuses the change of the message before GitHub was asked, Workers KV fails or GitHub can't be reached, gets the alert *😢 The pager failed on this press, and whether it acted is uncertain*, instead of a button that shows its loading state until Telegram gives up; look at the thing on GitHub, then press again. The error goes to the log of the Worker, as before.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.dark.svg">
@@ -308,7 +309,7 @@ The script `scripts/ask.mjs` of the control repository does all of it, as its RE
 
 ## The reaction on a text
 
-A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none.
+A text to the bot shows where it is with one reaction, which the pager changes as the job goes on: a bot may set one reaction per message, from the fixed list of `ReactionTypeEmoji` in Telegram's Bot API. That list has no ✅, so 👍 stands for an answer, the closest to it, and 😢 for none. A text that never reached a job gets its 😢 at once, with a message in its thread that says why: one that GitHub refused, such as when the app may no longer dispatch to the control repository, names GitHub's reason, and one whose handling failed otherwise, such as on a broken network, says that the pager failed on it. Neither waits for an answer.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.dark.svg">

@@ -82,6 +82,7 @@ Die Repositorys schreiben ihre Changelogs auf Englisch, und GitHub behält sie s
 - **Ein Knopf pro Option** beantwortet die [Frage eines Agenten](#fragen-und-berichte-deiner-agenten) und speichert die Antwort; ein Text in ihrem Thema beantwortet sie in den eigenen Worten des Maintainers.
 - **⏰ Später** bringt die Sache nach `LATER_HOURS` als neue Nachricht zurück; **✖ Ignorieren** schließt sie, und ein ignorierter Workflow bleibt still, bis ein Lauf von ihm grün wird.
 - **Hat GitHub gehandelt,** behält der Pager das, was immer Telegram antwortet. Ein Knopf, der gemergt, gepostet, einen Lauf von Claude, einen Neustart oder den Issue-Assistenten gestartet oder die Antwort auf eine Frage gespeichert hat, behält den neuen Zustand seiner Sache auch dann, wenn Telegram die Änderung der Nachricht ablehnt, etwa bei einem Ausfall oder mit einem 429, das lange warten lässt: Der Druck bekommt trotzdem seine Antwort, ein zweiter Druck auf einen Knopf, den die alte Nachricht noch zeigt, wird als veraltet abgelehnt, statt auf GitHub zweimal zu handeln, und die nächste Änderung der Sache zeigt die richtige Nachricht.
+- **Jeder Druck bekommt eine Antwort.** Ein Druck, dessen Behandlung unerwartet scheitert, etwa wenn Telegram die Änderung der Nachricht ablehnt, bevor GitHub gefragt wurde, Workers KV versagt oder GitHub nicht erreichbar ist, bekommt den Hinweis *😢 Der Pager ist an diesem Druck gescheitert, und ob er gehandelt hat, ist unklar*, statt eines Knopfs, der lädt, bis Telegram aufgibt; sieh dir die Sache auf GitHub an, dann drück noch einmal. Der Fehler geht wie bisher ins Log des Workers.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-rerun-of-a-run.de.dark.svg">
@@ -308,7 +309,7 @@ Das Skript `scripts/ask.mjs` des Steuer-Repositorys kann alles, wie seine README
 
 ## Die Reaktion auf einen Text
 
-Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert sie, während der Job läuft: Ein Bot darf eine Reaktion pro Nachricht setzen, aus der festen Liste von `ReactionTypeEmoji` in der Bot API von Telegram. Diese Liste hat kein ✅, deshalb steht 👍 für eine Antwort, das ihm am nächsten kommt, und 😢 für keine.
+Ein Text an den Bot zeigt mit einer Reaktion, wo er steht, und der Pager ändert sie, während der Job läuft: Ein Bot darf eine Reaktion pro Nachricht setzen, aus der festen Liste von `ReactionTypeEmoji` in der Bot API von Telegram. Diese Liste hat kein ✅, deshalb steht 👍 für eine Antwort, das ihm am nächsten kommt, und 😢 für keine. Ein Text, der nie einen Job erreicht hat, bekommt sein 😢 sofort, mit einer Nachricht in seinem Thread, die sagt, warum: Einer, den GitHub ablehnt, etwa wenn die App nicht mehr an das Steuer-Repository senden darf, nennt den Grund von GitHub, und einer, dessen Behandlung anders scheitert, etwa an einem gestörten Netz, sagt, dass der Pager an ihm gescheitert ist. Keiner von beiden wartet auf eine Antwort.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/the-reaction-on-a-text.de.dark.svg">

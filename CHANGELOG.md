@@ -7,6 +7,41 @@ requests when there is none.
 
 ## Unreleased
 
+## [0.10.0](https://github.com/Dennis-Otto/repo-pager/compare/v0.9.1...v0.10.0) (2026-11-13)
+
+
+### Features
+
+* a review, new commits or a reopen by a contributor page the maintainer ([#201](https://github.com/Dennis-Otto/repo-pager/issues/201)) ([eef8ab0](https://github.com/Dennis-Otto/repo-pager/commit/eef8ab02b285d9db5496acf9d4a60607399c6dfa))
+* answer /status in the chat with the health of the pager ([#211](https://github.com/Dennis-Otto/repo-pager/issues/211)) ([0403742](https://github.com/Dennis-Otto/repo-pager/commit/0403742fbd95501b649c6dc511771a4f828077e3))
+* bring an ignored thing back, and list what waits with /open ([#213](https://github.com/Dennis-Otto/repo-pager/issues/213)) ([7e6d96e](https://github.com/Dennis-Otto/repo-pager/commit/7e6d96e95d60480ddf69cc04282821bf279a4cab))
+* notice a release that didn't go live, and propose a rerun of a failing workflow ([#212](https://github.com/Dennis-Otto/repo-pager/issues/212)) ([156facf](https://github.com/Dennis-Otto/repo-pager/commit/156facfabbdc794f874e13c0aaf508ebbf543f57))
+* the words below a photo or a file reach the control repository ([#199](https://github.com/Dennis-Otto/repo-pager/issues/199)) ([49ea30d](https://github.com/Dennis-Otto/repo-pager/commit/49ea30dff491d1520b6513d0f34a0540a5b2b6f3))
+* watch the repositories of an organization with OWNERS ([#200](https://github.com/Dennis-Otto/repo-pager/issues/200)) ([24408ab](https://github.com/Dennis-Otto/repo-pager/commit/24408abd3ac7ae70666487cfc322b7436c148cd2))
+
+
+### Bug fixes
+
+* 🤖 Assistant again says when a repository has no issue assistant ([#209](https://github.com/Dennis-Otto/repo-pager/issues/209)) ([edf1764](https://github.com/Dennis-Otto/repo-pager/commit/edf1764c07b41a5872acb1ab2967f9d328f9d031))
+* a button that acted on GitHub acts once, also when Telegram fails right after ([#190](https://github.com/Dennis-Otto/repo-pager/issues/190)) ([d474592](https://github.com/Dennis-Otto/repo-pager/commit/d47459214f99f1fdc2771accb9a8e234b002e946))
+* a cancelled rerun brings Rerun back, and an end forgets Later ([#206](https://github.com/Dennis-Otto/repo-pager/issues/206)) ([d50dc65](https://github.com/Dennis-Otto/repo-pager/commit/d50dc653ef6af402680b09eb2991963d73ac7778))
+* a failed release stays in the alarm until the pass that takes it up ([#187](https://github.com/Dennis-Otto/repo-pager/issues/187)) ([12461c3](https://github.com/Dennis-Otto/repo-pager/commit/12461c3cd8a1629cd37c6dd41f73985e28b34d1e))
+* a new failure or security alert that joins an open bundle notifies, once for a burst ([#185](https://github.com/Dennis-Otto/repo-pager/issues/185)) ([02b0b15](https://github.com/Dennis-Otto/repo-pager/commit/02b0b15f5efbe2d323c02d33053d959ad6cea2c7))
+* a pull request from a fork named like release-please pages when it opens ([#205](https://github.com/Dennis-Otto/repo-pager/issues/205)) ([53f4ed6](https://github.com/Dennis-Otto/repo-pager/commit/53f4ed6731b68de9845e12efb2cb6843ca217bef))
+* every button press gets an answer, and every text a reaction ([#193](https://github.com/Dennis-Otto/repo-pager/issues/193)) ([c8c0230](https://github.com/Dennis-Otto/repo-pager/commit/c8c0230d517847a0fcc932da2d665fe8fbf53894))
+* find a failed event behind more than 300 deliveries on a busy day ([#189](https://github.com/Dennis-Otto/repo-pager/issues/189)) ([49a2ca7](https://github.com/Dennis-Otto/repo-pager/commit/49a2ca797ac2b7f643a1cc66ad24fb4cad10fe6b))
+* give every call a deadline and refuse translated lines that add a link ([#210](https://github.com/Dennis-Otto/repo-pager/issues/210)) ([66085cc](https://github.com/Dennis-Otto/repo-pager/commit/66085cc79e26c76c359d72caca985d8164c2e20d))
+* one thing that Telegram refuses no longer stops the rest of a run of the schedule ([#191](https://github.com/Dennis-Otto/repo-pager/issues/191)) ([de619a1](https://github.com/Dennis-Otto/repo-pager/commit/de619a1db1faa403c16bb6d8631a5ab7d2fd5b82))
+* register-app.mjs checks Wrangler before GitHub creates the app ([#203](https://github.com/Dennis-Otto/repo-pager/issues/203)) ([10ffc18](https://github.com/Dennis-Otto/repo-pager/commit/10ffc18b5821bc91bd97e32bd2bdc0e4846f4e17))
+* **rules:** page for a high code-scanning alert that reaches the default branch by a merge ([#194](https://github.com/Dennis-Otto/repo-pager/issues/194)) ([5f8df8a](https://github.com/Dennis-Otto/repo-pager/commit/5f8df8ac024f505c946c62524982cc35e0c7a3e4))
+* **tests:** pass with the values of any instance in wrangler.jsonc ([#195](https://github.com/Dennis-Otto/repo-pager/issues/195)) ([b6660f8](https://github.com/Dennis-Otto/repo-pager/commit/b6660f8f85bd3a0dc4ecea0e15d06dad89ba2cd3))
+* the album shows one comparison per changed picture, of one frame ([#208](https://github.com/Dennis-Otto/repo-pager/issues/208)) ([7a9b454](https://github.com/Dennis-Otto/repo-pager/commit/7a9b454bf67bc2df0dca197a567b1ff0b38a654c))
+* the issue assistant starts on the default branch, and times follow TIME_ZONE ([#215](https://github.com/Dennis-Otto/repo-pager/issues/215)) ([b887551](https://github.com/Dennis-Otto/repo-pager/commit/b887551c6e45094c844b1bc8dbb0122c70766421))
+* the pager keeps the limits of the control repository before it sends ([#204](https://github.com/Dennis-Otto/repo-pager/issues/204)) ([215b0d9](https://github.com/Dennis-Otto/repo-pager/commit/215b0d99f9398bca0ba42797853f8a2fa7458c69))
+* the reminder of a token counts the days anew and pages again on the day it expires ([#188](https://github.com/Dennis-Otto/repo-pager/issues/188)) ([8c02dd0](https://github.com/Dennis-Otto/repo-pager/commit/8c02dd0dd1bb52b4957685dd0b276d1c4abacc2f))
+* the reply to every prompt of ✏️ Edit becomes the draft of its own thing ([#202](https://github.com/Dennis-Otto/repo-pager/issues/202)) ([71cf77f](https://github.com/Dennis-Otto/repo-pager/commit/71cf77f127083f3c591c00b6e60568aa3a5d27ef))
+* the website wears the pager's mark, and the rules watch no reusable release build ([#214](https://github.com/Dennis-Otto/repo-pager/issues/214)) ([0fbefe4](https://github.com/Dennis-Otto/repo-pager/commit/0fbefe43226e18a8429e8685df095f6ec397bf82))
+
 ## [0.9.1](https://github.com/Dennis-Otto/repo-pager/compare/v0.9.0...v0.9.1) (2026-11-10)
 
 ### Bug fixes

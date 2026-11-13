@@ -72,6 +72,20 @@ Der Pager spricht Deutsch oder Englisch: `LANGUAGE` in `wrangler.jsonc` entschei
 - **Kein Geheimnis im Repository oder in den Logs:** Die Geheimnisse liegen in Cloudflare, der Zustand in Workers KV enthält kein Geheimnis, und die Logs nennen die Antworten der APIs, nie ein Token oder den Text eines Issues.
 - **Telegram ist bei Chats mit einem Bot nicht Ende-zu-Ende-verschlüsselt:** Telegram kann die Nachrichten lesen, die Titel von Issues und Antwortentwürfe zeigen. Freier Text und Entwürfe laufen nur im **privaten** Steuer-Repository, mit Claude Code und dem eigenen Abo des Maintainers, weil die Logs von Actions in einem öffentlichen Repository öffentlich sind.
 
+## Was ein beobachtetes Repository braucht
+
+Der Pager arbeitet in jedem Repository, in dem seine App installiert ist, aber ein paar seiner Nachrichten und ein Knopf folgen den Konventionen von [repo-blueprint](https://github.com/Dennis-Otto/repo-blueprint), der Vorlage der Repositorys seines Maintainers: seinen Release-Workflows, seinen Bots und dem Workflow seines [Issue-Assistenten](https://github.com/Dennis-Otto/issue-assistant). In einem Repository ohne sie kommen diese Nachrichten nicht, und alles andere arbeitet wie immer:
+
+| Was der Pager tut | Was das beobachtete Repository braucht |
+| --- | --- |
+| Ein Beitrag, seine Kommentare, Reviews und neuen Commits; eine Diskussion; ein Workflow oder ein erforderlicher Check, der auf `main` scheitert; ✍️ **Antwort entwerfen**, ✅ **Senden**, 🔁 **Neu starten**, 🛠 **Fix starten**, ✅ **Bestätigen**, ⏰ **Später** und ✖ **Ignorieren** | Nichts als die App |
+| Ein Code-Scanning-Alarm, ein Secret, das das Secret Scanning fand, eine vertrauliche Meldung einer Sicherheitslücke | Die Funktionen von GitHub, die sie finden: Code Scanning, Secret Scanning und Private Vulnerability Reporting, eingeschaltet in den Einstellungen des Repositorys |
+| Die Release-Nachricht mit 🔀 **Mergen** | [release-please](https://github.com/googleapis/release-please), dessen Release-Pull-Request von einem Branch `release-please--…` des Repositorys selbst kommt, mit einem Titel wie `chore: release 1.2.3` |
+| Ein scheiterndes Release, als Eintrag des Alarms | Die Release-Workflows des Blueprints, `.github/workflows/release.yml`, `build-release.yml` und `verify-release.yml`; ein Release-Workflow anderen Namens meldet sich nur, wenn er auf `main` scheitert |
+| Die Bilder eines Pull Requests, der ändert, wie etwas aussieht | Der visuelle Check des Blueprints, `.github/workflows/visual.yml`, dessen Artefakt jedes Bild hält, das anders aussieht, vorher und nachher |
+| Ein Fehlschlag eines Bots, den der Pager verpasst hat, und *🖼 Lade die neue Social Preview hoch* | Der Bot-Health-Bot des Blueprints, dessen Issues das Label `bot-failure` tragen; ohne ihn meldet sich ein Bot, der auf `main` scheitert, trotzdem als Workflow, der dort scheitert |
+| 🤖 **Assistent nochmal** bei einem Issue | Der Workflow `.github/workflows/issue-assistant.yml` des Issue-Assistenten, der die Eingabe `override` nimmt; ohne ihn antwortet der Knopf, dass das Repository keinen Issue-Assistenten hat, und nichts startet |
+
 ## Einrichten
 
 Repo Pager betreibt jeder selbst: Wer ihn nutzt, hat eine eigene Instanz, mit eigenem Bot, Worker, eigener GitHub-App und eigenem privatem Steuer-Repository. Es gibt keine gemeinsame App zum Installieren, damit deine Tokens und die Ereignisse deiner Repositorys deine bleiben, und jeder Pager bedient den einen Chat seines Maintainers; `wrangler.jsonc` hält die Werte einer Instanz, die deine Kopie für deine setzt. Er beobachtet die Repositorys deines persönlichen Kontos, und die einer Organisation, sobald `OWNERS` sie nennt und die App dort installiert ist, wie [Repositorys einer Organisation](docs/setup.de.md#repositorys-einer-organisation) beschreibt.
@@ -95,7 +109,7 @@ Die Tests laufen in workerd, der Laufzeit von Cloudflare, gegen ein simuliertes 
 
 ## Releases
 
-Der Release-Bot hält einen Pull Request für das nächste Release offen, mit der Version und dem Changelog aus den gemergten Pull Requests. Sein Merge veröffentlicht das Release, mit SBOM und signierter Provenienz, und Cloudflare stellt es bereit, wie [docs/releases.md](docs/releases.md) beschreibt; [CHANGELOG.md](CHANGELOG.md) listet jede Änderung.
+Der Release-Bot hält einen Pull Request für das nächste Release offen, mit der Version und dem Changelog aus den gemergten Pull Requests. Sein Merge veröffentlicht das Release, mit SBOM und signierter Provenienz, und Cloudflare stellt es bereit, wie [docs/releases.de.md](docs/releases.de.md) beschreibt; [CHANGELOG.md](CHANGELOG.md) listet jede Änderung.
 
 ## Hilfe und Sicherheit
 

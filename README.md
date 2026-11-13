@@ -72,6 +72,20 @@ The pager speaks English or German: `LANGUAGE` in `wrangler.jsonc` chooses, `de`
 - **No secret in the repository or the logs:** the secrets live in Cloudflare, the state in Workers KV holds no secret, and the logs name the answers of the APIs, never a token or the text of an issue.
 - **Telegram is not end-to-end encrypted** for chats with a bot: Telegram can read the messages, which show titles of issues and drafts of replies. Free text and drafts run only in the **private** control repository, with Claude Code and the maintainer's own subscription, because the logs of Actions in a public repository are public.
 
+## What a watched repository needs
+
+The pager works in any repository where its app is installed, but a few of its messages and one button follow the conventions of [repo-blueprint](https://github.com/Dennis-Otto/repo-blueprint), the template of its maintainer's repositories: its release workflows, its bots and the workflow of its [issue assistant](https://github.com/Dennis-Otto/issue-assistant). In a repository without them, those messages don't come, and everything else works as ever:
+
+| What the pager does | What the watched repository needs |
+| --- | --- |
+| A contribution, its comments, reviews and new commits; a discussion; a workflow or a required check that fails on `main`; ✍️ **Draft a reply**, ✅ **Send**, 🔁 **Rerun**, 🛠 **Start fix**, ✅ **Confirm**, ⏰ **Later** and ✖ **Ignore** | Nothing but the app |
+| A code-scanning alert, a secret that secret scanning found, a private vulnerability report | The features of GitHub that find them: code scanning, secret scanning and private vulnerability reporting, turned on in the settings of the repository |
+| The release message with 🔀 **Merge** | [release-please](https://github.com/googleapis/release-please), whose release pull request comes from a branch `release-please--…` of the repository itself, with a title such as `chore: release 1.2.3` |
+| A release that fails, as an entry of the alarm | The release workflows of the blueprint, `.github/workflows/release.yml`, `build-release.yml` and `verify-release.yml`; a release workflow of another name pages only when it fails on `main` |
+| The pictures of a pull request that changes how something looks | The visual check of the blueprint, `.github/workflows/visual.yml`, whose artifact holds each picture that looks different, before and after |
+| A failure of a bot that the pager missed, and *🖼 Upload the new social preview* | The bot-health bot of the blueprint, whose issues carry the label `bot-failure`; without it, a bot that fails on `main` still pages as a workflow that fails there |
+| 🤖 **Assistant again** on an issue | The workflow `.github/workflows/issue-assistant.yml` of the issue assistant, which takes the input `override`; without it, the button answers that the repository has no issue assistant, and nothing starts |
+
 ## Set up
 
 Repo Pager is self-hosted: everyone who uses it runs an instance of their own, with their own bot, Worker, GitHub App and private control repository. There is no shared app to install, so that your tokens and the events of your repositories stay yours, and each pager serves the one chat of its maintainer; `wrangler.jsonc` holds the values of an instance, which your copy sets for yours. It watches the repositories of your personal account, and those of an organization once `OWNERS` names it and the app is installed there, as [Repositories of an organization](docs/setup.md#repositories-of-an-organization) describes.

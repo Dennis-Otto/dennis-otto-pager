@@ -186,6 +186,8 @@ const en = {
     "The control repository drafts a reply with Claude, from your weekly limit.",
   "answer.noOverride":
     "The issue assistant of {repo} doesn't take the override yet: it comes with the release of the blueprint that brings the runs by hand of the issue assistant. Nothing was started.",
+  "answer.noAssistant":
+    "{repo} has no issue assistant, or GITHUB_USER_TOKEN can't reach it: GitHub knows no workflow issue-assistant.yml there. Nothing was started.",
   "answer.assistant": "The issue assistant runs.",
   "answer.draftOutdated":
     "This draft is out of date: send the one that the message shows now.",
@@ -537,6 +539,8 @@ const de: Catalog = {
     "Das Steuer-Repository entwirft mit Claude eine Antwort, von deinem Wochenlimit.",
   "answer.noOverride":
     "Der Issue-Assistent von {repo} kennt den Override noch nicht: Er kommt mit dem Release des Blueprints, das die Läufe des Issue-Assistenten von Hand bringt. Nichts gestartet.",
+  "answer.noAssistant":
+    "{repo} hat keinen Issue-Assistenten, oder GITHUB_USER_TOKEN erreicht ihn nicht: GitHub kennt dort keinen Workflow issue-assistant.yml. Nichts gestartet.",
   "answer.assistant": "Der Issue-Assistent läuft.",
   "answer.draftOutdated":
     "Der Entwurf ist veraltet: Schick den, den die Nachricht jetzt zeigt.",

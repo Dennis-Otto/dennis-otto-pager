@@ -20,6 +20,9 @@ Nothing gets lost on the way, and a quiet day doesn't hide a pager that broke: a
 | 🛠 Start fix | Sends what fails to the control repository, which prepares a fix |
 | ✅ Confirm | Runs the one action that an answer of the control repository proposes, such as a merge you asked about, or 🔁 Rerun after a fix found an outage of GitHub, while its thing still offers it |
 | ⏰ Later, ✖ Ignore | Brings the thing back after four hours, or closes it |
+| ↩️ Bring back | Opens an ignored thing again, as it was |
+
+`/open` in the chat lists what still waits for you, one line per thing with a button, by repository, and `/status` says how the pager is.
 
 The pager speaks English or German, as `LANGUAGE` in `wrangler.jsonc` says: `de` for the maintainer's own pager, English when it is empty. The buttons, `/help` and every other text that it sends follow it, and so do the answers of the control repository and the notes of a release, which the control repository translates.
 

@@ -189,10 +189,19 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 `max_connections=1` makes Telegram send one update at a time, so that a button pressed twice acts once. `getWebhookInfo` names the address and, after a failed delivery, the error.
 
+So that the menu of Telegram offers the commands of the pager, register them once; the words are the descriptions in the menu, in any language:
+
+```sh
+curl -s "https://api.telegram.org/bot$TOKEN/setMyCommands" \
+  -H 'Content-Type: application/json' \
+  -d '{"commands":[{"command":"open","description":"What still waits for me"},{"command":"status","description":"How the pager is"},{"command":"help","description":"What the pager does"}]}'
+```
+
 ## 6. Try it
 
 - Write `/status` to the bot: it answers with one line for each thing that the pager needs, read at that moment: when its schedule last ran, whether Telegram takes the bot and its webhook, whether GitHub takes the key of the app, whether the app is installed on your control repository, and the day of each token. Each line that fails names the step of this guide that fixes it, so you know before the control repository runs that the Worker has its secrets. A new Worker has no run of its schedule yet: it runs every 15 minutes, and the step for `PAGER_FIX_TOKEN` comes with step 7.
 - Write `/help` to the bot: it answers with what it does.
+- Write `/open` to the bot: it lists what still waits for you, one line per thing with a button, by repository; on a new pager it says that nothing waits.
 - In the settings of the GitHub App, under *Advanced*, the first delivery is a `ping`, which the Worker answers with `pong`.
 - Open an issue in a watched repository from another account: the message comes with its buttons.
 

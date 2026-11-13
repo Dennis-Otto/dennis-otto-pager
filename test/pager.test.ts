@@ -379,6 +379,21 @@ describe("discussions", () => {
     const calls = w.net.calls.length;
     expect(await apply(w.context, commented)).toBe("discussion ignored");
     expect(w.net.calls).toHaveLength(calls);
+    // An end on GitHub leaves it ignored, for Bring back to bring back done.
+    expect(
+      await apply(w.context, {
+        ...at,
+        type: "discussion-done",
+        number: 31,
+        reason: "answered",
+      }),
+    ).toBe("ignored discussion done: answered");
+    expect(w.net.calls).toHaveLength(calls);
+    expect(await thing(w)).toMatchObject({
+      state: "ignored",
+      ignoredFrom: "done",
+      note: "✅ An answer was marked on GitHub.",
+    });
   });
 
   it("come without a draft when GitHub gives its request no answer in time, which may have started it", async () => {
@@ -896,6 +911,55 @@ describe("comments on issues and pull requests", () => {
       expect(await apply(w.context, done)).toBe("no open contribution shown");
       expect(w.net.calls).toHaveLength(calls);
     }
+  });
+
+  it("remember an end of GitHub while ignored, so that Bring back brings them back done", async () => {
+    const w = await shown();
+    await w.context.store.put({
+      ...(await thing(w)),
+      state: "drafting",
+      jobStarted: START,
+    });
+    await press(w.context, await thing(w), {
+      action: "ignore",
+      id: (await thing(w)).id,
+      version: null,
+    });
+    const calls = w.net.calls.length;
+    const done: Signal = {
+      ...at,
+      type: "contribution-done",
+      number: 12,
+      reason: "closed",
+    };
+    expect(await apply(w.context, done)).toBe(
+      "ignored contribution done: closed",
+    );
+    // Out of sight still: its message stays as it is.
+    expect(w.net.calls).toHaveLength(calls);
+    const ignored = await thing(w);
+    expect(ignored).toMatchObject({
+      state: "ignored",
+      ignoredFrom: "done",
+      note: "Closed on GitHub.",
+    });
+    expect(ignored).not.toHaveProperty("jobStarted");
+    expect(
+      await press(w.context, ignored, {
+        action: "restore",
+        id: ignored.id,
+        version: null,
+      }),
+    ).toMatchObject({ text: "Brought back." });
+    expect(await thing(w)).toMatchObject({
+      state: "done",
+      note: "Closed on GitHub.",
+    });
+    const edited = w.net.telegram("editMessageText").at(-1)?.body;
+    expect(edited.reply_markup).toEqual({ inline_keyboard: [] });
+    expect(edited.text).toContain("<i>Closed on GitHub.</i>");
+    // Done, its record expires, and /open doesn't list it.
+    expect(await w.context.store.unclosed()).toEqual([]);
   });
 
   it("forget their Later once GitHub ends them, so the schedule brings nothing back", async () => {

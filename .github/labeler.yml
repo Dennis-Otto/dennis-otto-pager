@@ -25,14 +25,14 @@
   - changed-files:
       - any-glob-to-any-file:
           - src/control.ts
-          - test/control.test.ts
+          - "test/{control,decisions}.test.ts"
 "area: setup":
   - changed-files:
       - any-glob-to-any-file:
           - wrangler.jsonc
           - github-app.json
-          - "scripts/{register-app.mjs,app-address.ts,deploy-worker.sh,another-instance.config.ts}"
-          - "test/{register-app.test.ts,register-app-script.mjs,manifest.test.ts}"
+          - "scripts/{register-app.mjs,app-address.ts,deploy-worker.sh,another-instance.config.ts,check-project.sh}"
+          - "test/{register-app.test.ts,register-app-script.mjs,manifest.test.ts,raw.d.ts}"
           - "docs/{setup,releases}*.md"
 "area: website":
   - changed-files:
@@ -43,4 +43,5 @@
           - README.de.md
           - .github/chat.*
           - .github/social-preview.html
+          - scripts/screenshots.sh
           - "test/{chat,social-preview,brand}.test.ts"

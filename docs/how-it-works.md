@@ -13,7 +13,7 @@ The pager is a Cloudflare Worker with three doors and a schedule: `/github` for 
 
 | Event | Counts when | Becomes |
 | --- | --- | --- |
-| `issues` opened, `pull_request` opened | Its author is neither the maintainer (`MAINTAINER_LOGIN`) nor a bot | A contribution, one message each |
+| `issues` opened, `pull_request` opened | Its author is neither the maintainer (`MAINTAINER_LOGIN`) nor a bot; a pull request from a fork counts too when its branch is named like one of release-please, since only a branch of the repository itself makes a release | A contribution, one message each |
 | `discussion` created, `discussion_comment` created | Its author is neither the maintainer nor a bot, the discussion isn't one of the maintainer, and no answer of Q&A was chosen | A contribution with its draft at once, one per discussion; a new comment makes itself the message that the reply answers ([below](#a-discussion)) |
 | `discussion` answered, closed or deleted; `discussion_comment` created by the maintainer | The discussion isn't one of the maintainer | Its open thing is done, and its message says why ([below](#a-discussion)) |
 | `issue_comment` created, `pull_request_review` submitted, `pull_request_review_comment` created | Its author is neither the maintainer nor a bot, on an issue or a pull request of neither; a review that says nothing but its comments in the code comes as those comments | The newest message of its contribution: an open thing names it in place and notifies once, a thing whose reply went or that GitHub dealt with opens again, and an unknown one comes as new ([below](#a-comment-on-an-issue-or-a-pull-request)) |

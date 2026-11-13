@@ -13,7 +13,7 @@ Der Pager ist ein Cloudflare Worker mit drei Türen und einem Zeitplan: `/github
 
 | Ereignis | Zählt, wenn | Wird zu |
 | --- | --- | --- |
-| `issues` opened, `pull_request` opened | Der Autor ist weder der Maintainer (`MAINTAINER_LOGIN`) noch ein Bot | Ein Beitrag, je eine Nachricht |
+| `issues` opened, `pull_request` opened | Der Autor ist weder der Maintainer (`MAINTAINER_LOGIN`) noch ein Bot; ein Pull Request aus einem Fork zählt auch, wenn sein Branch wie einer von release-please heißt, denn nur ein Branch des Repositorys selbst macht ein Release | Ein Beitrag, je eine Nachricht |
 | `discussion` created, `discussion_comment` created | Der Autor ist weder der Maintainer noch ein Bot, die Diskussion ist keine des Maintainers, und keine Antwort von Q&A wurde gewählt | Ein Beitrag mit sofortigem Entwurf, einer pro Diskussion; ein neuer Kommentar wird zur Nachricht, auf die die Antwort antwortet ([unten](#eine-diskussion)) |
 | `discussion` answered, closed oder deleted; `discussion_comment` created vom Maintainer | Die Diskussion ist keine des Maintainers | Ihre offene Sache ist erledigt, und ihre Nachricht sagt, warum ([unten](#eine-diskussion)) |
 | `issue_comment` created, `pull_request_review` submitted, `pull_request_review_comment` created | Der Autor ist weder der Maintainer noch ein Bot, zu einem Issue oder Pull Request von keinem von beiden; ein Review, das nichts sagt außer seinen Kommentaren im Code, kommt als diese Kommentare | Die neueste Nachricht ihres Beitrags: Eine offene Sache nennt ihn an Ort und Stelle und benachrichtigt einmal, eine Sache, deren Antwort gesendet ist oder um die sich GitHub gekümmert hat, öffnet wieder, und eine unbekannte kommt neu ([unten](#ein-kommentar-zu-einem-issue-oder-pull-request)) |

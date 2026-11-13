@@ -750,10 +750,29 @@ describe("what someone else does to a pull request or an issue after it", () => 
       pushed("synchronize", {
         pull_request: {
           ...pull,
-          head: { ref: "release-please--branches--main", sha: "abc" },
+          head: {
+            ref: "release-please--branches--main",
+            sha: "abc",
+            repo: { full_name: "Dennis-Otto/demo" },
+          },
         },
       }),
     ).toMatchObject({ signal: { type: "release-updated" } });
+  });
+
+  it("pages for new commits on a branch of a fork named like release-please", () => {
+    expect(
+      pushed("synchronize", {
+        pull_request: {
+          ...pull,
+          head: {
+            ref: "release-please--branches--main",
+            sha: "abc",
+            repo: { full_name: "octocat/demo" },
+          },
+        },
+      }),
+    ).toMatchObject({ signal: { type: "activity", what: "commits" } });
   });
 });
 
@@ -1569,14 +1588,19 @@ describe("releases", () => {
           event({ action: "edited", pull_request: { ...pull, head } }),
           ME,
         ),
-      ).toEqual({ ignored: "a release pull request of a fork" });
+      ).toEqual({ ignored: "a pull request edited" });
     }
     expect(
       classify(
         "pull_request",
         event({
           action: "synchronize",
-          pull_request: { head: { ref: "release-please--x" } },
+          pull_request: {
+            head: {
+              ref: "release-please--x",
+              repo: { full_name: "Dennis-Otto/demo" },
+            },
+          },
         }),
         ME,
       ),
@@ -1606,6 +1630,71 @@ describe("releases", () => {
     expect(classify("release", event({ action: "created" }), ME)).toEqual({
       ignored: "a release created",
     });
+  });
+
+  it("takes a pull request of a fork named like release-please as a contribution", () => {
+    // Anyone can name the branch of a fork release-please--…, and a fork that runs
+    // release-please gets one by itself: what it holds is someone else's code.
+    const pull = {
+      number: 31,
+      title: "chore: release 9.9.9",
+      html_url: "https://github.com/Dennis-Otto/demo/pull/31",
+      user: stranger,
+      head: {
+        ref: "release-please--branches--main",
+        sha: "abc",
+        repo: { full_name: "octocat/demo" },
+      },
+    };
+    const { repo: _repo, ...nowhere } = pull.head;
+    for (const head of [pull.head, { ...pull.head, repo: null }, nowhere]) {
+      const from = { ...pull, head };
+      expect(
+        classify(
+          "pull_request",
+          event({ action: "opened", pull_request: from }),
+          ME,
+        ),
+      ).toEqual({
+        signal: {
+          ...at,
+          type: "contribution",
+          number: 31,
+          pull: true,
+          title: "chore: release 9.9.9",
+          url: pull.html_url,
+          author: "octocat",
+        },
+      });
+      expect(
+        classify(
+          "pull_request",
+          event({ action: "closed", pull_request: from }),
+          ME,
+        ),
+      ).toEqual({
+        signal: {
+          ...at,
+          type: "contribution-done",
+          number: 31,
+          reason: "closed",
+        },
+      });
+      expect(
+        classify(
+          "pull_request",
+          event({ action: "closed", pull_request: { ...from, merged: true } }),
+          ME,
+        ),
+      ).toEqual({
+        signal: {
+          ...at,
+          type: "contribution-done",
+          number: 31,
+          reason: "merged",
+        },
+      });
+    }
   });
 
   it("reads the version from the title of release-please", () => {

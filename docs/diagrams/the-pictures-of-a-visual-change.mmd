@@ -5,7 +5,7 @@ config:
 ---
 flowchart TB
     accTitle: The pictures of a visual change
-    accDescr: The maintainer or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, at most three pictures, each with its changed pixels in red when the check drew them, then before and after. The merge or the end of the pull request ticks the topic off.
+    accDescr: The maintainer or a bot pushes to a pull request that changes how something looks, and its visual check renders the pictures again and keeps each one that looks different in an artifact, before and after. When the check passed, the pager asks GitHub for the pull request, with a token of its app. One of someone else, from a fork, or that moved on to a newer head ends there, and so does a head whose pictures went already. Otherwise the pager reads the artifact with the same token, through the short-lived address of its storage. When every picture looks as committed, nothing comes. When some look different, their message goes into the topic of its release, or of a thing of their own, and the album of the largest changes follows, as many as fit into the ten photos of an album, each as one comparison of the same frame before and after with the changes framed in red, or, from an older check, its changed pixels in red, then before and after. The merge or the end of the pull request ticks the topic off.
 
     push["`The maintainer or a bot pushes to a pull request that changes how something looks`"]
     check["`The visual check renders the pictures and keeps each one that looks different, before and after`"]
@@ -14,7 +14,7 @@ flowchart TB
     read["`The pager reads the artifact, through the short-lived address of its storage`"]
     same["`Every picture looks as committed: nothing comes`"]
     topic["`**🖼** Their message in the topic of its release, or in one of their own`"]
-    album["`**📸** The album: the largest changes, three at most, each with its changed pixels in red, then before and after`"]
+    album["`**📸** The album: the largest changes, as many as fit into ten photos, each as one comparison of one frame before and after, the changes framed in red`"]
     done["`**✅** The merge or the end of the pull request ticks the topic off`"]
 
     push --> check

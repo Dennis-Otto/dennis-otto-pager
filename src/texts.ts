@@ -119,7 +119,7 @@ const en = {
   "message.noAlbum":
     "📸 No album: none of them is a PNG or WebP that Telegram shows as a photo.",
   "message.check": "All of them before and after",
-  "message.checkRed": "All of them before and after, each changed pixel in red",
+  "message.checkRed": "All of them before and after, the changes in red",
   "message.decision": "🤔 <b>A decision for you</b>\n{question}",
   "message.chosen": "✅ Your answer: <b>{option}</b>",
   "message.ownAnswer": "✅ Your answer, in your own words:\n{answer}",
@@ -459,7 +459,7 @@ const de: Catalog = {
   "message.noAlbum":
     "📸 Kein Album: Keines davon ist ein PNG oder WebP, das Telegram als Foto zeigt.",
   "message.check": "Alle vorher und nachher",
-  "message.checkRed": "Alle vorher und nachher, jedes geänderte Pixel rot",
+  "message.checkRed": "Alle vorher und nachher, die Änderungen rot",
   "message.decision": "🤔 <b>Eine Entscheidung für dich</b>\n{question}",
   "message.chosen": "✅ Deine Antwort: <b>{option}</b>",
   "message.ownAnswer": "✅ Deine Antwort, in deinen eigenen Worten:\n{answer}",

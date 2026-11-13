@@ -1043,7 +1043,7 @@ describe("the text of the pictures", () => {
         "• <code>e.png</code>: changed, < 0.01 % of its pixels",
         "• <code>f.png</code>: changed, 100 % of its pixels",
         "📸 The album below: 2 of 6.",
-        `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
+        `<a href="${CHECK}">All of them before and after, the changes in red</a>`,
       ].join("\n"),
     );
   });
@@ -1073,7 +1073,7 @@ describe("the text of the pictures", () => {
       `<a href="${CHECK}">Alle vorher und nachher</a>`,
     );
     expect(last(picturesText({ ...view, differences: 1 }, de))).toBe(
-      `<a href="${CHECK}">Alle vorher und nachher, jedes geänderte Pixel rot</a>`,
+      `<a href="${CHECK}">Alle vorher und nachher, die Änderungen rot</a>`,
     );
   });
 });
@@ -1298,7 +1298,7 @@ describe("the pictures of a pull request", () => {
     expect(await apply(w.context, signal())).toBe("pictures shown");
     const [message] = w.net.telegram("sendMessage");
     expect(message?.body.text).toContain(
-      `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
+      `<a href="${CHECK}">All of them before and after, the changes in red</a>`,
     );
     expect(media(w).map(({ caption }) => caption)).toEqual([
       "🆕 New: <code>screenshots/added.png</code>",

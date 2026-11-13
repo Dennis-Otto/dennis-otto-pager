@@ -29,6 +29,8 @@ import {
 } from "./helpers.ts";
 
 const at = { repo: REPO, installation: 9 };
+/** The page of a bot that fails, in its repository, as a fix sends it. */
+const BOT = `https://github.com/${REPO}/issues/5`;
 
 function failing(
   key: string,
@@ -41,7 +43,7 @@ function failing(
     type,
     key,
     label: { key: "entry.bot", values: { title } },
-    url: "https://github.com/x",
+    url: BOT,
     ...(run === undefined ? {} : { run }),
   };
 }
@@ -1307,7 +1309,7 @@ describe("the alarm of a repository", () => {
     const [opened, notice] = w.net.telegram("sendMessage");
     expect(notice?.body).toMatchObject({
       chat_id: opened?.body.chat_id,
-      text: '🚨 New in this alarm: <a href="https://github.com/x">A bot fails: workflow:release fails</a>',
+      text: `🚨 New in this alarm: <a href="${BOT}">A bot fails: workflow:release fails</a>`,
       reply_parameters: { message_id: 100 },
     });
     // It notifies, as an edit doesn't.
@@ -1695,7 +1697,7 @@ describe("the alarm of a repository", () => {
     expect(allowed(both)).toEqual(["fix", "later", "ignore"]);
     await press(w.context, both, { action: "fix", id: both.id, version: null });
     expect(w.net.github("/dispatches")[0]?.body.client_payload.entries).toEqual(
-      [{ label: "A bot fails: CI fails on main", url: "https://github.com/x" }],
+      [{ label: "A bot fails: CI fails on main", url: BOT }],
     );
     // The bot closes its issue once GitHub shows the picture: the entry leaves.
     expect(

@@ -2,10 +2,11 @@
 // text, and everything that comes from anyone but the maintainer.
 import { describe, expect, it } from "vitest";
 
+import { MAX_LABEL } from "../src/actions.ts";
 import { allowed, callbackData, headTag, keyboard } from "../src/buttons.ts";
 import type { Alarm, Contribution, Item, Release } from "../src/store.ts";
 import { texts } from "../src/texts.ts";
-import { handleUpdate } from "../src/updates.ts";
+import { handleUpdate, MAX_TEXT } from "../src/updates.ts";
 import {
   base,
   CHAT,
@@ -35,13 +36,14 @@ function contribution(extra: Partial<Contribution> = {}): Contribution {
   };
 }
 
+/** The run of a check that fails, in the repository of the alarm. */
+const LINT = `https://github.com/${REPO}/actions/runs/7/job/8`;
+
 const alarm: Alarm = {
   ...base(ID),
   kind: "alarm",
   state: "open",
-  entries: [
-    { key: "check:lint", label: "lint fails", url: "https://github.com/run" },
-  ],
+  entries: [{ key: "check:lint", label: "lint fails", url: LINT }],
 };
 
 const release: Release = {
@@ -292,7 +294,7 @@ describe("buttons", () => {
           item: ID,
           repo: REPO,
           kind: "alarm",
-          entries: [{ label: "lint fails", url: "https://github.com/run" }],
+          entries: [{ label: "lint fails", url: LINT }],
           language: "en",
         },
       });
@@ -327,6 +329,68 @@ describe("buttons", () => {
       const draft = await pressing(w, contribution(), `draft:${ID}`);
       expect(draft.item?.state).toBe("new");
       expect(draft.item?.jobStarted).toBeUndefined();
+    });
+
+    it("send only what the control repository takes: entries of the repository, each label cut", async () => {
+      const w = await world();
+      withControl(w.net).on(
+        "POST",
+        "/repos/Dennis-Otto/control/dispatches",
+        () => new Response(null, { status: 204 }),
+      );
+      // The description of an alert and its path, longer than the control
+      // repository takes, an event of GitHub on the app's Advanced page, an entry
+      // whose page GitHub didn't name, and one of a repository with a longer name.
+      const long = `${"x".repeat(MAX_LABEL - 2)}😀😀`;
+      const mixed: Alarm = {
+        ...alarm,
+        entries: [
+          { key: "check:long", label: long, url: LINT },
+          {
+            key: "delivery:1",
+            label: "An event failed",
+            url: "https://github.com/settings/apps/pager/advanced",
+          },
+          { key: "check:nameless", label: "nameless", url: "" },
+          {
+            key: "check:other",
+            label: "other",
+            url: `https://github.com/${REPO}-fork/actions/runs/1`,
+          },
+          ...alarm.entries,
+        ],
+      };
+      const fixing = await pressing(w, mixed, `fix:${ID}`);
+      expect(fixing.item?.state).toBe("fixing");
+      const sent = w.net.github("/dispatches")[0]?.body.client_payload.entries;
+      expect(sent).toEqual([
+        { label: `${"x".repeat(MAX_LABEL - 2)}…`, url: LINT },
+        { label: "lint fails", url: LINT },
+      ]);
+      expect(sent[0].label.length).toBeLessThanOrEqual(MAX_LABEL);
+    });
+
+    it("start no fix that the control repository would refuse for want of an entry", async () => {
+      const w = await world();
+      withControl(w.net);
+      const foreign: Alarm = {
+        ...alarm,
+        entries: [
+          { key: "check:nameless", label: "nameless", url: "" },
+          {
+            key: "check:elsewhere",
+            label: "elsewhere",
+            url: "https://github.com/someone/else/actions/runs/1",
+          },
+        ],
+      };
+      const fix = await pressing(w, foreign, `fix:${ID}`);
+      expect(fix.answer).toMatchObject({
+        text: "Nothing here for Claude to fix: no entry links to a page of its repository.",
+        show_alert: true,
+      });
+      expect(fix.item?.state).toBe("open");
+      expect(w.net.github("/dispatches")).toHaveLength(0);
     });
   });
 
@@ -1121,6 +1185,36 @@ describe("messages", () => {
       undefined,
     ]);
     expect(sent.filter((body) => "message_thread_id" in body)).toHaveLength(1);
+  });
+
+  it("answer a free text that the control repository would refuse, and send none", async () => {
+    const w = await world();
+    withControl(w.net).on(
+      "POST",
+      "/repos/Dennis-Otto/control/dispatches",
+      () => new Response(null, { status: 204 }),
+    );
+    // A pasted log, longer than the control repository takes but not than
+    // Telegram's 4096 characters; the longest one it takes goes on.
+    expect(
+      await handleUpdate(
+        w.context,
+        message("x".repeat(MAX_TEXT + 1), { message_thread_id: 77 }),
+      ),
+    ).toBe("free text that is too long");
+    expect(w.net.github("/dispatches")).toHaveLength(0);
+    expect(w.net.telegram("setMessageReaction")).toHaveLength(0);
+    expect(await w.context.store.waiting(START + 1)).toEqual([]);
+    expect(w.net.telegram("sendMessage")[0]?.body).toMatchObject({
+      text: `That text has ${MAX_TEXT + 1} characters; the control repository takes ${MAX_TEXT} at most. Send a shorter one.`,
+      message_thread_id: 77,
+    });
+    expect(await handleUpdate(w.context, message("x".repeat(MAX_TEXT)))).toBe(
+      "free text sent",
+    );
+    expect(
+      w.net.github("/dispatches")[0]?.body.client_payload.text,
+    ).toHaveLength(MAX_TEXT);
   });
 
   it("send free text to the control repository and react to it", async () => {

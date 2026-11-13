@@ -4,7 +4,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 
 import { headTag } from "../src/buttons.ts";
-import { handleControl, WINDOW } from "../src/control.ts";
+import { handleControl, MAX_PATH, WINDOW } from "../src/control.ts";
 import { hmacHex } from "../src/crypto.ts";
 import { ANSWER_WITHIN, KEEP_LATE, runSchedule } from "../src/schedule.ts";
 import {
@@ -14,6 +14,7 @@ import {
   itemId,
   keys,
   type Release,
+  type Workflow,
 } from "../src/store.ts";
 import {
   base,
@@ -31,6 +32,9 @@ import {
 } from "./helpers.ts";
 
 const ID = "i0123456789abcde";
+
+/** The file of a workflow that fails on main. */
+const WORKFLOW = ".github/workflows/docs.yml";
 
 async function request(
   body: string,
@@ -435,6 +439,30 @@ describe("the answers of Claude", () => {
       proposal("merge", undefined),
       proposal("draft", { kind: "contribution", repo: REPO }),
       proposal("draft", { kind: "contribution", repo: REPO, number: 0 }),
+      proposal("draft", {
+        kind: "contribution",
+        repo: REPO,
+        number: 1,
+        path: WORKFLOW,
+      }),
+      proposal("merge", { kind: "release", repo: REPO, path: WORKFLOW }),
+      // A workflow is named by its file, and has no ⏰ Later and no 🛠 Start fix.
+      proposal("rerun", { kind: "workflow", repo: REPO }),
+      proposal("rerun", { kind: "workflow", repo: REPO, path: "" }),
+      proposal("rerun", { kind: "workflow", repo: REPO, path: 7 }),
+      proposal("rerun", {
+        kind: "workflow",
+        repo: REPO,
+        path: "x".repeat(MAX_PATH + 1),
+      }),
+      proposal("rerun", {
+        kind: "workflow",
+        repo: REPO,
+        path: WORKFLOW,
+        number: 3,
+      }),
+      proposal("later", { kind: "workflow", repo: REPO, path: WORKFLOW }),
+      proposal("fix", { kind: "workflow", repo: REPO, path: WORKFLOW }),
     ]) {
       expect((await send(w, value)).status, JSON.stringify(value)).toBe(400);
     }
@@ -608,6 +636,61 @@ describe("the answers of Claude", () => {
     );
     expect(sent[1]?.text).toContain("doesn't offer 🔀 Merge now.");
     expect(sent.map((body) => body.reply_markup.inline_keyboard)).toEqual([
+      [],
+      [],
+    ]);
+  });
+
+  it("proposes 🔁 Rerun and ✖ Ignore of a failing workflow, named by its file, while it offers them", async () => {
+    const w = await world();
+    const target = { kind: "workflow", repo: REPO, path: WORKFLOW };
+    const rerun = { type: "proposal", text: "Rerun?", action: "rerun", target };
+    // No such workflow fails: the answer says so, without a button.
+    expect(await send(w, rerun)).toEqual({ status: 200, text: "said" });
+    const failing: Workflow = {
+      ...base(await itemId(keys.workflow(REPO, WORKFLOW))),
+      kind: "workflow",
+      state: "failing",
+      path: WORKFLOW,
+      name: "Docs <site>",
+      branch: "main",
+      run: 60,
+      attempt: 2,
+      url: `https://github.com/${REPO}/actions/runs/60/attempts/2`,
+      jobs: [],
+      count: 1,
+      since: START,
+      last: START,
+    };
+    await w.context.store.put(failing);
+    expect(await send(w, rerun)).toEqual({ status: 200, text: "proposed" });
+    expect(
+      await send(w, { ...rerun, text: "Ignore?", action: "ignore" }),
+    ).toEqual({ status: 200, text: "proposed" });
+    // One that runs again offers no second 🔁 Rerun.
+    await w.context.store.put({ ...failing, state: "rerunning" });
+    expect(await send(w, rerun)).toEqual({ status: 200, text: "said" });
+    // Another workflow of the same repository is another thing.
+    expect(
+      await send(w, {
+        ...rerun,
+        target: { ...target, path: ".github/workflows/ci.yml" },
+      }),
+    ).toEqual({ status: 200, text: "said" });
+
+    const sent = w.net.telegram("sendMessage").map((call) => call.body);
+    const where = `<a href="${failing.url}">the workflow Docs &lt;site&gt; of ${REPO}</a>`;
+    expect(sent.map((body) => body.text)).toEqual([
+      `🤖 Rerun?\n\n<i>No button: the pager shows no failing workflow of ${REPO} for 🔁 Rerun.</i>`,
+      `🤖 Rerun?\n\n👉 🔁 Rerun: ${where}`,
+      `🤖 Ignore?\n\n👉 ✖ Ignore: ${where}`,
+      `🤖 Rerun?\n\n<i>No button: ${where} doesn't offer 🔁 Rerun now.</i>`,
+      `🤖 Rerun?\n\n<i>No button: the pager shows no failing workflow of ${REPO} for 🔁 Rerun.</i>`,
+    ]);
+    expect(sent.map((body) => body.reply_markup.inline_keyboard)).toEqual([
+      [],
+      [[{ text: "✅ Confirm", callback_data: `rerun:${failing.id}` }]],
+      [[{ text: "✅ Confirm", callback_data: `ignore:${failing.id}` }]],
       [],
       [],
     ]);

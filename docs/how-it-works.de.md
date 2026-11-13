@@ -209,7 +209,7 @@ Der Workflow des privaten Steuer-Repositorys des Maintainers, das `CONTROL_REPOS
 
 `language` ist `LANGUAGE` des Workers, `en` oder `de`: Darin antwortet das Steuer-Repository dem Maintainer, die Notiz eines Fixes und der Grund eines gescheiterten Jobs eingeschlossen, während ein Antwortentwurf in der Sprache seines Issues oder Pull Requests bleibt.
 
-Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *merge it*, als Antwort auf die Nachricht eines Releases, meint dieses Release. Ebenso ein Text im Thema einer Sache, der die Sache als `thing` mitbringt: ihre `id`, `kind`, `repo` und `state`, die `number` eines Beitrags oder Releases und die `version` eines Releases, `links` dorthin, wo GitHub sie zeigt (ihr Issue oder Pull Request, oder die Seite eines Bündels und seine Einträge, höchstens 21), und `text`, ihre Nachricht, wie der Maintainer sie sieht, im HTML von Telegram, in dem escapt ist, was von GitHub kommt, höchstens 1500 Zeichen. Der Schlüssel heißt `thing`, nicht `item`: Der Steuer-Workflow führt die Jobs eines `item` nacheinander aus, und ein Text behält einen eigenen Lauf. Ein Workflow, der `thing` nicht kennt, übergeht es, so darf jede Seite zuerst deployen. Der Pager schickt keinen Text eines Issues, auch nicht den Anfang, den seine Nachricht zitiert: Der Workflow liest ihn selbst von GitHub, als Daten. Er antwortet mit einem `POST` an `/control`:
+Ein Text als Antwort auf eine Nachricht des Pagers handelt von ihrer Sache: *merge it*, als Antwort auf die Nachricht eines Releases, meint dieses Release. Ebenso ein Text im Thema einer Sache, der die Sache als `thing` mitbringt: ihre `id`, `kind`, `repo` und `state`, die `number` eines Beitrags oder Releases, die `version` eines Releases und den `path` eines scheiternden Workflows, seine Datei wie `.github/workflows/docs.yml`, `links` dorthin, wo GitHub sie zeigt (ihr Issue oder Pull Request, oder die Seite eines Bündels und seine Einträge, höchstens 21), und `text`, ihre Nachricht, wie der Maintainer sie sieht, im HTML von Telegram, in dem escapt ist, was von GitHub kommt, höchstens 1500 Zeichen. Der Schlüssel heißt `thing`, nicht `item`: Der Steuer-Workflow führt die Jobs eines `item` nacheinander aus, und ein Text behält einen eigenen Lauf. Ein Workflow, der `thing` nicht kennt, übergeht es, so darf jede Seite zuerst deployen. Der Pager schickt keinen Text eines Issues, auch nicht den Anfang, den seine Nachricht zitiert: Der Workflow liest ihn selbst von GitHub, als Daten. Er antwortet mit einem `POST` an `/control`:
 
 - dem Header `X-Pager-Timestamp`, der Zeit in Sekunden seit 1970, die höchstens fünf Minuten abweichen darf;
 - dem Header `X-Pager-Signature`, `sha256=` und das HMAC mit SHA-256, unter `CONTROL_SECRET`, über den Zeitstempel, einen Punkt und den Body;
@@ -220,7 +220,7 @@ Der Body ist eines von:
 - `{"type": "draft", "item": "<id>", "text": "<Antwort>"}`: der Entwurf einer Antwort auf einen Beitrag, höchstens 3000 Zeichen, gezeigt als neue Nachricht mit ✅ Senden. Hat der Maintainer den Entwurf selbst geschrieben, kommt der Entwurf eines Jobs als Nachricht zum Lesen in das Thema der Sache, und seiner bleibt;
 - `{"type": "note", "item": "<id>", "text": "<Notiz>"}`: eine Notiz unter einer Sache, etwa der Pull Request eines Fixes. Die Notiz, die einen Job beendet, solange die Sache noch *fixing* (oder ein Beitrag *drafting*) ist, kommt in einer neuen Nachricht, die benachrichtigt, wie ein Fehlschlag; jede andere Notiz bearbeitet die Nachricht der Sache an Ort und Stelle;
 - `{"type": "note", "text": "<Antwort>"}`: eine eigene Nachricht, etwa die Antwort auf freien Text;
-- `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Bestätigen;
+- `{"type": "proposal", "text": "<Antwort>", "action": "<Aktion>", "target": {"kind": "<Art>", "repo": "<owner/name>", "number": <Nummer>}}`: eine Antwort auf freien Text, die eine Aktion vorschlägt, als eigene Nachricht mit einem einzigen Knopf ✅ Bestätigen; ein scheiternder Workflow heißt statt mit einer Nummer mit seiner Datei, `"target": {"kind": "workflow", "repo": "<owner/name>", "path": "<Datei>"}`;
 - `{"type": "failed", "item": "<id>", "text": "<Grund>"}`: ein Entwurf oder ein Fix, der nicht zustande kam, etwa weil das Wochenlimit erreicht ist. Die Sache kehrt in den Zustand vor ihrem Knopf zurück, mit dem Grund als Notiz, in einer neuen Nachricht, damit der Knopf erneut laufen kann;
 - `{"type": "failed", "item": "<id>", "text": "<Grund>", "action": "rerun"}`: ein Fix ohne Änderung, der eine Aktion seines Alarms oder seiner Warnung vorschlägt, etwa 🔁 Neu starten, wenn die Logs einen Ausfall von GitHub oder eines Downloads zeigen. Die Sache kehrt zurück wie oben, mit dem Grund als Notiz, aber ihre Nachricht bleibt an ihrem Platz, und die Antwort kommt im Thema der Sache als Vorschlag, mit einem einzigen Knopf ✅ Bestätigen, der benachrichtigt. Eine Sache, die die Aktion dann nicht anbietet, etwa ein Alarm, dessen Einträge keinen Lauf nennen, kehrt zurück wie bei jedem gescheiterten Job. Ein älterer Pager übergeht `action`, daher darf jede Seite zuerst deployen;
 - `{"type": "failed", "text": "<Grund>"}`: freier Text, dessen Antwort nicht zustande kam, gezeigt als eigene Nachricht;
@@ -254,13 +254,16 @@ Ein Modell heißt mit seinem kurzen Namen, etwa *Opus 5.5* für `claude-opus-5-5
 
 Ein Vorschlag nennt seine Sache so, wie das Steuer-Repository sie kennt, und der Pager schlägt sie nach:
 
-| Aktion | Art der Sache | `number` |
+| Aktion | Art der Sache | `number` oder `path` |
 | --- | --- | --- |
 | `merge` | `release` | keine |
-| `assistant`, `draft` | `contribution` | das Issue, der Pull Request oder die Diskussion |
+| `assistant`, `draft` | `contribution` | die `number` des Issues, Pull Requests oder der Diskussion |
 | `fix` | `alarm`, `alert` | keine |
-| `rerun` | `alarm` | keine |
-| `later`, `ignore` | jede der vier | bei einem Beitrag |
+| `rerun` | `alarm`, `workflow` | der `path` eines Workflows, wie sein `thing` ihn nennt |
+| `later` | `contribution`, `alarm`, `alert`, `release` | die `number` eines Beitrags |
+| `ignore` | jede der fünf | die `number` eines Beitrags, der `path` eines Workflows |
+
+Ein scheiternder Workflow hat kein ⏰ Später, also nennt ein Vorschlag davon keinen Workflow. Sein 🔁 Neu starten zeigt seinen Knopf nur, solange er scheitert, nicht während ein neuer Versuch läuft, wie seine eigene Nachricht.
 
 ✅ Bestätigen trägt die Daten des eigenen Knopfs der Sache, ein Druck führt die Aktion also nur aus, solange die Sache sie noch anbietet, wie jeder Druck, und danach verschwindet der Knopf. Eine Sache, die der Pager nicht zeigt oder die die Aktion gerade nicht anbietet, bekommt die Antwort ohne Knopf. Die `action` eines gescheiterten Fixes nennt kein `target`: Es ist die Sache des Jobs. ✅ Senden und ✏️ Bearbeiten lassen sich nicht vorschlagen: Sie bleiben bei der Nachricht des Entwurfs, die den Text zeigt, den sie posten.
 
@@ -469,6 +472,8 @@ Der Workflow *Health* des Steuer-Repositorys läuft einmal am Tag und von Hand, 
 
 ```json
 {
+  "version": "1.2.3",
+  "release": null,
   "schedule": "2026-11-08T06:45:00.000Z",
   "failure": null,
   "telegram": {
@@ -486,6 +491,8 @@ Der Workflow *Health* des Steuer-Repositorys läuft einmal am Tag und von Hand, 
 }
 ```
 
+- `version` ist die Version des Pagers, die läuft, aus `package.json`, die das Release in dem Commit erhöht, den Workers Builds bereitstellt.
+- `release` ist das Release des eigenen Repositorys des Pagers, das `package.json` nennt, das der Worker noch nicht ausführt: `version` und `at`, wann GitHub es veröffentlichte; `null`, wenn der Worker das neueste Release ausführt, von dem er hörte. Der Pager hört von dem Release durch das Ereignis `release`, wie für die Nachricht jedes Releases, wenn seine App auf seinem eigenen Repository installiert ist. Ging das Release 30 Minuten danach nicht live, sagt der Zeitplan das einmal, in einer eigenen Nachricht: Ein Build von Workers Builds, der das Release nur hochlud, oder einer, der nie startete, zeigt sich sonst nirgends. Ein Worker dieses Releases oder eines neueren nimmt es zurück.
 - `schedule` ist, wann der Zeitplan zuletzt bis zu seinem Ende lief, was er im Speicher des Durable Objects notiert, oder `null`, wenn er das nie tat. Ein Lauf, in dem eine Sache scheiterte, läuft nicht bis zu seinem Ende, also macht eine Sache, die immer wieder scheitert, den Zeitplan älter als eine Stunde.
 - `failure` ist die letzte Sache, die in einem Lauf des Zeitplans scheiterte, oder `null`, wenn nie eine scheiterte: `at`, wann; `what`, der Schritt und die Sache über ihre ID, etwa `the things that come back, thing i3f0c9a1b2d4e5f6`; und `error`, die Antwort von Telegram oder GitHub, etwa `Telegram sendMessage: Bad Request: message is too long`. Eine nach `schedule` ist das, worüber die Läufe seitdem nicht hinauskommen.
 - `telegram` sagt, ob Telegram das Token des Bots annimmt, mit `getMe`, und aus `getWebhookInfo`, ob ein Webhook gesetzt ist, wie viele Updates noch auf ihn warten und seinen letzten Fehler, wenn Telegram einen hält. Eine Ablehnung ist `{"ok": false, "error": "Telegram getMe: Unauthorized"}`.
@@ -496,7 +503,7 @@ Der Lauf scheitert mit einem `::error::`, das nennt, was falsch ist, wenn der Pa
 
 ### /status im Chat
 
-`/status` fragt den Pager sofort dasselbe, aus dem Chat: `src/status.ts` ruft dasselbe `health()` auf und formuliert die Antwort in der Sprache des Pagers, eine Zeile je Ding, ✅ für das, was geht, ⚠️ für das, was scheitert, und ℹ️ für das, was fehlt, aber freiwillig ist, mit dem Schritt von [Einrichten](setup.md), der es behebt. Sie sagt, wann der Zeitplan zuletzt bis zu seinem Ende lief, den letzten Fehlschlag eines Laufs, über den die Läufe seitdem nicht hinauskamen, ob Telegram den Bot annimmt und ein Webhook gesetzt ist, und einen Fehler des Webhooks am letzten Tag; ob GitHub den Schlüssel der App annimmt, und ob die App auf `CONTROL_REPOSITORY` installiert ist, wie freier Text es braucht; ob `GITHUB_USER_TOKEN` gesetzt ist, und die Tage, bis jedes Token abläuft, mit ⚠️ ab drei Wochen davor, wenn seine Erinnerung kommt. Die Grenzen sind die der Prüfung *Health*: ein Zeitplan, der älter als eine Stunde ist, und ein Fehler des Webhooks am letzten Tag. Sie liest nur, schickt dem Steuer-Repository nichts und nennt kein Geheimnis, und die Antwort geht in den Thread, aus dem die Frage kam.
+`/status` fragt den Pager sofort dasselbe, aus dem Chat: `src/status.ts` ruft dasselbe `health()` auf und formuliert die Antwort in der Sprache des Pagers, eine Zeile je Ding, ✅ für das, was geht, ⚠️ für das, was scheitert, und ℹ️ für das, was fehlt, aber freiwillig ist, mit dem Schritt von [Einrichten](setup.md), der es behebt. Sie sagt, welche Version läuft, und ein Release des Pagers, das auf dem Weg durch Workers Builds ist oder nach 30 Minuten nicht live ging; wann der Zeitplan zuletzt bis zu seinem Ende lief, den letzten Fehlschlag eines Laufs, über den die Läufe seitdem nicht hinauskamen, ob Telegram den Bot annimmt und ein Webhook gesetzt ist, und einen Fehler des Webhooks am letzten Tag; ob GitHub den Schlüssel der App annimmt, und ob die App auf `CONTROL_REPOSITORY` installiert ist, wie freier Text es braucht; ob `GITHUB_USER_TOKEN` gesetzt ist, und die Tage, bis jedes Token abläuft, mit ⚠️ ab drei Wochen davor, wenn seine Erinnerung kommt. Die Grenzen sind die der Prüfung *Health*: ein Zeitplan, der älter als eine Stunde ist, und ein Fehler des Webhooks am letzten Tag. Sie liest nur, schickt dem Steuer-Repository nichts und nennt kein Geheimnis, und die Antwort geht in den Thread, aus dem die Frage kam.
 
 Sie dient zwei Menschen: wer eine Instanz einrichtet, deren Steuer-Repository erst in Schritt 7 kommt, und in Schritt 6 erfährt, ob der Schlüssel der App, ihre Installation und der Webhook gehen; und dem Maintainer, der sich fragt, warum der Pager still ist. Sie ist die Antwort auf eine Frage, keine Nachricht, dass alles gut ist, die [Entscheidung 0013](decisions/0013-the-control-repository-checks-the-health-of-the-pager-once-a-day.md) abgelehnt hat: Ein Pager, der tot ist, kann nicht antworten, also bleibt die Prüfung von außen das, was ihn bemerkt.
 

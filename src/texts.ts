@@ -260,6 +260,13 @@ const en = {
     "That text has {length} characters; the control repository takes {max} at most. Send a shorter one.",
 
   "status.title": "🩺 <b>The status of your pager</b>",
+  "status.version": "✅ The pager runs version {version}.",
+  "status.deploying":
+    "ℹ️ The pager runs version {version}; the release {release} of {time} is on its way through Workers Builds.",
+  "status.behind":
+    "⚠️ The pager runs version {version}, though the release {release} came out on {time}: Workers Builds didn't deploy it. Its log in Cloudflare says why, and docs/releases.md under “When a build fails” what to do.",
+  "deploy.behind":
+    "⚠️ The release {release} of the pager came out on {time}, but the Worker still runs version {version}: Workers Builds didn't deploy it. Its log in Cloudflare says why, and docs/releases.md under “When a build fails” what to do.",
   "status.schedule": "✅ The schedule last ran to its end on {time}.",
   "status.scheduleLate":
     "⚠️ The schedule last ran to its end on {time}, more than an hour ago, though it runs every 15 minutes: does the Worker still have its cron trigger, which step 2 of docs/setup.md deploys? Its log in Cloudflare says why a run failed.",
@@ -319,6 +326,7 @@ const en = {
   "severity.none": "not rated yet",
 
   "proposal.security": "the security of {repo}",
+  "proposal.workflow": "the workflow {name} of {repo}",
   "proposal.notShown":
     "No button: the pager shows no {kind} of {repo} for {label}.",
   "proposal.notOffered": "No button: {thing} doesn't offer {label} now.",
@@ -326,6 +334,7 @@ const en = {
   "kind.alarm": "alarm",
   "kind.alert": "security message",
   "kind.release": "release",
+  "kind.workflow": "failing workflow",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",
@@ -651,6 +660,13 @@ const de: Catalog = {
     "Freier Text geht an den Workflow von {repo}, wo die GitHub-App noch nicht installiert ist: Installier sie dort, wie docs/setup.md es beschreibt.",
 
   "status.title": "🩺 <b>Der Stand deines Pagers</b>",
+  "status.version": "✅ Der Pager läuft in Version {version}.",
+  "status.deploying":
+    "ℹ️ Der Pager läuft in Version {version}; das Release {release} vom {time} ist auf dem Weg durch Workers Builds.",
+  "status.behind":
+    "⚠️ Der Pager läuft in Version {version}, obwohl das Release {release} am {time} erschien: Workers Builds hat es nicht bereitgestellt. Sein Protokoll in Cloudflare sagt, warum, und docs/releases.md unter „Wenn ein Build scheitert“, was zu tun ist.",
+  "deploy.behind":
+    "⚠️ Das Release {release} des Pagers erschien am {time}, aber der Worker läuft noch in Version {version}: Workers Builds hat es nicht bereitgestellt. Sein Protokoll in Cloudflare sagt, warum, und docs/releases.md unter „Wenn ein Build scheitert“, was zu tun ist.",
   "status.schedule":
     "✅ Der Zeitplan lief zuletzt am {time} bis zu seinem Ende.",
   "status.scheduleLate":
@@ -713,6 +729,7 @@ const de: Catalog = {
   "severity.none": "noch nicht eingestuft",
 
   "proposal.security": "die Sicherheit von {repo}",
+  "proposal.workflow": "der Workflow {name} von {repo}",
   "proposal.notShown":
     "Kein Knopf: Für {label} zeigt der Pager in {repo} nichts ({kind}).",
   "proposal.notOffered": "Kein Knopf: {thing} bietet {label} gerade nicht an.",
@@ -720,6 +737,7 @@ const de: Catalog = {
   "kind.alarm": "Alarm",
   "kind.alert": "Sicherheitsmeldung",
   "kind.release": "Release",
+  "kind.workflow": "scheiternder Workflow",
 
   "topic.contribution": "🙋 {repo}#{number} {title}",
   "topic.discussion": "💬 {repo}#{number} {title}",

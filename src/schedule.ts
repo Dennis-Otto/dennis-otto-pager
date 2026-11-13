@@ -7,7 +7,8 @@
  * again (src/advisories.ts), the reminder of each token of the maintainer comes
  * three weeks before it expires (src/tokens.ts), a workflow that failed on the
  * default branch and whose rerun didn't help shows (src/workflows.ts), a topic
- * whose rename Telegram refused gets its name (src/topics.ts), and an
+ * whose rename Telegram refused gets its name (src/topics.ts), a release of the
+ * pager that didn't go live is told once (src/version.ts), and an
  * event of GitHub that the pager failed to handle comes again
  * (src/deliveries.ts).
  *
@@ -28,6 +29,7 @@ import { beforeJob, type Item } from "./store.ts";
 import { REACTIONS } from "./telegram.ts";
 import { refreshReminder, remindTokens } from "./tokens.ts";
 import { retitle } from "./topics.ts";
+import { checkDeployed } from "./version.ts";
 import { canSettle, settle } from "./workflows.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -293,6 +295,10 @@ export async function runSchedule(context: Context): Promise<string[]> {
   await step("the renames of topics", (each) =>
     renameAgain(context, pending.rename, each),
   );
+  await step("the release of the pager", async () => {
+    await checkDeployed(context);
+    return [];
+  });
   await step("the events that failed", () => failedEvents(context));
   if (!failed) {
     await context.local.put(RAN, context.now());

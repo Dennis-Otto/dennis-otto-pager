@@ -84,6 +84,8 @@ Dann behebe die Ursache in einem Pull Request; das nächste Release stellt ihn b
 
 ## Wenn ein Build scheitert
 
+Der Pager bemerkt ein Release, das nicht live ging, selbst: Sobald das Ereignis eines Releases seines eigenen Repositorys kam, vergleicht sein Zeitplan das Release mit der Version, die läuft, und nach 30 Minuten ohne es sagt er das einmal in einer eigenen Nachricht. `/status` zeigt die Version, die läuft, und der Zustand, nach dem das Steuer-Repository jeden Tag fragt, nennt sie mit dem Release, auf das er wartet ([Der Zustand des Pagers](how-it-works.md#der-zustand-des-pagers)). Das Protokoll des Builds im Dashboard von Cloudflare sagt, warum; die Ursachen sind diese:
+
 - **Der Name passt nicht:** Workers Builds baut nur den Worker, dessen Namen `wrangler.jsonc` nennt. Setz den Namen in `wrangler.jsonc` auf den des Workers zurück: Ein Worker mit neuem Namen wäre ein neuer Worker, ohne die Geheimnisse und den Zustand des alten.
 - **Kein Build, nachdem das Repository umbenannt oder verschoben wurde:** Das Dashboard listet keinen Build der Merges seither. Öffne *Workers & Pages*, den Worker, *Settings* und *Builds*, trenne das Repository und verbinde es unter seinem neuen Namen neu, mit den Einstellungen aus Schritt 3; die laufende Version dient solange weiter.
 - **Ein anderes Node:** Der Build nimmt das Node aus `.nvmrc`; zeigt sein Protokoll ein anderes, setz unter *Settings* und *Builds* die Build-Variable `NODE_VERSION` auf die Version aus `.nvmrc`.

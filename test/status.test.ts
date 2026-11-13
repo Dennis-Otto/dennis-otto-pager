@@ -9,6 +9,12 @@ import { SCHEDULE_WITHIN, WEBHOOK_WITHIN } from "../src/status.ts";
 import { TOKENS, type Tokens } from "../src/tokens.ts";
 import { handleUpdate } from "../src/updates.ts";
 import {
+  DEPLOY_WITHIN,
+  RELEASED,
+  type Released,
+  VERSION,
+} from "../src/version.ts";
+import {
   appKey,
   CHAT,
   json,
@@ -84,6 +90,7 @@ describe("/status", () => {
     });
     expect(lines).toEqual([
       "🩺 <b>The status of your pager</b>",
+      `✅ The pager runs version ${VERSION}.`,
       "✅ The schedule last ran to its end on 2026-11-04 at 07:50 UTC.",
       "✅ Telegram takes the bot, and its webhook is set.",
       "✅ GitHub takes the key of the app.",
@@ -120,6 +127,7 @@ describe("/status", () => {
     );
     expect(await asked(w)).toEqual([
       "🩺 <b>The status of your pager</b>",
+      `✅ The pager runs version ${VERSION}.`,
       "⚠️ The schedule never ran to its end: it runs every 15 minutes once the Worker is deployed, as step 2 of docs/setup.md says. Its log in Cloudflare says why a run failed.",
       "⚠️ Telegram takes the bot, but no webhook is set, so the bot gets no update: set it, as step 5 of docs/setup.md says.",
       "⚠️ GitHub refuses the app: GitHub answered 401: A JSON web token could not be decoded. Are GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY of the Worker right? Step 4 of docs/setup.md sets them.",
@@ -153,6 +161,7 @@ describe("/status", () => {
     });
     expect(await asked(w)).toEqual([
       "🩺 <b>The status of your pager</b>",
+      `✅ The pager runs version ${VERSION}.`,
       "⚠️ The schedule last ran to its end on 2026-11-04 at 06:59 UTC, more than an hour ago, though it runs every 15 minutes: does the Worker still have its cron trigger, which step 2 of docs/setup.md deploys? Its log in Cloudflare says why a run failed.",
       "⚠️ A run of the schedule failed on 2026-11-04 at 07:55 UTC, at show item i0123456789abcde: Telegram editMessageText: Bad Request: &lt;can't parse&gt;. The next run tries again, and the log of the Worker in Cloudflare has the whole error.",
       "✅ Telegram takes the bot, and its webhook is set.",
@@ -177,7 +186,7 @@ describe("/status", () => {
       fix: { expires: null },
     });
     const first = await asked(w);
-    expect(first.slice(2, 3)).toEqual([
+    expect(first.slice(3, 4)).toEqual([
       "⚠️ Telegram refuses the bot: Telegram getMe: Unauthorized. Set TELEGRAM_BOT_TOKEN of the Worker again, as step 3 of docs/setup.md says.",
     ]);
     expect(first.slice(-2)).toEqual([
@@ -201,13 +210,32 @@ describe("/status", () => {
     webhook(w);
     await w.context.local.put(RAN, START - 10 * MINUTE);
     const lines = await asked(w, { text: "/status@repo_pager_bot" });
-    expect(lines.slice(0, 3)).toEqual([
+    expect(lines.slice(0, 4)).toEqual([
       "🩺 <b>Der Stand deines Pagers</b>",
+      `✅ Der Pager läuft in Version ${VERSION}.`,
       "✅ Der Zeitplan lief zuletzt am 04.11.2026 um 07:50 UTC bis zu seinem Ende.",
       "✅ Telegram nimmt den Bot an, und sein Webhook ist gesetzt.",
     ]);
     expect(lines).toContain(
       "✅ Claude-Token in Dennis-Otto/control: läuft in 337 Tagen ab, am 07.10.2027.",
+    );
+  });
+
+  it("says which release of the pager is on its way, and which one didn't go live", async () => {
+    const released: Released = { version: "999.0.0", at: START - MINUTE };
+    const w = await world();
+    await w.context.local.put<Released>(RELEASED, released);
+    expect((await asked(w))[1]).toBe(
+      `ℹ️ The pager runs version ${VERSION}; the release 999.0.0 of 2026-11-04 at 07:59 UTC is on its way through Workers Builds.`,
+    );
+
+    const late = await world({ language: "de" });
+    await late.context.local.put<Released>(RELEASED, {
+      ...released,
+      at: START - DEPLOY_WITHIN,
+    });
+    expect((await asked(late))[1]).toBe(
+      `⚠️ Der Pager läuft in Version ${VERSION}, obwohl das Release 999.0.0 am 04.11.2026 um 07:30 UTC erschien: Workers Builds hat es nicht bereitgestellt. Sein Protokoll in Cloudflare sagt, warum, und docs/releases.md unter „Wenn ein Build scheitert“, was zu tun ist.`,
     );
   });
 

@@ -209,7 +209,7 @@ The workflow of the maintainer's private control repository, which `CONTROL_REPO
 
 `language` is `LANGUAGE` of the Worker, `en` or `de`: the control repository answers the maintainer in it, the note of a fix and the reason of a job that failed included, while a draft of a reply keeps the language of its issue or pull request.
 
-A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. So is a text in the topic of a thing, which carries the thing as `thing`: its `id`, `kind`, `repo` and `state`, the `number` of a contribution or a release and the `version` of a release, `links` to where GitHub shows it (its issue or pull request, or the page of a bundle and its entries, 21 at most) and `text`, its message as the maintainer sees it, in the HTML of Telegram, with what comes from GitHub escaped, 1500 characters at most. The key is `thing`, not `item`: the control workflow runs the jobs of one `item` one at a time, and a text keeps a run of its own. A workflow that doesn't know `thing` passes it over, so either side may deploy first. The pager sends no text of an issue, not even the start that its message quotes: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
+A text in reply to a message of the pager is about its thing: *merge it*, in reply to the message of a release, names that release. So is a text in the topic of a thing, which carries the thing as `thing`: its `id`, `kind`, `repo` and `state`, the `number` of a contribution or a release, the `version` of a release and the `path` of a failing workflow, its file such as `.github/workflows/docs.yml`, `links` to where GitHub shows it (its issue or pull request, or the page of a bundle and its entries, 21 at most) and `text`, its message as the maintainer sees it, in the HTML of Telegram, with what comes from GitHub escaped, 1500 characters at most. The key is `thing`, not `item`: the control workflow runs the jobs of one `item` one at a time, and a text keeps a run of its own. A workflow that doesn't know `thing` passes it over, so either side may deploy first. The pager sends no text of an issue, not even the start that its message quotes: the workflow reads it from GitHub itself, as data. It answers with a `POST` to `/control`:
 
 - the header `X-Pager-Timestamp`, the time in seconds since 1970, which may be five minutes off at most;
 - the header `X-Pager-Signature`, `sha256=` and the HMAC with SHA-256, under `CONTROL_SECRET`, of the timestamp, a dot and the body;
@@ -220,7 +220,7 @@ The body is one of:
 - `{"type": "draft", "item": "<id>", "text": "<reply>"}`: the draft of a reply for a contribution, at most 3000 characters, shown as a new message with ✅ Send. Once the maintainer wrote the draft himself, the draft of a job goes into the topic of the thing as a message to read, and his stays;
 - `{"type": "note", "item": "<id>", "text": "<note>"}`: a note below a thing, such as the pull request of a fix. The note that ends a job, while the thing is still *fixing* (or a contribution *drafting*), comes in a new message, which notifies, as a failure does; another note edits the message of the thing in place;
 - `{"type": "note", "text": "<answer>"}`: a message of its own, such as the answer to free text;
-- `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button;
+- `{"type": "proposal", "text": "<answer>", "action": "<action>", "target": {"kind": "<kind>", "repo": "<owner/name>", "number": <number>}}`: an answer to free text that proposes one action, as a message of its own with a single ✅ Confirm button; a failing workflow is named by its file instead of a number, `"target": {"kind": "workflow", "repo": "<owner/name>", "path": "<file>"}`;
 - `{"type": "failed", "item": "<id>", "text": "<why>"}`: a draft or a fix that didn't come to be, such as when the weekly limit is reached. The thing goes back to the state before its button, with the reason as its note, in a new message, so that the button can run again;
 - `{"type": "failed", "item": "<id>", "text": "<why>", "action": "rerun"}`: a fix that made no change and proposes one action of its alarm or alert, such as 🔁 Rerun when the logs show an outage of GitHub or of a download. The thing goes back as above, with the reason as its note, but its message keeps its place, and the answer comes in the thing's topic as a proposal, with a single ✅ Confirm button, which notifies. A thing that doesn't offer the action then, such as an alarm whose entries name no run, comes back as for any failed job. An older pager ignores `action`, so either side may deploy first;
 - `{"type": "failed", "text": "<why>"}`: free text whose answer didn't come to be, shown as a message of its own;
@@ -254,13 +254,16 @@ A model goes by its short name, such as *Opus 5.5* for `claude-opus-5-5`, *Haiku
 
 A proposal names its thing as the control repository knows it, and the pager looks it up:
 
-| Action | Kind of thing | `number` |
+| Action | Kind of thing | `number` or `path` |
 | --- | --- | --- |
 | `merge` | `release` | none |
-| `assistant`, `draft` | `contribution` | the issue, pull request or discussion |
+| `assistant`, `draft` | `contribution` | the `number` of the issue, pull request or discussion |
 | `fix` | `alarm`, `alert` | none |
-| `rerun` | `alarm` | none |
-| `later`, `ignore` | any of the four | for a contribution |
+| `rerun` | `alarm`, `workflow` | the `path` of a workflow, as its `thing` names it |
+| `later` | `contribution`, `alarm`, `alert`, `release` | the `number` of a contribution |
+| `ignore` | any of the five | the `number` of a contribution, the `path` of a workflow |
+
+A failing workflow has no ⏰ Later, so a proposal of it names no workflow. Its 🔁 Rerun shows its button only while it fails, not while a rerun runs, as its own message does.
 
 ✅ Confirm carries the data of the thing's own button, so a press runs the action only while the thing still offers it, as any press does, and then the button goes. A thing that the pager doesn't show, or that doesn't offer the action now, gets the answer without a button. The `action` of a failed fix names no `target`: it is the thing of the job. ✅ Send and ✏️ Edit can't be proposed: they stay with the message of the draft, which shows the text that they post.
 
@@ -469,6 +472,8 @@ The workflow *Health* of the control repository runs once a day and by hand, wit
 
 ```json
 {
+  "version": "1.2.3",
+  "release": null,
   "schedule": "2026-11-08T06:45:00.000Z",
   "failure": null,
   "telegram": {
@@ -486,6 +491,8 @@ The workflow *Health* of the control repository runs once a day and by hand, wit
 }
 ```
 
+- `version` is the version of the pager that runs, from `package.json`, which the release raises in the commit that Workers Builds deploys.
+- `release` is the release of the pager's own repository, the one that `package.json` names, that the Worker doesn't run yet: `version` and `at`, when GitHub published it; `null` when the Worker runs the latest release that it heard of. The pager hears of the release through the event `release`, as for the message of any release, when its app is installed on its own repository. When the release didn't go live 30 minutes after it, the schedule says so once, in a message of its own: a build of Workers Builds that only uploaded the release, or one that never started, shows nowhere else. A Worker of that release or a newer one takes it back.
 - `schedule` is when the schedule last ran to its end, which it notes in the storage of the Durable Object, or `null` when it never did. A run in which a thing failed doesn't come to its end, so a thing that keeps failing makes the schedule older than an hour.
 - `failure` is the last thing that failed in a run of the schedule, or `null` when none ever did: `at`, when; `what`, the step and the thing by its id, such as `the things that come back, thing i3f0c9a1b2d4e5f6`; and `error`, the answer of Telegram or GitHub, such as `Telegram sendMessage: Bad Request: message is too long`. One after `schedule` is what the runs since haven't got past.
 - `telegram` says whether Telegram takes the token of the bot, with `getMe`, and from `getWebhookInfo` whether a webhook is set, how many updates still wait for it, and its last error, if Telegram keeps one. A refusal is `{"ok": false, "error": "Telegram getMe: Unauthorized"}`.
@@ -496,7 +503,7 @@ The run fails, with an `::error::` that names what is wrong, when the pager does
 
 ### /status in the chat
 
-`/status` asks the pager the same at once, from the chat: `src/status.ts` calls the same `health()` and words its answer in the language of the pager, one line each, ✅ for what works, ⚠️ for what fails and ℹ️ for what is missing but optional, with the step of [Set up](setup.md) that fixes it. It says when the schedule last ran to its end, the last failure of a run that the runs since haven't got past, whether Telegram takes the bot and a webhook is set, and an error of the webhook in the last day; whether GitHub takes the key of the app, and whether the app is installed on `CONTROL_REPOSITORY`, as free text needs; whether `GITHUB_USER_TOKEN` is set, and the days until each token expires, with ⚠️ from three weeks before, when its reminder comes. The bounds are those of the check *Health*: a schedule older than an hour and a webhook error of the last day. It is read-only, sends nothing to the control repository and names no secret, and the answer goes into the thread that the question came from.
+`/status` asks the pager the same at once, from the chat: `src/status.ts` calls the same `health()` and words its answer in the language of the pager, one line each, ✅ for what works, ⚠️ for what fails and ℹ️ for what is missing but optional, with the step of [Set up](setup.md) that fixes it. It says which version runs, and a release of the pager that is on its way through Workers Builds or, after 30 minutes, didn't go live; when the schedule last ran to its end, the last failure of a run that the runs since haven't got past, whether Telegram takes the bot and a webhook is set, and an error of the webhook in the last day; whether GitHub takes the key of the app, and whether the app is installed on `CONTROL_REPOSITORY`, as free text needs; whether `GITHUB_USER_TOKEN` is set, and the days until each token expires, with ⚠️ from three weeks before, when its reminder comes. The bounds are those of the check *Health*: a schedule older than an hour and a webhook error of the last day. It is read-only, sends nothing to the control repository and names no secret, and the answer goes into the thread that the question came from.
 
 It serves two people: someone who sets up an instance, whose control repository comes only in step 7, and who learns at step 6 whether the key of the app, its installation and the webhook work; and the maintainer who wonders why the pager is quiet. It is an answer to a question, not a message that all is well, which [decision 0013](decisions/0013-the-control-repository-checks-the-health-of-the-pager-once-a-day.md) turned down: a pager that is dead can't answer, so the check from outside stays what catches it.
 

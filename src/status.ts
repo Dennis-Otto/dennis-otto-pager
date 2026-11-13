@@ -13,6 +13,7 @@ import type { Context } from "./pager.ts";
 import { html } from "./render.ts";
 import type { Key } from "./texts.ts";
 import { REMIND_DAYS, type Token, type TokenState } from "./tokens.ts";
+import { DEPLOY_WITHIN } from "./version.ts";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -32,6 +33,26 @@ const NAMES = {
   user: "status.token.user",
   fix: "status.token.fix",
 } as const satisfies Record<Token, Key>;
+
+/**
+ * The version that runs, and the release of the pager that it waits for, which
+ * is late once a build had DEPLOY_WITHIN to deploy it.
+ */
+function version(context: Context, now: Health): string {
+  const { t } = context;
+  if (now.release === null) {
+    return t("status.version", { version: html(now.version) });
+  }
+  const at = Date.parse(now.release.at);
+  const values = {
+    version: html(now.version),
+    release: html(now.release.version),
+    time: t.time(at),
+  };
+  return at <= context.now() - DEPLOY_WITHIN
+    ? t("status.behind", values)
+    : t("status.deploying", values);
+}
 
 function schedule(context: Context, ran: string | null): string {
   const { t } = context;
@@ -176,6 +197,7 @@ export async function status(context: Context): Promise<string> {
   const now = await health(context);
   return [
     context.t("status.title"),
+    version(context, now),
     schedule(context, now.schedule),
     ...failure(context, now.failure, now.schedule),
     ...telegram(context, now.telegram),

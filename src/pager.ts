@@ -672,8 +672,11 @@ const CLOSED = {
   merged: "note.merged",
 } as const satisfies Record<ContributionEnd, string>;
 
-/** The open thing of an issue, a pull request or a discussion, if the pager shows one. */
-async function openContribution(
+/**
+ * The thing of an issue, a pull request or a discussion that GitHub may still end:
+ * an open one, or an ignored one, which ↩️ Bring back would open again.
+ */
+async function endable(
   context: Context,
   repo: string,
   number: number,
@@ -681,7 +684,30 @@ async function openContribution(
   const known = await context.store.get(
     await itemId(keys.contribution(repo, number)),
   );
-  return known?.kind === "contribution" && !isClosed(known) ? known : null;
+  return known?.kind === "contribution" &&
+    (known.state === "ignored" || !isClosed(known))
+    ? known
+    : null;
+}
+
+/**
+ * Whether GitHub ended an ignored thing: it stays out of sight, and its message as
+ * it is, but it remembers the end, so that ↩️ Bring back brings it back done, with
+ * the reason, and not as a thing that waits for no event any more.
+ */
+async function endedIgnored(
+  context: Context,
+  known: Contribution,
+  note: (typeof ENDS)[DiscussionEnd] | (typeof CLOSED)[ContributionEnd],
+): Promise<boolean> {
+  if (known.state !== "ignored") {
+    return false;
+  }
+  known.ignoredFrom = "done";
+  known.note = context.t(note);
+  delete known.jobStarted;
+  await context.store.put(known);
+  return true;
 }
 
 /**
@@ -708,9 +734,12 @@ async function discussionDone(
   context: Context,
   signal: Extract<Signal, { type: "discussion-done" }>,
 ): Promise<string> {
-  const known = await openContribution(context, signal.repo, signal.number);
+  const known = await endable(context, signal.repo, signal.number);
   if (known?.discussion === undefined) {
     return "no open discussion shown";
+  }
+  if (await endedIgnored(context, known, ENDS[signal.reason])) {
+    return `ignored discussion done: ${signal.reason}`;
   }
   await finish(context, known, ENDS[signal.reason]);
   return `discussion done: ${signal.reason}`;
@@ -724,9 +753,12 @@ async function contributionDone(
   context: Context,
   signal: Extract<Signal, { type: "contribution-done" }>,
 ): Promise<string> {
-  const known = await openContribution(context, signal.repo, signal.number);
+  const known = await endable(context, signal.repo, signal.number);
   if (known === null || known.discussion !== undefined) {
     return "no open contribution shown";
+  }
+  if (await endedIgnored(context, known, CLOSED[signal.reason])) {
+    return `ignored contribution done: ${signal.reason}`;
   }
   await finish(context, known, CLOSED[signal.reason]);
   return `contribution done: ${signal.reason}`;

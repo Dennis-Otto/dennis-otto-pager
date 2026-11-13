@@ -328,6 +328,7 @@ async function choose(
  * expires. A job or a rerun that it waited for is no longer waited for, so it
  * comes back with the button that starts one (unignored()). What GitHub did while
  * it was ignored, the pager didn't follow: the next event of the thing shows it.
+ * Only an end on GitHub it remembered (endedIgnored()), so it comes back done.
  */
 async function restore(context: Context, item: Item): Promise<Reply> {
   (item as { state: Item["state"] }).state = unignored(item);

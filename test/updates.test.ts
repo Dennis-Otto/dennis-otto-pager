@@ -87,6 +87,13 @@ async function pressAgain(w: World, data: string) {
   return { outcome, answer, item: await w.context.store.get(ID) };
 }
 
+/** GitHub knows the repository of the thing, whose default branch is trunk. */
+function withRepository(w: World) {
+  w.net.on("GET", "/repos/Dennis-Otto/demo", () =>
+    json({ default_branch: "trunk" }),
+  );
+}
+
 async function pressing(w: World, item: Item, data: string, from = CHAT) {
   await w.context.store.put(item);
   const outcome = await handleUpdate(w.context, {
@@ -705,6 +712,7 @@ describe("buttons", () => {
   describe("Assistant again", () => {
     it("starts the issue assistant past its rule, in the maintainer's name", async () => {
       const w = await world();
+      withRepository(w);
       w.net.on(
         "POST",
         /issue-assistant\.yml\/dispatches$/,
@@ -717,10 +725,29 @@ describe("buttons", () => {
       );
       expect(answer.text).toBe("The issue assistant runs.");
       expect(item?.note).toBe("🤖 The issue assistant answers again.");
+      expect(
+        w.net.github("/issue-assistant.yml/dispatches")[0]?.body,
+      ).toMatchObject({ ref: "trunk" });
+    });
+
+    it("shows GitHub's own detail of a refusal that names no override", async () => {
+      const w = await world();
+      withRepository(w);
+      w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+        json({ message: "No ref found for: trunk" }, 422),
+      );
+      const { answer, item } = await pressing(
+        w,
+        contribution(),
+        `assistant:${ID}`,
+      );
+      expect(answer.text).toBe("GitHub refused: No ref found for: trunk");
+      expect(item?.note).toBeNull();
     });
 
     it("explains a repository whose assistant doesn't take the override yet", async () => {
       const w = await world();
+      withRepository(w);
       w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
         json({ message: 'Unexpected inputs provided: ["override"]' }, 422),
       );
@@ -736,6 +763,7 @@ describe("buttons", () => {
 
     it("explains a repository without an issue assistant", async () => {
       const w = await world();
+      withRepository(w);
       w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
         json({ message: "Not Found" }, 404),
       );
@@ -752,6 +780,7 @@ describe("buttons", () => {
 
     it("lets a stranger's error through to the log", async () => {
       const w = await world();
+      withRepository(w);
       w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () => {
         throw new TypeError("network");
       });
@@ -1200,6 +1229,7 @@ describe("an action that went through on GitHub", () => {
   it("keeps what the issue assistant and a rerun did, though Telegram refused to show it", async () => {
     const w = await world();
     refusingEdits(w, "502");
+    withRepository(w);
     w.net
       .on(
         "POST",

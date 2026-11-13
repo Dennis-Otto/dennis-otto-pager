@@ -408,8 +408,9 @@ export interface Texts {
   /** A day, such as 2027-10-07, as the language writes it. */
   date(day: string): string;
   /**
-   * A moment, in milliseconds since 1970, to the minute in UTC, which the pager
-   * knows no other zone than: 2026-11-08 at 11:20 UTC, or 08.11.2026 um 11:20 UTC.
+   * A moment, in milliseconds since 1970, to the minute in the time zone of
+   * TIME_ZONE, with the zone's short name: 2026-11-08 at 11:20 UTC, or in
+   * Europe/Berlin 08.11.2026 um 12:20 GMT+1.
    */
   time(at: number): string;
   /** A whole number, such as 48213, as the language writes it: 48,213 or 48.213. */
@@ -799,10 +800,36 @@ const DATES: Readonly<Record<Language, (day: string) => string>> = {
 /** The word between the day and the hour of a moment in each language. */
 const AT: Readonly<Record<Language, string>> = { en: "at", de: "um" };
 
-/** A moment to the minute in UTC, in the words of a language. */
-function time(at: number, language: Language): string {
-  const moment = new Date(at).toISOString();
-  return `${DATES[language](moment.slice(0, 10))} ${AT[language]} ${moment.slice(11, 16)} UTC`;
+/**
+ * The parts of a moment in a time zone: its day, its hour and minute, and the
+ * zone's short name, such as UTC, GMT+1 or EST. The names come in English for
+ * every language, as the pager has always written UTC.
+ */
+function clock(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  });
+}
+
+/** A moment to the minute in the time zone of a clock, in the words of a language. */
+function time(
+  at: number,
+  language: Language,
+  zone: Intl.DateTimeFormat,
+): string {
+  const part: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+  for (const { type, value } of zone.formatToParts(at)) {
+    part[type] = value;
+  }
+  const day = `${part.year}-${part.month}-${part.day}`;
+  return `${DATES[language](day)} ${AT[language]} ${part.hour}:${part.minute} ${part.timeZoneName}`;
 }
 
 /** The sign between the thousands of a number in each language. */
@@ -843,16 +870,20 @@ export function languageOf(value: string | undefined): Language | null {
   return LANGUAGES.find((each) => each === name) ?? null;
 }
 
-/** The texts of a language. */
-export function texts(language: Language): Texts {
+/**
+ * The texts of a language, with its moments in a time zone of the IANA, such as
+ * Europe/Berlin, which readSettings() of src/settings.ts checked.
+ */
+export function texts(language: Language, timeZone = "UTC"): Texts {
   const catalog = CATALOGS[language];
+  const zone = clock(timeZone);
   const say = (key: Key, values?: Record<string, string | number>) =>
     fill(catalog[key], values);
   return Object.assign(say, {
     phrase: (phrase: Phrase) =>
       fill(catalog[phrase.key], "values" in phrase ? phrase.values : {}),
     date: DATES[language],
-    time: (at: number) => time(at, language),
+    time: (at: number) => time(at, language, zone),
     number: (value: number) =>
       String(value).replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS[language]),
     percent: (share: number) => percent(share, DECIMALS[language]),

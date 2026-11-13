@@ -50,6 +50,8 @@ export interface Settings {
   tokenExpires: string | null;
   /** The language of every text that the pager sends. */
   language: Language;
+  /** The time zone of the IANA in which the pager writes each moment, such as Europe/Berlin. */
+  timeZone: string;
 }
 
 /** The secrets without which the pager can't serve anything. */
@@ -82,6 +84,25 @@ export function ownersOf(value: string | undefined): string[] | null {
 }
 
 /**
+ * The time zone of TIME_ZONE, a name of the IANA such as Europe/Berlin, as the
+ * runtime knows it: UTC when it is empty, null when the runtime knows no such zone.
+ */
+export function timeZoneOf(value: string | undefined): string | null {
+  const name = value?.trim() ?? "";
+  if (name === "") {
+    return "UTC";
+  }
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: name,
+    }).resolvedOptions().timeZone;
+  } catch {
+    // A RangeError: the runtime knows no zone of that name.
+    return null;
+  }
+}
+
+/**
  * The settings from the environment of the Worker, or the names of what is missing
  * or wrong; never their values.
  */
@@ -111,7 +132,16 @@ export function readSettings(
   if (owners === null) {
     missing.push("OWNERS (accounts of GitHub, separated by commas)");
   }
-  if (missing.length > 0 || language === null || owners === null) {
+  const timeZone = timeZoneOf(env.TIME_ZONE);
+  if (timeZone === null) {
+    missing.push("TIME_ZONE (a time zone such as Europe/Berlin)");
+  }
+  if (
+    missing.length > 0 ||
+    language === null ||
+    owners === null ||
+    timeZone === null
+  ) {
     return { missing };
   }
   return {
@@ -130,6 +160,7 @@ export function readSettings(
       laterHours,
       tokenExpires: expires,
       language,
+      timeZone,
     },
   };
 }

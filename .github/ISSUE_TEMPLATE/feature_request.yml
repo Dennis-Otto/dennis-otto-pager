@@ -18,6 +18,12 @@ body:
     attributes:
       label: Area
       options:
+        - Worker and its rules
+        - Telegram and its topics
+        - Buttons
+        - Control repository
+        - Set-up and deployment
+        - Website
         - Other
   - type: textarea
     id: proposal

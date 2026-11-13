@@ -1,6 +1,7 @@
 // The tests of the Worker once more, as another instance would run them: with the
 // bindings of wrangler.jsonc, but another maintainer, another control repository,
-// the other language, no day for the token of Claude and another time for "Later".
+// the other language, no day for the token of Claude, another time for "Later" and
+// another time zone.
 // wrangler.jsonc holds the values of one instance, those of the maintainer's own,
 // and docs/setup.md asks everyone who runs a copy to set theirs there, so the tests
 // have to pass with any of them: scripts/check-project.sh runs them with this
@@ -16,9 +17,10 @@ import { defineConfig } from "vitest/config";
 // The language of wrangler.jsonc decides the other one: "de" there runs these in
 // English, any other value in German, so that both languages run, whichever the
 // instance sets.
-const language = /"LANGUAGE"\s*:\s*"([^"]*)"/.exec(
-  readFileSync("wrangler.jsonc", "utf8"),
-)?.[1];
+const wrangler = readFileSync("wrangler.jsonc", "utf8");
+const language = /"LANGUAGE"\s*:\s*"([^"]*)"/.exec(wrangler)?.[1];
+// So does its time zone: New York, unless the instance has it, then Tokyo.
+const timeZone = /"TIME_ZONE"\s*:\s*"([^"]*)"/.exec(wrangler)?.[1];
 
 // The values of an instance that nobody runs, for each var of wrangler.jsonc that
 // docs/setup.md asks a copy to set, so that none of them is that of wrangler.jsonc.
@@ -29,6 +31,8 @@ const ANOTHER_INSTANCE = {
   LANGUAGE: language?.trim().toLowerCase() === "de" ? "en" : "de",
   CLAUDE_TOKEN_EXPIRES: "",
   LATER_HOURS: "1",
+  TIME_ZONE:
+    timeZone?.trim() === "America/New_York" ? "Asia/Tokyo" : "America/New_York",
 };
 
 export default defineConfig({

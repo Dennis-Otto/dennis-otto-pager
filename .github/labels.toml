@@ -49,7 +49,49 @@ color = "6f42c1"
 description = "CI, repository maintenance and release tooling"
 group = "type"
 
-# Areas: add one per part of the project, with the options of the Area field.
+# Areas: one per part of the project, with the options of the Area field.
+
+[[label]]
+name = "area: rules"
+color = "bfdadc"
+description = "The Worker, its rules and its messages: what pages, what doesn't, and what a message says"
+group = "area"
+form_options = ["Worker and its rules"]
+
+[[label]]
+name = "area: telegram"
+color = "bfdadc"
+description = "The bot of Telegram, the topics of the chat and the commands /open, /status and /help"
+group = "area"
+form_options = ["Telegram and its topics"]
+
+[[label]]
+name = "area: buttons"
+color = "bfdadc"
+description = "The buttons of a message and what each does"
+group = "area"
+form_options = ["Buttons"]
+
+[[label]]
+name = "area: control"
+color = "bfdadc"
+description = "The contract with the control repository: drafts, fixes, free text and the questions of agents"
+group = "area"
+form_options = ["Control repository"]
+
+[[label]]
+name = "area: setup"
+color = "bfdadc"
+description = "The guide of the set-up, the GitHub App, the secrets and the deployment on Cloudflare"
+group = "area"
+form_options = ["Set-up and deployment"]
+
+[[label]]
+name = "area: website"
+color = "bfdadc"
+description = "The website and the pages of the documentation"
+group = "area"
+form_options = ["Website"]
 
 # Topics
 

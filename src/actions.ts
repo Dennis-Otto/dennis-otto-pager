@@ -221,6 +221,12 @@ async function assistant(context: Context, item: Contribution): Promise<Reply> {
     if (error instanceof GitHubError && error.status === 422) {
       return refused(context.t("answer.noOverride", { repo: item.repo }));
     }
+    // GitHub answers 404 for a repository without the workflow of the issue
+    // assistant, which only a repository of the blueprint has, and for one that
+    // GITHUB_USER_TOKEN can't see.
+    if (error instanceof GitHubError && error.status === 404) {
+      return refused(context.t("answer.noAssistant", { repo: item.repo }));
+    }
     throw error;
   }
   item.note = context.t("note.assistant");

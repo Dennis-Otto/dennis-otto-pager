@@ -1,6 +1,6 @@
 # Roadmap
 
-[← README](https://github.com/Dennis-Otto/repo-pager/blob/main/README.de.md) · [So arbeitet er](how-it-works.md) · [Architecture](architecture.md) · [Security design](security.md)
+[← README](https://github.com/Dennis-Otto/repo-pager/blob/main/README.de.md) · [So arbeitet er](how-it-works.md) · [Architektur](architecture.md) (englisch) · [Sicherheitskonzept](security.md) (englisch)
 
 Was der Pager in den nächsten zwölf Monaten vorhat, bis November 2027, und was er nicht tun wird. Das ist eine Richtung, kein Versprechen: Was seinem Maintainer im Alltag fehlt, bestimmt die Reihenfolge. Ideen sind als [Feature Requests](https://github.com/Dennis-Otto/repo-pager/issues/new?template=feature_request.yml) oder in den [Diskussionen](https://github.com/Dennis-Otto/repo-pager/discussions) willkommen.
 

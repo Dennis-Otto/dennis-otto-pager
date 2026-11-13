@@ -592,11 +592,27 @@ describe("buttons", () => {
       const { answer } = await pressing(w, contribution(), `assistant:${ID}`);
       expect(answer.text).toContain("doesn't take the override yet");
       w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
-        json({ message: "Not Found" }, 404),
+        json({ message: "Resource not accessible by integration" }, 403),
       );
       expect(
         (await pressing(w, contribution(), `assistant:${ID}`)).answer.text,
-      ).toBe("GitHub refused: Not Found");
+      ).toBe("GitHub refused: Resource not accessible by integration");
+    });
+
+    it("explains a repository without an issue assistant", async () => {
+      const w = await world();
+      w.net.on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+        json({ message: "Not Found" }, 404),
+      );
+      const { answer, item } = await pressing(
+        w,
+        contribution(),
+        `assistant:${ID}`,
+      );
+      expect(answer.text).toBe(
+        "Dennis-Otto/demo has no issue assistant, or GITHUB_USER_TOKEN can't reach it: GitHub knows no workflow issue-assistant.yml there. Nothing was started.",
+      );
+      expect(item?.note).toBeNull();
     });
 
     it("lets a stranger's error through to the log", async () => {

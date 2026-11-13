@@ -36,10 +36,17 @@ plugins:
       - locale: de
         name: Deutsch
         build: true
+        site_description: "Ein Telegram-Bot auf einem Cloudflare Worker, der seinem Maintainer nur meldet, was ihn in seinen GitHub-Repositorys braucht, und es mit einem Knopf erledigt."
+        # The architecture, the security design and the decisions have no German
+        # pages: index.de.md says at their links that they are English.
         nav_translations:
           Home: Start
           How it works: So arbeitet er
           Set up: Einrichten
+          Architecture: Architektur
+          Releases and Cloudflare: Releases und Cloudflare
+          Security design: Sicherheitskonzept
+          Decisions: Entscheidungen
 
 # The menu. A tab in the header for each section. The hooks of the blueprint write
 # the page of the automation, what each workflow does and when it runs, from

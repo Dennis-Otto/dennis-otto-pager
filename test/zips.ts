@@ -163,6 +163,7 @@ export function webp(
   kind: "VP8X" | "VP8L" | "VP8 ",
   width: number,
   height: number,
+  animated = false,
 ): Uint8Array {
   const bytes = new Uint8Array(40);
   const view = new DataView(bytes.buffer);
@@ -174,6 +175,8 @@ export function webp(
   ascii(kind, 12);
   view.setUint32(16, 20, true);
   if (kind === "VP8X") {
+    // The flags of the extended format: an animation has the second bit.
+    bytes[20] = animated ? 2 : 0;
     view.setUint16(24, (width - 1) & 0xffff, true);
     bytes[26] = (width - 1) >> 16;
     view.setUint16(27, (height - 1) & 0xffff, true);
@@ -191,4 +194,62 @@ export function webp(
     view.setUint16(28, height, true);
   }
   return bytes;
+}
+
+/**
+ * The start of a PNG of this size with chunks of these types after its header,
+ * each without data: an APNG has acTL before its first IDAT.
+ */
+export function apng(
+  width: number,
+  height: number,
+  types: readonly string[] = ["acTL", "IDAT"],
+): Uint8Array {
+  const start = png(width, height).subarray(0, 33);
+  const bytes = new Uint8Array(start.length + 12 * types.length);
+  bytes.set(start);
+  types.forEach((type, index) => {
+    bytes.set(new TextEncoder().encode(type), start.length + 12 * index + 4);
+  });
+  return bytes;
+}
+
+/** How a GIF is made: its images, and whether it and each image have a color table. */
+export interface GifShape {
+  images: number;
+  global?: boolean;
+  local?: boolean;
+  /** Whether the bytes end in the middle of the data of the last image. */
+  cut?: boolean;
+}
+
+/**
+ * A GIF of 2 by 2 pixels: its header and screen, a graphic control extension before
+ * each image, each image with a block of data, and its end.
+ */
+export function gif({
+  images,
+  global = true,
+  local = false,
+  cut = false,
+}: GifShape): Uint8Array {
+  const table = (has: boolean) => (has ? [0, 0, 0, 255, 255, 255] : []);
+  const bytes = [
+    ...new TextEncoder().encode("GIF89a"),
+    2,
+    0,
+    2,
+    0,
+    global ? 0x80 : 0,
+    0,
+    0,
+    ...table(global),
+  ];
+  for (let index = 0; index < images; index += 1) {
+    bytes.push(0x21, 0xf9, 4, 0, 10, 0, 0, 0);
+    bytes.push(0x2c, 0, 0, 0, 0, 2, 0, 2, 0, local ? 0x80 : 0, ...table(local));
+    bytes.push(2, 2, 0x44, 0x01, 0);
+  }
+  bytes.push(0x3b);
+  return new Uint8Array(cut ? bytes.slice(0, -4) : bytes);
 }

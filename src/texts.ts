@@ -132,6 +132,12 @@ const en = {
   "picture.new": "new",
   "picture.deleted": "deleted",
   "caption.diff": "🔴 Changed pixels: {path}",
+  "caption.diffFrame": "🔴 Changed pixels, frame {frame} of {frames}: {path}",
+  "caption.diffAnimation":
+    "🔴 Changed pixels of one frame of the animation: {path}",
+  "caption.comparison": "🔍 Before and after: {path}, {how}",
+  "caption.comparisonFrame":
+    "🔍 Before and after, frame {frame} of {frames}: {path}, {how}",
   "caption.before": "◀️ Before: {path}",
   "caption.after": "▶️ After: {path}",
   "caption.new": "🆕 New: {path}",
@@ -462,6 +468,13 @@ const de: Catalog = {
   "picture.new": "neu",
   "picture.deleted": "gelöscht",
   "caption.diff": "🔴 Geänderte Pixel: {path}",
+  "caption.diffFrame":
+    "🔴 Geänderte Pixel, Einzelbild {frame} von {frames}: {path}",
+  "caption.diffAnimation":
+    "🔴 Geänderte Pixel eines Einzelbilds der Animation: {path}",
+  "caption.comparison": "🔍 Vorher und nachher: {path}, {how}",
+  "caption.comparisonFrame":
+    "🔍 Vorher und nachher, Einzelbild {frame} von {frames}: {path}, {how}",
   "caption.before": "◀️ Vorher: {path}",
   "caption.after": "▶️ Nachher: {path}",
   "caption.new": "🆕 Neu: {path}",

@@ -111,7 +111,7 @@ function entries(list: Entry[], all: string, t: Texts): string {
 }
 
 /** How a picture changed, in words. */
-function how(picture: Changed, t: Texts): string {
+export function how(picture: Changed, t: Texts): string {
   switch (picture.status) {
     case "new":
       return t("picture.new");

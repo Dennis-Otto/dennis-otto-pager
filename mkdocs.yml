@@ -20,6 +20,14 @@ repo_url: https://github.com/Dennis-Otto/repo-pager
 repo_name: Dennis-Otto/repo-pager
 copyright: "© 2026 Dennis Otto"
 
+# The brand: the mark of the social preview, a speech bubble with a bell, as the logo
+# in the header and the icon of the tab. The rest of the theme comes from the
+# blueprint. test/brand.test.ts keeps docs/assets/logo.svg equal to the mark of
+# .github/social-preview.html.
+theme:
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+
 # A website in more than one language: the pages of another language sit next to
 # their English ones, such as index.de.md beside index.md, and a switch in the header
 # changes between them.

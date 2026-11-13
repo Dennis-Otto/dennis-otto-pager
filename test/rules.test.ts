@@ -3,6 +3,9 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+import buildRelease from "../.github/workflows/build-release.yml?raw";
+import release from "../.github/workflows/release.yml?raw";
+import verifyRelease from "../.github/workflows/verify-release.yml?raw";
 import { MAX_EXCERPT } from "../src/content.ts";
 import {
   asksForUpload,
@@ -16,6 +19,7 @@ import {
   isServed,
   type Payload,
   picturesBlocker,
+  RELEASE_WORKFLOWS,
   releaseBlocker,
   releaseVersion,
 } from "../src/rules.ts";
@@ -1336,6 +1340,33 @@ describe("releases", () => {
     html_url: "https://github.com/Dennis-Otto/demo/actions/runs/3",
     head_branch: "main",
   };
+
+  it("watches the release workflows of the blueprint that run on their own", () => {
+    // The events that start a workflow: the keys below its line on:.
+    const triggers = (text: string) =>
+      [
+        ...(/^on:\n((?:(?: .*)?\n)+)/m.exec(text)?.[1] ?? "").matchAll(
+          /^ {2}(\w+):/gm,
+        ),
+      ].map(([, name]) => name);
+    const workflows = {
+      ".github/workflows/release.yml": release,
+      ".github/workflows/build-release.yml": buildRelease,
+      ".github/workflows/verify-release.yml": verifyRelease,
+    };
+    // A reusable workflow, such as the build of a release, fails as the run of
+    // the workflow that calls it: no workflow_run ever names it.
+    expect(triggers(buildRelease)).toEqual(["workflow_call"]);
+    expect(RELEASE_WORKFLOWS).toEqual(
+      new Set(
+        Object.entries(workflows)
+          .filter(([, text]) =>
+            triggers(text).some((name) => name !== "workflow_call"),
+          )
+          .map(([path]) => path),
+      ),
+    );
+  });
 
   it("pages for a release that fails and stops when it passes", () => {
     expect(

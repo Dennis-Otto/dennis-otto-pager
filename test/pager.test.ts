@@ -8,6 +8,7 @@ import { allowed } from "../src/buttons.ts";
 import { MAX_EXCERPT, NOTES_MARK } from "../src/content.ts";
 import { apply, QUIET, show } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
+import { runSchedule } from "../src/schedule.ts";
 import {
   type Alarm,
   type Contribution,
@@ -886,6 +887,36 @@ describe("comments on issues and pull requests", () => {
     }
   });
 
+  it("forget their Later once GitHub ends them, so the schedule brings nothing back", async () => {
+    const w = await shown();
+    const item = await thing(w);
+    await press(w.context, item, {
+      action: "later",
+      id: item.id,
+      version: null,
+    });
+    expect(w.net.telegram("editMessageText").at(-1)?.body.text).toContain(
+      "⏰ Back in 4 h.",
+    );
+    w.clock.now = START + 3_600_000;
+    expect(
+      await apply(w.context, {
+        ...at,
+        type: "contribution-done",
+        number: 12,
+        reason: "closed",
+      }),
+    ).toBe("contribution done: closed");
+    expect(await thing(w)).toMatchObject({ state: "done", snoozedUntil: null });
+    const text = w.net.telegram("editMessageText").at(-1)?.body.text;
+    expect(text).toContain("✅ Done.");
+    expect(text).not.toContain("⏰");
+    const sent = w.net.telegram("sendMessage").length;
+    w.clock.now = START + 5 * 3_600_000;
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(sent);
+  });
+
   it("know no end of an issue that they never showed, nor of a discussion", async () => {
     const w = await chat();
     const done: Signal = {
@@ -1297,6 +1328,27 @@ describe("reviews and what else someone does to a pull request or an issue", () 
 });
 
 describe("the alarm of a repository", () => {
+  it("forgets its Later once its last entry is green", async () => {
+    const w = await world();
+    await apply(w.context, failing("check:lint"));
+    const alarm = (await stored(w, keys.alarm(REPO))) as Alarm;
+    await press(w.context, alarm, {
+      action: "later",
+      id: alarm.id,
+      version: null,
+    });
+    expect(
+      await apply(w.context, { ...at, type: "recovered", key: "check:lint" }),
+    ).toBe("alarm closed");
+    expect(await stored(w, keys.alarm(REPO))).toMatchObject({
+      state: "recovered",
+      snoozedUntil: null,
+    });
+    const text = w.net.telegram("editMessageText").at(-1)?.body.text;
+    expect(text).toContain("✅ Green again.");
+    expect(text).not.toContain("⏰");
+  });
+
   it("bundles what fails, notifies of a new entry, edits a changed one in place and closes when all is green", async () => {
     const w = await world();
     expect(await apply(w.context, failing("check:lint"))).toBe("alarm opened");
@@ -1829,6 +1881,48 @@ describe("a release", () => {
     w.net.on("GET", "/repos/Dennis-Otto/demo/pulls/30", () => json(answer));
   }
 
+  it("keeps its Later through an update, and forgets it once merged, so it comes back as no new message", async () => {
+    const w = await world();
+    serve(w);
+    await apply(w.context, check);
+    const ready = (await stored(w, keys.release(REPO))) as Release;
+    await press(w.context, ready, {
+      action: "later",
+      id: ready.id,
+      version: null,
+    });
+    const until = START + 4 * 3_600_000;
+    // An update and its checks take it back to ready, still put aside.
+    await apply(w.context, {
+      ...at,
+      type: "release-updated",
+      number: 30,
+      sha: "def",
+    });
+    serve(w, { ...pull, head: { ...pull.head, sha: "def" } });
+    expect(await apply(w.context, check)).toBe("#30 ready");
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      state: "ready",
+      snoozedUntil: until,
+    });
+    // Merged on GitHub within the hours of Later.
+    expect(
+      await apply(w.context, { ...at, type: "release-merged", number: 30 }),
+    ).toBe("release merged");
+    expect(await stored(w, keys.release(REPO))).toMatchObject({
+      state: "merged",
+      snoozedUntil: null,
+    });
+    expect(w.net.telegram("editMessageText").at(-1)?.body.text).not.toContain(
+      "⏰",
+    );
+    const sent = w.net.telegram("sendMessage").length;
+    w.clock.now = until + 1;
+    expect(await runSchedule(w.context)).toEqual([]);
+    expect(w.net.telegram("sendMessage")).toHaveLength(sent);
+    expect(w.net.telegram("deleteMessage")).toHaveLength(0);
+  });
+
   it("pages once it is ready, and follows it until it is published", async () => {
     const w = await world();
     serve(w, { ...pull, mergeable_state: "blocked" });
@@ -2102,5 +2196,32 @@ describe("showing a thing", () => {
     await show(w.context, item, true);
     expect(item.messageId).toBe(101);
     expect(w.net.telegram("deleteMessage")[0]?.body.message_id).toBe(100);
+  });
+
+  it("forgets the Later of a thing that is done with or of a release that merges, and keeps that of one that waits", async () => {
+    const w = await world();
+    const until = START + 3_600_000;
+    const release: Release = {
+      ...base("i0123456789abcde"),
+      kind: "release",
+      state: "ready",
+      number: 30,
+      version: "1.2.3",
+      sha: "abc",
+      url: `https://github.com/${REPO}/pull/30`,
+    };
+    const cases: [Item, number | null][] = [
+      [{ ...release, snoozedUntil: until }, until],
+      [{ ...release, state: "updating", snoozedUntil: until }, until],
+      [{ ...release, state: "merging", snoozedUntil: until }, null],
+      [{ ...release, state: "merged", snoozedUntil: until }, null],
+      [{ ...release, state: "published", snoozedUntil: until }, null],
+    ];
+    for (const [item, kept] of cases) {
+      await show(w.context, item);
+      expect(item.snoozedUntil).toBe(kept);
+      const text = w.net.telegram("editMessageText").at(-1)?.body.text;
+      expect(text.includes("⏰")).toBe(kept !== null);
+    }
   });
 });

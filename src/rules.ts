@@ -17,10 +17,14 @@ import type { Phrase } from "./texts.ts";
 export const FAILED = new Set(["failure", "timed_out", "startup_failure"]);
 /** The conclusions after which a failure counts as over. */
 export const PASSED = new Set(["success", "neutral", "skipped"]);
-/** The workflows of a release of the blueprint, whose failure is an alarm. */
+/**
+ * The workflows of a release of the blueprint, whose failure is an alarm. Only a
+ * workflow that an event starts ends in a run of its own: the build of a release,
+ * build-release.yml, is a reusable workflow that release.yml calls, so it fails as
+ * the run of release.yml, and no workflow_run ever names it.
+ */
 export const RELEASE_WORKFLOWS = new Set([
   ".github/workflows/release.yml",
-  ".github/workflows/build-release.yml",
   ".github/workflows/verify-release.yml",
 ]);
 /**

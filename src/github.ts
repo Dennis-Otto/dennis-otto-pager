@@ -904,14 +904,19 @@ export class GitHub {
   /**
    * Start the issue assistant on an issue past its rule of one comment, in the
    * maintainer's name: the workflow asks GitHub for the role of the person who
-   * started it, and an app has none.
+   * started it, and an app has none. It runs on the default branch of the
+   * repository, whatever its name, since GitHub dispatches a workflow only on a
+   * branch that exists.
    */
   async issueAssistant(repo: string, issue: number): Promise<void> {
+    const repository = await this.json<{ default_branch: string }>(
+      await this.asUser("GET", `/repos/${repo}`),
+    );
     const response = await this.asUser(
       "POST",
       `/repos/${repo}/actions/workflows/issue-assistant.yml/dispatches`,
       {
-        ref: "main",
+        ref: repository.default_branch,
         inputs: {
           issue: String(issue),
           mode: "triage",

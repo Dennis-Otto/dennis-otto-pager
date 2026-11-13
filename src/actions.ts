@@ -224,7 +224,14 @@ async function assistant(context: Context, item: Contribution): Promise<Reply> {
   try {
     await context.github.issueAssistant(item.repo, item.number);
   } catch (error) {
-    if (error instanceof GitHubError && error.status === 422) {
+    // GitHub answers 422 for an input that the workflow doesn't declare, which
+    // its detail names, such as 'Unexpected inputs provided: ["override"]'; any
+    // other 422 keeps GitHub's own detail, as every refusal of GitHub does.
+    if (
+      error instanceof GitHubError &&
+      error.status === 422 &&
+      error.detail.includes('"override"')
+    ) {
       return refused(context.t("answer.noOverride", { repo: item.repo }));
     }
     // GitHub answers 404 for a repository without the workflow of the issue

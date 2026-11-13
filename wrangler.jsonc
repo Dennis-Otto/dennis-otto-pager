@@ -58,7 +58,10 @@
     "CLAUDE_TOKEN_EXPIRES": "2027-10-07",
     // The language of everything that the pager sends, and of the answers of the
     // control repository to the maintainer: "en" or "de"; empty for English.
-    "LANGUAGE": "de"
+    "LANGUAGE": "de",
+    // The time zone of the IANA in which the pager writes each moment of a
+    // message, such as "Europe/Berlin" or "America/New_York"; empty for UTC.
+    "TIME_ZONE": "Europe/Berlin"
   },
   "observability": {
     "enabled": true

@@ -90,6 +90,28 @@ describe("the texts", () => {
     expect(texts("de").date("2027-10-07")).toBe("07.10.2027");
   });
 
+  it("write a moment in the time zone of TIME_ZONE, UTC without one", () => {
+    // 2026-11-08 at 23:20 UTC, an hour before midnight in Berlin, which is
+    // already the next day there, and in winter time.
+    const late = Date.UTC(2026, 10, 8, 23, 20);
+    expect(texts("en").time(late)).toBe("2026-11-08 at 23:20 UTC");
+    expect(texts("de").time(late)).toBe("08.11.2026 um 23:20 UTC");
+    expect(texts("en", "Europe/Berlin").time(late)).toBe(
+      "2026-11-09 at 00:20 GMT+1",
+    );
+    expect(texts("de", "Europe/Berlin").time(late)).toBe(
+      "09.11.2026 um 00:20 GMT+1",
+    );
+    // Summer time, and a zone behind UTC, which is the day before.
+    const summer = Date.UTC(2026, 6, 1, 2, 5);
+    expect(texts("en", "Europe/Berlin").time(summer)).toBe(
+      "2026-07-01 at 04:05 GMT+2",
+    );
+    expect(texts("en", "America/New_York").time(summer)).toBe(
+      "2026-06-30 at 22:05 EDT",
+    );
+  });
+
   it("take the language of LANGUAGE, English when it is empty", () => {
     expect(languageOf(undefined)).toBe("en");
     expect(languageOf(" ")).toBe("en");

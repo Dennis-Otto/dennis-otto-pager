@@ -19,7 +19,14 @@ body:
     id: area
     attributes:
       label: Area
+      description: The part of the pager that misbehaves.
       options:
+        - Worker and its rules
+        - Telegram and its topics
+        - Buttons
+        - Control repository
+        - Set-up and deployment
+        - Website
         - Other
     validations:
       required: true
@@ -27,8 +34,8 @@ body:
     id: version
     attributes:
       label: Version
-      description: The release you use.
-      placeholder: "1.0.0"
+      description: The release of Repo Pager that your copy runs, as /status names it.
+      placeholder: "0.9.1"
     validations:
       required: true
   - type: textarea
@@ -40,7 +47,11 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: The relevant lines of the log, without secrets.
+      description: >-
+        The relevant lines of the log, without secrets: those of the Worker from
+        `npx wrangler tail` or under Workers, your Worker, Logs on the dashboard of
+        Cloudflare, and the run of the workflow of your control repository when a
+        job of it is involved.
       render: text
   - type: checkboxes
     id: checks

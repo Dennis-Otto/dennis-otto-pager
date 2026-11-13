@@ -72,7 +72,7 @@ export function makeContext(
       now,
       deadlines.download,
     ),
-    t: texts(settings.language),
+    t: texts(settings.language, settings.timeZone),
     now,
     sleep,
     exclusive,

@@ -312,7 +312,8 @@ describe("a button that acts in the maintainer's name", () => {
       .on("POST", "/repos/Dennis-Otto/demo/issues/12/comments", () =>
         json({ message: "Bad credentials" }, 401),
       )
-      .on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+      // 🤖 Assistant again asks for the default branch first, refused the same.
+      .on("GET", "/repos/Dennis-Otto/demo", () =>
         json({ message: "Bad credentials" }, 401),
       );
     const sent = await press(w, drafted, `send:${drafted.id}:2`);

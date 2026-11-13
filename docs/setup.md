@@ -4,6 +4,8 @@ Repo Pager is self-hosted: you run an instance of your own, with your own bot of
 
 Run the commands in Git Bash or another shell of Unix, in a checkout of your copy of this repository, after `npm ci --ignore-scripts`. Read a secret with `read -rs`, so that it stays out of the history of the shell.
 
+**Run every step in one and the same shell.** The steps keep what the later ones need in variables of the shell: `CONTROL`, your control repository, in [Your copy](#your-copy); `TOKEN`, the token of the bot, in step 1; `WORKER`, the address of the Worker, in step 2; and `WEBHOOK_SECRET` and `CONTROL_SECRET`, the two random secrets, in step 3. A new shell has forgotten them, and a command that needs one stops with what to do: set `CONTROL` and `WORKER` again as their steps do, and read `TOKEN` again as step 1 does. A random secret can't come back, since Cloudflare never shows a secret again: make it anew as step 3 does, as steps 5 and 7 say.
+
 ## Why there is no shared app
 
 There is no app of Repo Pager to install and no pager that serves several people, on purpose:
@@ -26,6 +28,9 @@ Make a copy of this repository: a fork, or a repository of your own. `wrangler.j
 | `CONTROL_REPOSITORY` | Your private control repository, which you create below and set up in step 7, such as `octocat/repo-pager-control` |
 | `LANGUAGE` | `de` for German, `en` or empty for English |
 | `CLAUDE_TOKEN_EXPIRES` | The day on which your token of Claude expires, or empty |
+| `TIME_ZONE` | Your time zone, a name of the [IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) such as `Europe/Berlin` or `America/New_York`, in which the pager writes each moment of a message, such as when a workflow failed; empty for UTC |
+
+**The workflows of your copy:** a copy brings the more than thirty workflows of this repository along, most of them on a schedule: its checks, its bots and its release, which serve this repository with its own secrets and apps. The pager needs none of them, since Cloudflare builds and deploys it. A fork starts with GitHub Actions off: leave them off. A repository of your own runs them: turn them off under *Settings* → *Actions* → *General*, or keep only *CI*, which tests a change of your copy, and turn off each of the others with `gh workflow disable NAME`.
 
 The tests of your copy pass with your values: they take them from `wrangler.jsonc`, and `bash scripts/check.sh` runs them once more with those of another instance, so that a change of your own and an update come through a green pull request.
 
@@ -52,17 +57,29 @@ CONTROL=octocat/repo-pager-control   # your account and the name of your control
 gh repo create "$CONTROL" --private --template Dennis-Otto/repo-pager-control-template
 ```
 
+Then delete its `.github/dependabot.yml`, as [the README of the template](https://github.com/Dennis-Otto/repo-pager-control-template#readme) asks: the template's Dependabot keeps the actions current, and the pull request of its workflow *Template* brings them to you, while bumps of your own would only fight it. The template counts the file as yours, so it never comes back:
+
+```sh
+gh api -X DELETE "repos/$CONTROL/contents/.github/dependabot.yml" \
+  -f message="chore: the template keeps the actions current" \
+  -f sha="$(gh api "repos/$CONTROL/contents/.github/dependabot.yml" --jq .sha)"
+```
+
 The template holds the workflows of the control repository and their scripts, and its README is their guide. Your copy stays private, because the logs of its runs show issues, drafts and what Claude read. Until step 7, its daily check *Health* fails, which GitHub mails you.
 
 ## 1. The bot of Telegram
 
-1. In Telegram, write `/newbot` to [@BotFather](https://t.me/BotFather), and give the bot a name and a user name that ends with `bot`. BotFather answers with the token of the bot: it is a secret.
+1. In Telegram, write `/newbot` to [@BotFather](https://t.me/BotFather), and give the bot a name and a user name that ends with `bot`. BotFather answers with the token of the bot: it is a secret. Keep it in a variable of the shell, which steps 3 and 5 take it from:
+
+    ```sh
+    read -rs TOKEN   # paste the token of the bot, then Enter
+    ```
+
 2. Write any message to the new bot, so that your chat with it exists.
 3. Your chat id is your user id of Telegram, a number. [@userinfobot](https://t.me/userinfobot) tells it, or the bot itself, once you wrote to it:
 
     ```sh
-    read -rs TOKEN   # paste the token of the bot, then Enter
-    curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | grep -o '"chat":{"id":[0-9]*'
+    curl -s "https://api.telegram.org/bot${TOKEN:?read the token of the bot as in step 1}/getUpdates" | grep -o '"chat":{"id":[0-9]*'
     ```
 
     The chat id is personal: keep it out of the repository. It goes to Cloudflare as a secret in step 3.
@@ -102,14 +119,16 @@ Each secret goes to Cloudflare with `npx wrangler secret put NAME`, which asks f
 The two random secrets, each kept in a variable of the shell for the steps that need it again:
 
 ```sh
-npx wrangler secret put TELEGRAM_BOT_TOKEN
+printf %s "${TOKEN:?read the token of the bot as in step 1}" | npx wrangler secret put TELEGRAM_BOT_TOKEN
 npx wrangler secret put TELEGRAM_CHAT_ID
 WEBHOOK_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")
 printf %s "$WEBHOOK_SECRET" | npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 CONTROL_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")
 printf %s "$CONTROL_SECRET" | npx wrangler secret put CONTROL_SECRET
-printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R "$CONTROL"
+printf %s "$CONTROL_SECRET" | gh secret set PAGER_CONTROL_SECRET -R "${CONTROL:?set CONTROL as in Your copy}"
 ```
+
+The lines of a random secret make it anew and set it, in the Worker and, for `CONTROL_SECRET`, in the control repository too: for a secret that a new shell has forgotten, run them again, and then the step that needs it.
 
 **`GITHUB_USER_TOKEN`** acts in your name for two buttons only: ✅ **Send**, which posts a reply that you approved on an issue or a pull request, and 🤖 **Assistant again**, which starts the issue assistant past its rule of one comment; the issue assistant asks GitHub for the role of the person who started it, and an app has none. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) for your account and your repositories, with these permissions and no others:
 
@@ -176,12 +195,12 @@ The pager works in any repository where its app is installed, but a few of its m
 
 ## 5. The webhook of Telegram
 
-Tell Telegram where to send the updates, with the secret of step 3:
+Tell Telegram where to send the updates, with the secret of step 3. The Worker refuses every update of a webhook without that secret, so the command stops with what to do when a variable is empty, as each is in a new shell: then set `WORKER` again as in step 2, read `TOKEN` as in step 1, and make `WEBHOOK_SECRET` anew with its two lines of step 3, since Cloudflare never shows a secret again:
 
 ```sh
-curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
-  -d url="$WORKER/telegram" \
-  -d secret_token="$WEBHOOK_SECRET" \
+curl -s "https://api.telegram.org/bot${TOKEN:?read the token of the bot as in step 1}/setWebhook" \
+  -d url="${WORKER:?set WORKER as in step 2}/telegram" \
+  -d secret_token="${WEBHOOK_SECRET:?make it anew as in step 3}" \
   -d 'allowed_updates=["message","callback_query"]' \
   -d max_connections=1
 curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
@@ -192,7 +211,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 So that the menu of Telegram offers the commands of the pager, register them once; the words are the descriptions in the menu, in any language:
 
 ```sh
-curl -s "https://api.telegram.org/bot$TOKEN/setMyCommands" \
+curl -s "https://api.telegram.org/bot${TOKEN:?read the token of the bot as in step 1}/setMyCommands" \
   -H 'Content-Type: application/json' \
   -d '{"commands":[{"command":"open","description":"What still waits for me"},{"command":"status","description":"How the pager is"},{"command":"help","description":"What the pager does"}]}'
 ```
@@ -207,9 +226,10 @@ curl -s "https://api.telegram.org/bot$TOKEN/setMyCommands" \
 
 ## 7. The control repository
 
-Your private control repository, which `CONTROL_REPOSITORY` names, drafts the replies, starts the fixes and answers the free text, with Claude Code and your own subscription. You made it from the template at the start, so its workflows are there, and [the README of the template](https://github.com/Dennis-Otto/repo-pager-control-template#readme) describes each of its jobs, secrets and variables; [How it works](how-it-works.md#the-control-repository) has the contract between the two: the events that the pager sends it and the signed answers that the pager takes. Besides `PAGER_CONTROL_SECRET` of step 3, it needs the token of your Claude subscription from `claude setup-token`, the address of the Worker, the name of your app in its address, `github.com/apps/NAME`, which is the only bot whose events start Claude, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories and for the control repository itself, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix and that of a change of the template:
+Your private control repository, which `CONTROL_REPOSITORY` names, drafts the replies, starts the fixes and answers the free text, with Claude Code and your own subscription. You made it from the template at the start, so its workflows are there, and [the README of the template](https://github.com/Dennis-Otto/repo-pager-control-template#readme) describes each of its jobs, secrets and variables; [How it works](how-it-works.md#the-control-repository) has the contract between the two: the events that the pager sends it and the signed answers that the pager takes. Besides `PAGER_CONTROL_SECRET` of step 3, it needs the token of your Claude subscription from `claude setup-token`, the address of the Worker, the name of your app in its address, `github.com/apps/NAME`, which is the only bot whose events start Claude, and for 🛠 **Start fix** a fine-grained token of yours for the watched repositories and for the control repository itself, with *Contents*, *Pull requests* and *Workflows* read and write, which opens the pull request of a fix and that of a change of the template. In a new shell, set `CONTROL` and `WORKER` again, as in [Your copy](#your-copy) and in step 2, since these lines stop without them. `PAGER_CONTROL_SECRET` stays as step 3 set it; should step 3 have stopped before its last line, make `CONTROL_SECRET` anew with its three lines there, since the Worker and the control repository need the same one:
 
 ```sh
+: "${CONTROL:?set CONTROL as in Your copy}" "${WORKER:?set WORKER as in step 2}"
 claude setup-token                                   # prints the token of your subscription
 gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$CONTROL"  # paste it
 gh variable set PAGER_URL -R "$CONTROL" --body "$WORKER"

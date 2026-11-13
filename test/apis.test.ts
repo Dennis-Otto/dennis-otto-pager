@@ -336,6 +336,9 @@ describe("the GitHub App", () => {
       .on("POST", "/repos/Dennis-Otto/demo/issues/12/comments", () =>
         json({ html_url: "https://github.com/c" }, 201),
       )
+      .on("GET", "/repos/Dennis-Otto/demo", () =>
+        json({ default_branch: "trunk" }),
+      )
       .on(
         "POST",
         "/actions/workflows/issue-assistant.yml/dispatches",
@@ -350,7 +353,7 @@ describe("the GitHub App", () => {
     await api.issueAssistant("Dennis-Otto/demo", 12);
     const dispatch = net.github("/issue-assistant.yml/dispatches")[0];
     expect(dispatch?.body).toEqual({
-      ref: "main",
+      ref: "trunk",
       inputs: {
         issue: "12",
         mode: "triage",
@@ -364,9 +367,13 @@ describe("the GitHub App", () => {
     await expect(without.comment("Dennis-Otto/demo", 12, "x")).rejects.toThrow(
       "GITHUB_USER_TOKEN isn't set",
     );
-    const old = new Net().on("POST", /issue-assistant\.yml\/dispatches$/, () =>
-      json({ message: "Unexpected inputs provided" }, 422),
-    );
+    const old = new Net()
+      .on("GET", "/repos/Dennis-Otto/demo", () =>
+        json({ default_branch: "main" }),
+      )
+      .on("POST", /issue-assistant\.yml\/dispatches$/, () =>
+        json({ message: "Unexpected inputs provided" }, 422),
+      );
     const error = await (await github(old))
       .issueAssistant("Dennis-Otto/demo", 12)
       .catch((caught: unknown) => caught);
@@ -375,6 +382,11 @@ describe("the GitHub App", () => {
       status: 422,
       detail: "Unexpected inputs provided",
     });
+    // A repository that the token can't see starts nothing.
+    const unseen = await github(new Net());
+    await expect(
+      unseen.issueAssistant("Dennis-Otto/demo", 12),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("replies in a discussion as the app, in the thread of the comment that it answers", async () => {

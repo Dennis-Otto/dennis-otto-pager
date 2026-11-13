@@ -231,6 +231,7 @@ export async function settings(
     laterHours: 4,
     tokenExpires: null,
     language: "en",
+    timeZone: "UTC",
     ...overrides,
   };
 }

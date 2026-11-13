@@ -142,6 +142,7 @@ describe("settings", () => {
         laterHours: 4,
         tokenExpires: "2027-10-07",
         language: "en",
+        timeZone: "UTC",
       },
     });
     const all = readSettings({
@@ -150,6 +151,7 @@ describe("settings", () => {
       GITHUB_USER_TOKEN: "user",
       CLAUDE_TOKEN_EXPIRES: "",
       LANGUAGE: " de ",
+      TIME_ZONE: " Europe/Berlin ",
     } as unknown as PagerEnv);
     expect(all).toMatchObject({
       settings: {
@@ -157,6 +159,7 @@ describe("settings", () => {
         userToken: "user",
         tokenExpires: null,
         language: "de",
+        timeZone: "Europe/Berlin",
       },
     });
     expect(
@@ -216,6 +219,7 @@ describe("settings", () => {
         LATER_HOURS: "0",
         CLAUDE_TOKEN_EXPIRES: "soon",
         LANGUAGE: "fr",
+        TIME_ZONE: "Mars/Olympus_Mons",
       } as unknown as PagerEnv),
     ).toEqual({
       missing: [
@@ -223,6 +227,7 @@ describe("settings", () => {
         "LATER_HOURS (hours, from 1 to 336)",
         "CLAUDE_TOKEN_EXPIRES (a date such as 2027-10-07)",
         "LANGUAGE (en or de)",
+        "TIME_ZONE (a time zone such as Europe/Berlin)",
       ],
     });
   });

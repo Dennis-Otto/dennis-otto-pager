@@ -12,6 +12,7 @@ import { describe, type Local } from "./context.ts";
 import {
   type GitHub,
   GitHubError,
+  NoAnswer,
   type RunJob,
   type WorkflowRun,
 } from "./github.ts";
@@ -272,7 +273,10 @@ export async function draftOrWhyNot(
     if (!(error instanceof GitHubError)) {
       throw error;
     }
-    return context.t("answer.refused", { detail: error.detail });
+    // A request that got no answer in time may still have started the job.
+    return error instanceof NoAnswer
+      ? context.t("answer.noAnswer")
+      : context.t("answer.refused", { detail: error.detail });
   }
 }
 

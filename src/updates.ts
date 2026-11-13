@@ -8,7 +8,7 @@
  */
 import { answerDecision, press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
-import { GitHubError } from "./github.ts";
+import { GitHubError, NoAnswer } from "./github.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
 import { answering, type Decision, type Item, MAX_ANSWER } from "./store.ts";
@@ -221,8 +221,12 @@ async function answerInWords(
     if (!(error instanceof GitHubError)) {
       throw error;
     }
+    // A save that got no answer in time may still have landed, so the text
+    // doesn't say that GitHub refused it.
     await context.telegram.say(
-      context.t("decision.notSaved", { detail: html(error.detail) }),
+      error instanceof NoAnswer
+        ? context.t("decision.noAnswer")
+        : context.t("decision.notSaved", { detail: html(error.detail) }),
       thread,
     );
     await context.telegram.react(message.message_id, REACTIONS.failed);

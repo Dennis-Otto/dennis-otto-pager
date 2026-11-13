@@ -489,6 +489,21 @@ describe("an answer in the maintainer's own words", () => {
     expect(await stored(w)).not.toHaveProperty("ownAnswer");
   });
 
+  it("stays open when GitHub gives no answer in time, and doesn't say it refused", async () => {
+    const w = await world({}, { api: 20, download: 20 });
+    withoutBranch(withTopics(withControl(w.net))).hang("PUT", FILE);
+    await send(w, QUESTION);
+    expect(await write(w, "Neither.")).toBe("an answer that GitHub refused");
+    expect(said(w)).toEqual([
+      [
+        900,
+        "⏳ GitHub gave no answer in time, and whether your answer was saved is uncertain. The question stays open here: write your answer again, or press an option.",
+      ],
+    ]);
+    expect(reactions(w)).toEqual([[500, "😢"]]);
+    expect(await stored(w)).toMatchObject({ state: "open", choice: null });
+  });
+
   it("fails the update on a failure of the network, which the log keeps", async () => {
     const w = await world();
     withoutBranch(withTopics(withControl(w.net))).on("PUT", FILE, () => {

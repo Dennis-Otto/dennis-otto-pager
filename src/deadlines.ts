@@ -17,9 +17,9 @@ export interface Deadlines {
 }
 
 /**
- * Five seconds for a call, which both APIs answer in well under one, so two calls
- * that hang still leave an event its answer within GitHub's ten seconds; twenty for
- * the download of an artifact, which has megabytes to bring.
+ * Five seconds for a call, which both APIs answer in well under one, so a call
+ * that hangs still leaves an event room for its answer within GitHub's ten
+ * seconds; twenty for the download of an artifact, which has megabytes to bring.
  */
 export const DEADLINES: Deadlines = { api: 5000, download: 20000 };
 

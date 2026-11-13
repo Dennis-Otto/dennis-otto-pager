@@ -1849,13 +1849,34 @@ describe("workflows on the default branch", () => {
     });
   });
 
-  it("drops a run that was cancelled, skipped or didn't end, and one that names no run or no workflow", () => {
-    for (const conclusion of [
-      "cancelled",
-      "skipped",
-      "neutral",
-      "action_required",
-    ]) {
+  it("passes a cancelled run on as neither a failure nor a pass, which only a rerun of 🔁 Rerun takes", () => {
+    expect(outcome({ conclusion: "cancelled", run_attempt: 3 })).toEqual({
+      signal: {
+        ...at,
+        type: "workflow",
+        path: ".github/workflows/docs.yml",
+        name: "Docs",
+        branch: "main",
+        failed: false,
+        cancelled: true,
+        run: 51,
+        attempt: 3,
+        url: "https://github.com/Dennis-Otto/demo/actions/runs/51/attempts/3",
+      },
+    });
+    // A failure and a pass say nothing of a cancel.
+    for (const conclusion of ["failure", "success"]) {
+      expect(outcome({ conclusion })).not.toHaveProperty("signal.cancelled");
+    }
+    // A cancelled run of a pull request, of another branch or of a fork is still
+    // nothing.
+    expect(outcome({ conclusion: "cancelled", event: "pull_request" })).toEqual(
+      { ignored: "a workflow run of a pull request" },
+    );
+  });
+
+  it("drops a run that was skipped or didn't end, and one that names no run or no workflow", () => {
+    for (const conclusion of ["skipped", "neutral", "action_required"]) {
       expect(outcome({ conclusion })).toEqual({
         ignored: `a workflow run that ended ${conclusion}`,
       });

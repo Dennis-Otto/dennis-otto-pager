@@ -312,6 +312,11 @@ export type Signal = Where &
         /** The default branch, which the run ran on. */
         branch: string;
         failed: boolean;
+        /**
+         * Set when the run was cancelled, by hand or by the concurrency group of its
+         * workflow: neither a failure nor a pass, it ends only a rerun of 🔁 Rerun.
+         */
+        cancelled?: true;
         run: number;
         /** The attempt of the run that ended, from 1 on. */
         attempt: number;
@@ -1144,12 +1149,13 @@ const PULL_EVENTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * A run of any workflow but those of a release that failed or passed on the
- * default branch of the repository itself, such as one of a push, of a schedule,
- * of a bot or started by hand: a failure is a thing of its workflow, which the
- * pager shows once a rerun can't help any more, and a pass may end it. A run of a
- * pull request, of another branch or of a fork, and one that was cancelled or
- * skipped, mean nothing.
+ * A run of any workflow but those of a release that failed, passed or was
+ * cancelled on the default branch of the repository itself, such as one of a
+ * push, of a schedule, of a bot or started by hand: a failure is a thing of its
+ * workflow, which the pager shows once a rerun can't help any more, a pass may end
+ * it, and a cancelled run ends a rerun of 🔁 Rerun without a result. A run of a
+ * pull request, of another branch or of a fork, and one that was skipped, mean
+ * nothing.
  */
 function mainRun(
   run: Payload["workflow_run"],
@@ -1167,7 +1173,8 @@ function mainRun(
   }
   const conclusion = run.conclusion ?? "";
   const failed = FAILED.has(conclusion);
-  if (!failed && conclusion !== "success") {
+  const cancelled = conclusion === "cancelled";
+  if (!failed && !cancelled && conclusion !== "success") {
     return { ignored: `a workflow run that ended ${conclusion}` };
   }
   const id = runId(run.id);
@@ -1183,6 +1190,7 @@ function mainRun(
       name: run.name || path,
       branch,
       failed,
+      ...(cancelled ? { cancelled } : {}),
       run: id,
       attempt: runId(run.run_attempt) ?? 1,
       url: attemptUrl(run),

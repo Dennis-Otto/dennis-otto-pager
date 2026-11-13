@@ -121,6 +121,21 @@ export const QUIET = 10 * 60_000;
 const DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * Whether a thing is past what "Later" put aside: done with, as by an end on
+ * GitHub, a sent draft or a bundle whose last entry went, or a release that
+ * merges or merged. Its message promises no return then, and the schedule brings
+ * nothing back that has moved on. A release that an update took back to ready
+ * keeps its "Later", as does every thing that still waits.
+ */
+function pastLater(item: Item): boolean {
+  return (
+    isClosed(item) ||
+    (item.kind === "release" &&
+      (item.state === "merging" || item.state === "merged"))
+  );
+}
+
+/**
  * Show a thing: edit its message, or send a new one when it has none, when it is
  * gone, or with fresh, which also deletes the old one, as "Later" does when its
  * time is up. A new message goes into the thing's topic, and its first one opens
@@ -130,13 +145,17 @@ const DAY = 24 * 60 * 60 * 1000;
  * state, also when what follows the new message fails, such as the delete of the
  * old one: the record names the message that Telegram shows, so that nothing sends
  * the thing again, with live buttons on two messages. Returns whether a new
- * message went, which notifies, unlike an edit in place or a move.
+ * message went, which notifies, unlike an edit in place or a move. A thing that
+ * is past its "Later" forgets it (pastLater()).
  */
 export async function show(
   context: Context,
   item: Item,
   fresh = false,
 ): Promise<boolean> {
+  if (pastLater(item)) {
+    item.snoozedUntil = null;
+  }
   const text = render(item, context.now(), context.t);
   const buttons = keyboard(item, context.t);
   const old = item.messageId;
@@ -1458,6 +1477,8 @@ async function workflowFailed(context: Context, signal: Ran): Promise<string> {
     url: signal.url,
     jobs: failed,
     last: now,
+    // A note of a rerun that was cancelled is over with the next failure.
+    note: null,
   });
   const waiting = item.state === "waiting";
   if (waiting && signal.attempt === 1) {
@@ -1468,6 +1489,34 @@ async function workflowFailed(context: Context, signal: Ran): Promise<string> {
   item.snoozedUntil = null;
   await show(context, item);
   return waiting ? "workflow failing" : "workflow updated";
+}
+
+/**
+ * A run of a workflow that GitHub cancelled on the default branch, by hand or by
+ * the concurrency group of its workflow: it ends a rerun of 🔁 Rerun without a
+ * result, so the thing fails again, with its buttons and a note, edited in place.
+ * Any other cancelled run, such as one of a thing that waits, which the schedule
+ * reads (src/workflows.ts), or a newer run than the one that runs again, changes
+ * nothing.
+ */
+async function workflowCancelled(
+  context: Context,
+  signal: Ran,
+): Promise<string> {
+  const id = await itemId(keys.workflow(signal.repo, signal.path));
+  const known = (await context.store.get(id)) as Workflow | null;
+  if (
+    known?.state !== "rerunning" ||
+    signal.run !== known.run ||
+    signal.attempt <= known.attempt
+  ) {
+    return "workflow run cancelled";
+  }
+  known.state = "failing";
+  known.attempt = signal.attempt;
+  known.note = context.t("note.rerunCancelled");
+  await show(context, known);
+  return "workflow rerun cancelled";
 }
 
 /**
@@ -1507,6 +1556,7 @@ async function workflowPassed(context: Context, signal: Ran): Promise<string> {
     run: signal.run,
     attempt: signal.attempt,
     snoozedUntil: null,
+    note: null,
   });
   if (waiting) {
     await context.store.put(known);
@@ -1634,6 +1684,9 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
       });
     }
     case "workflow":
+      if (signal.cancelled === true) {
+        return workflowCancelled(context, signal);
+      }
       return signal.failed
         ? workflowFailed(context, signal)
         : workflowPassed(context, signal);

@@ -30,8 +30,11 @@ const RUNS = `https://github.com/${REPO}/actions/runs`;
 const API = `/repos/${REPO}/actions/runs`;
 const MINUTE = 60_000;
 
+/** The signal of the end of a run of a workflow on main. */
+type Ran = Extract<Signal, { type: "workflow" }>;
+
 /** The end of an attempt of a run of the workflow Docs on main. */
-function ran(run: number, attempt: number, failed = true, path = PATH): Signal {
+function ran(run: number, attempt: number, failed = true, path = PATH): Ran {
   return {
     ...at,
     type: "workflow",
@@ -43,6 +46,11 @@ function ran(run: number, attempt: number, failed = true, path = PATH): Signal {
     attempt,
     url: `${RUNS}/${run}/attempts/${attempt}`,
   };
+}
+
+/** The end of an attempt of a run of the workflow Docs on main that GitHub cancelled. */
+function cancelled(run: number, attempt: number): Signal {
+  return { ...ran(run, attempt, false), cancelled: true };
 }
 
 /** The jobs of an attempt, as GitHub lists them, by their names and conclusions. */
@@ -353,6 +361,101 @@ describe("the buttons of a workflow", () => {
     expect(await apply(w.context, ran(60, 4, false))).toBe(
       "workflow recovered",
     );
+  });
+
+  it("come back with a note when the rerun is cancelled, by hand or by the concurrency group", async () => {
+    const w = await world();
+    jobs(w, 60, 2, [["build", "failure"]]);
+    await apply(w.context, ran(60, 2));
+    runIs(w, 60, {
+      status: "completed",
+      conclusion: "failure",
+      run_attempt: 2,
+    });
+    w.net.on(
+      "POST",
+      `${API}/60/rerun-failed-jobs`,
+      () => new Response(null, { status: 201 }),
+    );
+    await pressing(w, await thing(w), "rerun");
+    const sent = telegram(w).length;
+    expect(await apply(w.context, cancelled(60, 3))).toBe(
+      "workflow rerun cancelled",
+    );
+    const item = await thing(w);
+    expect(item).toMatchObject({
+      state: "failing",
+      attempt: 3,
+      count: 1,
+      url: `${RUNS}/60/attempts/2`,
+      note: "⏹ The rerun was cancelled.",
+    });
+    // Edited in place, which notifies nobody, with 🔁 Rerun back.
+    expect(
+      telegram(w)
+        .slice(sent)
+        .map((call) => call.url),
+    ).toEqual([expect.stringMatching(/\/editMessageText$/)]);
+    const edit = w.net.telegram("editMessageText").at(-1)?.body;
+    expect(edit?.text).toMatch(/\n<i>⏹ The rerun was cancelled\.<\/i>$/);
+    expect(edit?.text).not.toContain("run again");
+    expect(edit?.reply_markup).toEqual({
+      inline_keyboard: [
+        [
+          { text: "🔁 Rerun", callback_data: `rerun:${item.id}` },
+          { text: "✖ Ignore", callback_data: `ignore:${item.id}` },
+        ],
+      ],
+    });
+    // The same event again changes nothing.
+    expect(await apply(w.context, cancelled(60, 3))).toBe(
+      "workflow run cancelled",
+    );
+    expect(await thing(w)).toEqual(item);
+    // The next rerun takes the note away, and so does its failure.
+    runIs(w, 60, {
+      status: "completed",
+      conclusion: "cancelled",
+      run_attempt: 3,
+    });
+    await pressing(w, await thing(w), "rerun");
+    expect(await thing(w)).toMatchObject({ state: "rerunning", note: null });
+    await apply(w.context, cancelled(60, 4));
+    expect(await apply(w.context, ran(60, 5))).toBe("workflow updated");
+    expect(await thing(w)).toMatchObject({ state: "failing", note: null });
+    await apply(w.context, cancelled(60, 5));
+    expect(await thing(w)).toMatchObject({ state: "failing", note: null });
+  });
+
+  it("let every other cancelled run pass by", async () => {
+    const w = await world();
+    // No thing, or one that waits for the rerun of After the checks, which the
+    // schedule reads, or one that fails without a rerun of 🔁 Rerun.
+    expect(await apply(w.context, cancelled(60, 1))).toBe(
+      "workflow run cancelled",
+    );
+    expect(await thing(w)).toBeNull();
+    await apply(w.context, ran(60, 1));
+    expect(await apply(w.context, cancelled(60, 2))).toBe(
+      "workflow run cancelled",
+    );
+    expect(await thing(w)).toMatchObject({ state: "waiting", attempt: 1 });
+    await apply(w.context, ran(60, 2));
+    expect(await apply(w.context, cancelled(60, 3))).toBe(
+      "workflow run cancelled",
+    );
+    const failing = await thing(w);
+    expect(failing).toMatchObject({ state: "failing", note: null });
+    // While its rerun runs, a newer run cancelled by the concurrency group, and an
+    // attempt that the thing knows, end nothing.
+    const rerunning: Workflow = { ...failing, state: "rerunning" };
+    await w.context.store.put(rerunning);
+    const calls = w.net.calls.length;
+    for (const signal of [cancelled(61, 1), cancelled(60, 2)]) {
+      expect(await apply(w.context, signal)).toBe("workflow run cancelled");
+    }
+    expect(await thing(w)).toEqual(rerunning);
+    expect(w.net.calls.slice(calls)).toEqual([]);
   });
 
   it("start nothing while the run still runs, or once it passed", async () => {

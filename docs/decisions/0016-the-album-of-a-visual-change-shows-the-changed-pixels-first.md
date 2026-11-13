@@ -1,6 +1,6 @@
 # The album of a visual change shows the changed pixels first, and promises red only when it has them
 
-- Status: accepted
+- Status: accepted, amended by [0027](0027-the-album-of-a-visual-change-shows-one-comparison-per-picture.md): a picture with a comparison shows it alone, and an animation shows its difference without the first frame of each side
 - Date: 2026-11-08
 
 ## Context

@@ -9,8 +9,8 @@ import { GitHubError } from "../src/github.ts";
 import { apply } from "../src/pager.ts";
 import {
   album,
+  animation,
   largestFirst,
-  MAX_ALBUM,
   MAX_PHOTO,
   photoType,
   readArtifact,
@@ -43,7 +43,7 @@ import {
   withTopics,
   world,
 } from "./helpers.ts";
-import { artifact, png, report, webp, zip } from "./zips.ts";
+import { apng, artifact, gif, png, report, webp, zip } from "./zips.ts";
 
 const en = texts("en");
 const de = texts("de");
@@ -51,6 +51,8 @@ const SHA = "a1b2c3d4e5f60718293a";
 const STORAGE = "https://storage.example/artifact.zip?sig=x";
 const ARTIFACTS = `/repos/${REPO}/actions/runs/31/artifacts?per_page=100`;
 const CHECK = `https://github.com/${REPO}/actions/runs/31`;
+/** What a report names of a picture without a comparison, as one before them. */
+const UNCOMPARED = { comparison: null, frame: null, frames: null };
 
 /** The pictures of artifacts as the pager shows them: what changed, and the album. */
 async function read(bytes: Uint8Array[], t: Texts = en) {
@@ -162,6 +164,7 @@ describe("the report of a visual check", () => {
         before: "before/screenshots/a.png",
         after: "after/screenshots/a.png",
         diff: "diff/screenshots/a.png",
+        ...UNCOMPARED,
       },
       {
         path: "screenshots/b.png",
@@ -170,6 +173,7 @@ describe("the report of a visual check", () => {
         before: null,
         after: "after/screenshots/b.png",
         diff: null,
+        ...UNCOMPARED,
       },
       {
         path: "screenshots/c.png",
@@ -178,6 +182,7 @@ describe("the report of a visual check", () => {
         before: "before/screenshots/c.png",
         after: null,
         diff: null,
+        ...UNCOMPARED,
       },
     ]);
   });
@@ -209,6 +214,7 @@ describe("the report of a visual check", () => {
         before: "en/voice.before.webp",
         after: "en/voice.after.webp",
         diff: null,
+        ...UNCOMPARED,
       },
       {
         path: "en/new.webp",
@@ -217,6 +223,7 @@ describe("the report of a visual check", () => {
         before: null,
         after: "after/en/new.webp",
         diff: null,
+        ...UNCOMPARED,
       },
       {
         path: "en/old.webp",
@@ -225,6 +232,7 @@ describe("the report of a visual check", () => {
         before: "before/en/old.webp",
         after: null,
         diff: null,
+        ...UNCOMPARED,
       },
     ]);
   });
@@ -384,7 +392,7 @@ describe("the artifact of a visual check", () => {
       "screenshots/small.png",
       "docs/images/demo.gif",
     ]);
-    expect(found.shown).toBe(MAX_ALBUM);
+    expect(found.shown).toBe(3);
     expect(found.photos.map(({ caption }) => caption)).toEqual([
       "🆕 New: <code>screenshots/added.png</code>",
       "◀️ Before: <code>screenshots/large.png</code>",
@@ -428,7 +436,8 @@ describe("the artifact of a visual check", () => {
         [{ name: "diff/docs/c.png", data: png(800, 600, 222), deflate: true }],
       ),
     ]);
-    expect(found.shown).toBe(MAX_ALBUM);
+    // A fourth picture of three photos would no longer fit into the album.
+    expect(found.shown).toBe(3);
     expect(found.differences).toBe(4);
     expect(found.photos.map(({ caption }) => caption)).toEqual([
       "🔴 Changed pixels: <code>docs/a.webp</code>",
@@ -446,8 +455,7 @@ describe("the artifact of a visual check", () => {
       200, 0, 100, 201, 1, 101, 222, 2, 102,
     ]);
     // Three pictures of three photos each stay within the ten of an album of Telegram.
-    expect(found.photos.length).toBeLessThanOrEqual(MAX_MEDIA);
-    expect(3 * MAX_ALBUM).toBeLessThanOrEqual(MAX_MEDIA);
+    expect(found.photos).toHaveLength(9);
     const german = await read(
       [
         await artifact([
@@ -528,7 +536,7 @@ describe("the artifact of a visual check", () => {
       ]),
     ]);
     expect(found.differences).toBe(2);
-    expect(found.shown).toBe(MAX_ALBUM);
+    expect(found.shown).toBe(3);
     expect(found.photos.map(({ caption }) => caption)).toEqual([
       "◀️ Before: <code>docs/a.png</code>",
       "▶️ After: <code>docs/a.png</code>",
@@ -539,7 +547,7 @@ describe("the artifact of a visual check", () => {
     ]);
   });
 
-  it("shows no more than its limit, and what was of a deleted picture", async () => {
+  it("shows no more than the photos of an album, and what was of a deleted picture", async () => {
     const many = Array.from({ length: 5 }, (_, index) => ({
       path: `screenshots/${index}.png`,
       status: "changed",
@@ -554,9 +562,14 @@ describe("the artifact of a visual check", () => {
       ],
       de,
     );
+    // Five pictures before and after fill the ten photos of an album, and the
+    // deleted one, the smallest change, no longer fits.
     expect(found.changed).toHaveLength(6);
-    expect(found.shown).toBe(MAX_ALBUM);
-    expect(found.photos).toHaveLength(2 * MAX_ALBUM);
+    expect(found.shown).toBe(5);
+    expect(found.photos).toHaveLength(MAX_MEDIA);
+    expect(found.photos.at(-1)?.caption).toBe(
+      "▶️ Nachher: <code>screenshots/4.png</code>",
+    );
     const gone = await read(
       [
         await artifact([
@@ -673,6 +686,332 @@ describe("the artifact of a visual check", () => {
   });
 });
 
+/** Where the entry at index of the directory of a ZIP is, and its local header. */
+function entryOf(
+  bytes: Uint8Array,
+  index: number,
+): { view: DataView; central: number; local: number } {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let central = view.getUint32(bytes.length - 22 + 16, true);
+  for (let at = 0; at < index; at += 1) {
+    central += 46 + view.getUint16(central + 28, true);
+  }
+  return { view, central, local: view.getUint32(central + 42, true) };
+}
+
+describe("an animation", () => {
+  it("is a WebP with the flag of one, an APNG or a GIF of more than one image", () => {
+    expect(animation(webp("VP8X", 800, 600, true))).toBe(true);
+    expect(animation(webp("VP8X", 800, 600))).toBe(false);
+    expect(animation(webp("VP8L", 800, 600))).toBe(false);
+    expect(animation(apng(800, 600))).toBe(true);
+    expect(animation(apng(800, 600, ["IDAT", "acTL"]))).toBe(false);
+    expect(animation(apng(800, 600, ["tEXt"]))).toBe(false);
+    expect(animation(png(800, 600))).toBe(false);
+    expect(animation(gif({ images: 2 }))).toBe(true);
+    expect(animation(gif({ images: 2, global: false, local: true }))).toBe(
+      true,
+    );
+    expect(animation(gif({ images: 1 }))).toBe(false);
+    expect(animation(gif({ images: 1, cut: true }))).toBe(false);
+    expect(animation(new TextEncoder().encode("GIF89a"))).toBe(false);
+    expect(animation(new TextEncoder().encode("JFIF, not one of them"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("the comparison of a changed picture", () => {
+  // The case of homedarts-for-autodarts#716: an animation of seven frames whose
+  // change, 0.66 % of its pixels, is in its fourth frame.
+  const setup = {
+    path: "de/setup.webp",
+    status: "changed",
+    share: 0.0066,
+    diff: "diff/de/setup.webp.png",
+    comparison: "comparison/de/setup.webp.png",
+    frame: 4,
+    frames: 7,
+  };
+  const sides = (path: string) => [
+    { name: `before/${path}`, data: webp("VP8X", 800, 600, true) },
+    { name: `after/${path}`, data: webp("VP8X", 800, 600, true) },
+  ];
+
+  it("is read from the report with the frame that it shows", () => {
+    const [read, ...others] =
+      readReport(
+        report([
+          setup,
+          { ...setup, path: "a.webp", frame: 8 },
+          { ...setup, path: "b.webp", frames: 0, frame: 1 },
+          { ...setup, path: "c.webp", frames: 2.5, frame: "1" },
+          { ...setup, path: "d.webp", comparison: "../x.png", frame: 7 },
+          { ...setup, path: "e.webp", status: "new" },
+        ]),
+      ) ?? [];
+    expect(read).toMatchObject({
+      comparison: "comparison/de/setup.webp.png",
+      frame: 4,
+      frames: 7,
+    });
+    expect(
+      others.map(({ comparison, frame, frames }) => [
+        comparison,
+        frame,
+        frames,
+      ]),
+    ).toEqual([
+      ["comparison/de/setup.webp.png", null, 7],
+      ["comparison/de/setup.webp.png", null, null],
+      ["comparison/de/setup.webp.png", null, null],
+      [null, 7, 7],
+      [null, 4, 7],
+    ]);
+  });
+
+  it("goes alone, with the frame of an animation and how much it changed", async () => {
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report([setup]) },
+        ...sides(setup.path),
+        { name: setup.diff, data: png(800, 600, 1) },
+        { name: setup.comparison, data: png(1600, 600, 2) },
+      ]),
+    ]);
+    expect(found.shown).toBe(1);
+    expect(found.differences).toBe(1);
+    expect(found.photos).toHaveLength(1);
+    expect(found.photos[0]?.bytes[39]).toBe(2);
+    expect(found.photos[0]?.caption).toBe(
+      "🔍 Before and after, frame 4 of 7: <code>de/setup.webp</code>, changed, 0.66 % of its pixels",
+    );
+    const german = await read(
+      [
+        await zip([
+          { name: "report.json", data: report([setup]) },
+          { name: setup.comparison, data: png(1600, 600) },
+        ]),
+      ],
+      de,
+    );
+    expect(german.photos.map(({ caption }) => caption)).toEqual([
+      "🔍 Vorher und nachher, Einzelbild 4 von 7: <code>de/setup.webp</code>, geändert, 0,66 % seiner Pixel",
+    ]);
+  });
+
+  it("names no frame of a picture of one, or of a report that doesn't say which", async () => {
+    const pictures = [
+      { ...setup, path: "docs/a.png", frame: 1, frames: 1, share: 0.5 },
+      { ...setup, path: "docs/b.webp", frame: undefined, share: 0.4 },
+      { ...setup, path: "docs/c.png", frame: 1, frames: 1, share: null },
+    ].map((picture) => ({
+      ...picture,
+      comparison: `comparison/${picture.path}.png`,
+    }));
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report(pictures) },
+        ...pictures.map(({ comparison }) => ({
+          name: comparison,
+          data: png(1600, 600),
+        })),
+      ]),
+    ]);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔍 Before and after: <code>docs/c.png</code>, another size or frames",
+      "🔍 Before and after: <code>docs/a.png</code>, changed, 50.00 % of its pixels",
+      "🔍 Before and after: <code>docs/b.webp</code>, changed, 40.00 % of its pixels",
+    ]);
+  });
+
+  it("leaves room for ten changed pictures in one album", async () => {
+    const pictures = Array.from({ length: 12 }, (_, index) => ({
+      ...setup,
+      path: `de/${index}.webp`,
+      share: 0.5 - index / 100,
+      comparison: `comparison/de/${index}.webp.png`,
+    }));
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report(pictures) },
+        ...pictures.map(({ comparison }) => ({
+          name: comparison,
+          data: png(1600, 600),
+        })),
+      ]),
+    ]);
+    expect(found.shown).toBe(MAX_MEDIA);
+    expect(found.photos).toHaveLength(MAX_MEDIA);
+    expect(found.differences).toBe(12);
+    expect(found.photos.at(-1)?.caption).toContain("<code>de/9.webp</code>");
+  });
+
+  it("gives way to the difference and the sides when it is missing or broken", async () => {
+    const still = {
+      ...setup,
+      path: "docs/a.png",
+      diff: "diff/docs/a.png",
+      comparison: "comparison/docs/a.png",
+      frame: 1,
+      frames: 1,
+    };
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report([still]) },
+        { name: "before/docs/a.png", data: png(800, 600) },
+        { name: "after/docs/a.png", data: png(800, 600) },
+        { name: still.diff, data: png(800, 600) },
+        { name: still.comparison, data: "no picture" },
+      ]),
+    ]);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels: <code>docs/a.png</code>",
+      "◀️ Before: <code>docs/a.png</code>",
+      "▶️ After: <code>docs/a.png</code>",
+    ]);
+    // Without its comparison, an animation shows the difference of its frame alone.
+    const animated = await read([
+      await zip([
+        { name: "report.json", data: report([setup]) },
+        ...sides(setup.path),
+        { name: setup.diff, data: png(800, 600) },
+      ]),
+    ]);
+    expect(animated.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels, frame 4 of 7: <code>de/setup.webp</code>",
+    ]);
+  });
+});
+
+describe("the difference of an animation in a report without a comparison", () => {
+  // The report of homedarts-for-autodarts#716, as the blueprint wrote it before the
+  // comparison: the difference of the frame with the most changes, unnamed.
+  const older = (path: string, share = 0.0066) => ({
+    path,
+    status: "changed",
+    share,
+    diff: `diff/${path}.png`,
+  });
+
+  it("goes alone, as one frame of the animation, without the first frame of each side", async () => {
+    const pictures = [
+      older("de/setup.webp", 0.4),
+      older("docs/demo.png", 0.3),
+      older("docs/demo.gif", 0.2),
+      older("docs/still.gif", 0.1),
+    ];
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report(pictures) },
+        { name: "before/de/setup.webp", data: webp("VP8X", 800, 600, true) },
+        { name: "after/de/setup.webp", data: webp("VP8X", 800, 600, true) },
+        { name: "before/docs/demo.png", data: apng(800, 600) },
+        { name: "after/docs/demo.png", data: apng(800, 600) },
+        { name: "after/docs/demo.gif", data: gif({ images: 3 }) },
+        { name: "after/docs/still.gif", data: gif({ images: 1 }) },
+        ...pictures.map(({ diff }) => ({ name: diff, data: png(800, 600) })),
+      ]),
+    ]);
+    expect(found.shown).toBe(4);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels of one frame of the animation: <code>de/setup.webp</code>",
+      "🔴 Changed pixels of one frame of the animation: <code>docs/demo.png</code>",
+      "🔴 Changed pixels of one frame of the animation: <code>docs/demo.gif</code>",
+      "🔴 Changed pixels: <code>docs/still.gif</code>",
+    ]);
+    const [first] = pictures;
+    const german = await read(
+      [
+        await zip([
+          { name: "report.json", data: report([first]) },
+          { name: "after/de/setup.webp", data: webp("VP8X", 800, 600, true) },
+          { name: "diff/de/setup.webp.png", data: png(800, 600) },
+        ]),
+      ],
+      de,
+    );
+    expect(german.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Geänderte Pixel eines Einzelbilds der Animation: <code>de/setup.webp</code>",
+    ]);
+  });
+
+  it("names its frame when the report does, and none of a picture of one frame", async () => {
+    const pictures = [
+      { ...older("de/setup.webp", 0.4), frame: 4, frames: 7 },
+      // Its report says that it has one frame, whatever its file says.
+      { ...older("de/still.webp", 0.3), frame: 1, frames: 1 },
+    ];
+    const found = await read([
+      await zip([
+        { name: "report.json", data: report(pictures) },
+        ...pictures.flatMap(({ path, diff }) => [
+          { name: `before/${path}`, data: webp("VP8X", 800, 600, true) },
+          { name: `after/${path}`, data: webp("VP8X", 800, 600, true) },
+          { name: diff, data: png(800, 600) },
+        ]),
+      ]),
+    ]);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "🔴 Changed pixels, frame 4 of 7: <code>de/setup.webp</code>",
+      "🔴 Changed pixels: <code>de/still.webp</code>",
+      "◀️ Before: <code>de/still.webp</code>",
+      "▶️ After: <code>de/still.webp</code>",
+    ]);
+    const german = await read(
+      [
+        await zip([
+          { name: "report.json", data: report(pictures.slice(0, 1)) },
+          { name: "diff/de/setup.webp.png", data: png(800, 600) },
+        ]),
+      ],
+      de,
+    );
+    expect(german.photos[0]?.caption).toBe(
+      "🔴 Geänderte Pixel, Einzelbild 4 von 7: <code>de/setup.webp</code>",
+    );
+  });
+
+  it("shows the sides of one without a difference, and the difference of one whose file after it can't read", async () => {
+    const pictures = [
+      { path: "de/plain.webp", status: "changed", share: 0.4 },
+      older("de/large.webp", 0.3),
+      older("de/broken.webp", 0.2),
+      older("de/missing.webp", 0.1),
+    ];
+    const animated = webp("VP8X", 800, 600, true);
+    const bytes = await zip([
+      { name: "report.json", data: report(pictures) },
+      { name: "before/de/plain.webp", data: animated },
+      { name: "after/de/plain.webp", data: animated },
+      { name: "before/de/large.webp", data: animated },
+      { name: "after/de/large.webp", data: animated },
+      { name: "diff/de/large.webp.png", data: png(800, 600) },
+      { name: "before/de/broken.webp", data: animated },
+      { name: "after/de/broken.webp", data: "x".repeat(100), deflate: true },
+      { name: "diff/de/broken.webp.png", data: png(800, 600) },
+      { name: "before/de/missing.webp", data: animated },
+      { name: "diff/de/missing.webp.png", data: png(800, 600) },
+    ]);
+    // The directory says that the file of large.webp after is larger than a photo
+    // may be, that of broken.webp after doesn't inflate, a deflated block of a type
+    // that deflate doesn't have, and missing.webp has none after at all: none of
+    // them is known as an animation, and none has both sides.
+    const large = entryOf(bytes, 4);
+    large.view.setUint32(large.central + 24, MAX_PHOTO + 1, true);
+    const broken = entryOf(bytes, 7);
+    bytes[broken.local + 30 + "after/de/broken.webp".length] = 0xff;
+    const found = await read([bytes]);
+    expect(found.photos.map(({ caption }) => caption)).toEqual([
+      "◀️ Before: <code>de/plain.webp</code>",
+      "▶️ After: <code>de/plain.webp</code>",
+      "🔴 Changed pixels: <code>de/large.webp</code>",
+      "🔴 Changed pixels: <code>de/broken.webp</code>",
+      "🔴 Changed pixels: <code>de/missing.webp</code>",
+    ]);
+  });
+});
+
 describe("the text of the pictures", () => {
   const view = {
     repo: REPO,
@@ -704,7 +1043,7 @@ describe("the text of the pictures", () => {
         "• <code>e.png</code>: changed, < 0.01 % of its pixels",
         "• <code>f.png</code>: changed, 100 % of its pixels",
         "📸 The album below: 2 of 6.",
-        `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
+        `<a href="${CHECK}">All of them before and after, the changes in red</a>`,
       ].join("\n"),
     );
   });
@@ -734,7 +1073,7 @@ describe("the text of the pictures", () => {
       `<a href="${CHECK}">Alle vorher und nachher</a>`,
     );
     expect(last(picturesText({ ...view, differences: 1 }, de))).toBe(
-      `<a href="${CHECK}">Alle vorher und nachher, jedes geänderte Pixel rot</a>`,
+      `<a href="${CHECK}">Alle vorher und nachher, die Änderungen rot</a>`,
     );
   });
 });
@@ -959,7 +1298,7 @@ describe("the pictures of a pull request", () => {
     expect(await apply(w.context, signal())).toBe("pictures shown");
     const [message] = w.net.telegram("sendMessage");
     expect(message?.body.text).toContain(
-      `<a href="${CHECK}">All of them before and after, each changed pixel in red</a>`,
+      `<a href="${CHECK}">All of them before and after, the changes in red</a>`,
     );
     expect(media(w).map(({ caption }) => caption)).toEqual([
       "🆕 New: <code>screenshots/added.png</code>",
@@ -968,10 +1307,12 @@ describe("the pictures of a pull request", () => {
       "🔴 Changed pixels: <code>docs/images/b.webp</code>",
       "◀️ Before: <code>docs/images/b.webp</code>",
       "▶️ After: <code>docs/images/b.webp</code>",
+      "◀️ Before: <code>screenshots/small.png</code>",
+      "▶️ After: <code>screenshots/small.png</code>",
     ]);
     expect(await stored(w, keys.pictures(REPO, 8))).toMatchObject({
       count: 5,
-      shown: 3,
+      shown: 4,
       differences: 1,
     });
   });

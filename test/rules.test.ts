@@ -1614,6 +1614,23 @@ describe("releases", () => {
         ME,
       ),
     ).toEqual({ signal: { ...at, type: "release-published", tag: "v1.2.3" } });
+    expect(
+      classify(
+        "release",
+        event({
+          action: "published",
+          release: { tag_name: "v1.2.3", published_at: "2026-11-04T08:00:00Z" },
+        }),
+        ME,
+      ),
+    ).toStrictEqual({
+      signal: {
+        ...at,
+        type: "release-published",
+        tag: "v1.2.3",
+        published: Date.parse("2026-11-04T08:00:00Z"),
+      },
+    });
     expect(classify("release", event({ action: "published" }), ME)).toEqual({
       signal: { ...at, type: "release-published", tag: "" },
     });

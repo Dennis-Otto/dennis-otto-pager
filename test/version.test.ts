@@ -58,7 +58,9 @@ describe("a release of the pager", () => {
     expect(await noteRelease(w.context, "Dennis-Otto/demo", `v${NEXT}`)).toBe(
       false,
     );
-    expect(await noteRelease(w.context, at.repo, `v${NEXT}`, null)).toBe(false);
+    expect(
+      await noteRelease(w.context, at.repo, `v${NEXT}`, undefined, null),
+    ).toBe(false);
     expect(await noteRelease(w.context, at.repo, `v${VERSION}`)).toBe(false);
     expect(await noted(w)).toBeUndefined();
 
@@ -76,6 +78,13 @@ describe("a release of the pager", () => {
     w.clock.now = START + MINUTE;
     expect(await noteRelease(w.context, at.repo, NEXT)).toBe(false);
     expect(await noted(w)).toEqual({ version: NEXT, at: START });
+    // A delivery that comes late counts from when GitHub published the release.
+    await w.context.local.put(RELEASED, null);
+    expect(
+      await noteRelease(w.context, at.repo, NEXT, START - 5 * MINUTE),
+    ).toBe(true);
+    expect(await noted(w)).toEqual({ version: NEXT, at: START - 5 * MINUTE });
+    await w.context.local.put<Released>(RELEASED, { version: NEXT, at: START });
     expect((await health(w.context)).release).toEqual({
       version: NEXT,
       at: "2026-11-04T08:00:00.000Z",

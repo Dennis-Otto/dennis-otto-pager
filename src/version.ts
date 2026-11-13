@@ -35,7 +35,7 @@ export const RELEASED = "release";
 export interface Released {
   /** Its version, such as 1.2.3. */
   version: string;
-  /** When GitHub published it, as the pager heard of it, in milliseconds since 1970. */
+  /** When GitHub published it, or else when the pager heard of it, in milliseconds since 1970. */
   at: number;
   /** Whether the maintainer was told that it didn't go live, which he is once. */
   told?: true;
@@ -83,6 +83,7 @@ export async function noteRelease(
   context: Context,
   repo: string,
   tag: string,
+  published?: number,
   own: string | null = OWN,
 ): Promise<boolean> {
   if (own === null || repo.toLowerCase() !== own.toLowerCase()) {
@@ -99,7 +100,9 @@ export async function noteRelease(
   }
   await context.local.put<Released>(RELEASED, {
     version: released,
-    at: context.now(),
+    // The time of GitHub, so that a delivery that the schedule retries later
+    // still counts from when the release came out.
+    at: published ?? context.now(),
   });
   return true;
 }

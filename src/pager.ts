@@ -1767,7 +1767,7 @@ export async function apply(context: Context, signal: Signal): Promise<string> {
     case "release-published":
       // A release of the pager's own repository, which the schedule then looks
       // for in the Worker that runs (src/version.ts).
-      await noteRelease(context, signal.repo, signal.tag);
+      await noteRelease(context, signal.repo, signal.tag, signal.published);
       return releaseState(context, signal.repo, (item) => {
         if (
           signal.tag.replace(/^v/, "") !== item.version ||

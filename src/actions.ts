@@ -4,6 +4,7 @@
  * and writes only through the few calls of github.ts.
  */
 import { allowed, headTag, type Press } from "./buttons.ts";
+import { cut } from "./content.ts";
 import { describe } from "./context.ts";
 import { GitHubError, NoUserToken, UserTokenRefused } from "./github.ts";
 import { askForDraft, type Context, show, toControl } from "./pager.ts";
@@ -24,6 +25,13 @@ export interface Reply {
   text: string;
   alert: boolean;
 }
+
+/**
+ * The longest label of an entry that a fix sends: the limit of `entries()` in
+ * pager/core.mjs of repo-pager-control-template, whose job refuses a longer one
+ * without an answer, so a change of one side changes the other.
+ */
+export const MAX_LABEL = 300;
 
 const done = (text: string): Reply => ({ text, alert: false });
 const refused = (text: string): Reply => ({ text, alert: true });
@@ -90,19 +98,30 @@ async function merge(
 }
 
 async function fix(context: Context, item: Alarm | Alert): Promise<Reply> {
+  // A secret that leaked is revoked where it was issued, which no change of the
+  // code does, and Claude sees no alert of secret scanning; only a person can
+  // upload the social preview, which no API offers. The control repository
+  // refuses the whole fix for an entry outside its repository, such as an event
+  // of GitHub that failed on the app's Advanced page, or one whose page GitHub
+  // didn't name, and for a label that is too long, such as that of an alert with
+  // a long description and path: Claude gets the rest, each label cut.
+  const repository = `https://github.com/${item.repo}/`;
+  const entries = item.entries
+    .filter(
+      (entry) =>
+        !entry.key.startsWith(SECRET_ENTRY) &&
+        entry.upload === undefined &&
+        entry.url.startsWith(repository),
+    )
+    .map(({ label, url }) => ({ label: cut(label, MAX_LABEL), url }));
+  if (entries.length === 0) {
+    return refused(context.t("answer.nothingToFix"));
+  }
   const failed = await toControl(context, "pager-fix", {
     item: item.id,
     repo: item.repo,
     kind: item.kind,
-    // A secret that leaked is revoked where it was issued, which no change of the
-    // code does, and Claude sees no alert of secret scanning; only a person can
-    // upload the social preview, which no API offers: Claude gets the rest.
-    entries: item.entries
-      .filter(
-        (entry) =>
-          !entry.key.startsWith(SECRET_ENTRY) && entry.upload === undefined,
-      )
-      .map(({ label, url }) => ({ label, url })),
+    entries,
   });
   if (failed !== null) {
     return refused(failed);

@@ -3,13 +3,15 @@
  * chat whose id TELEGRAM_CHAT_ID names is served, and only its own user; every
  * other update is dropped without an answer. An answer to a text goes into the
  * thread that the text came from, and a text in the topic of a thing goes to the
- * control repository with that thing, and /status answers with the health of the
- * pager (src/status.ts). A text in the topic of an open question of
+ * control repository with that thing. /status answers with the health of the
+ * pager (src/status.ts), and /open with what still waits for the maintainer
+ * (src/open.ts). A text in the topic of an open question of
  * an agent is its answer, in the maintainer's own words.
  */
 import { answerDecision, press } from "./actions.ts";
 import { parsePress } from "./buttons.ts";
 import { GitHubError, NoAnswer } from "./github.ts";
+import { open } from "./open.ts";
 import { type Context, show } from "./pager.ts";
 import { html } from "./render.ts";
 import { status } from "./status.ts";
@@ -369,7 +371,7 @@ export async function handleUpdate(
   }
 }
 
-/** A text of the maintainer: help, the status, a new draft, an answer in words or free text. */
+/** A text of the maintainer: help, the status, what is open, a new draft, an answer in words or free text. */
 async function written(
   context: Context,
   message: Message,
@@ -384,6 +386,11 @@ async function written(
     // Read-only: the health of the pager, as the control repository asks for it.
     await context.telegram.say(await status(context), threadOf(message));
     return "status";
+  }
+  if (/^\/open\b/.test(text)) {
+    // Read-only: the things that still offer a button, from their records.
+    await context.telegram.say(await open(context), threadOf(message));
+    return "open";
   }
   // A reply to a prompt of ✏️ Edit is the new text of the draft that prompt asked
   // for, however many prompts wait.

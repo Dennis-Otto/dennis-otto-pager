@@ -70,6 +70,12 @@ interface Base {
    * while it waits for the answer of that job: any answer ends the wait.
    */
   jobStarted?: number;
+  /**
+   * The state that ✖ Ignore closed the thing in, while it is ignored, which ↩️
+   * Bring back gives it again (unignored()). A thing ignored before the pager
+   * kept it has none.
+   */
+  ignoredFrom?: Item["state"];
 }
 
 /** A discussion of GitHub, which a reply in its thread answers, as the app. */
@@ -403,6 +409,40 @@ export function beforeJob(item: Item): Item["state"] | undefined {
   return RUNNING[`${item.kind}:${item.state}`];
 }
 
+/**
+ * The state in which each kind of thing is open, for one that was ignored before
+ * the pager kept the state that ✖ Ignore closed it in: a reminder and a question
+ * of an agent offer no ✖ Ignore, but are named for a complete list.
+ */
+const OPEN: Readonly<Record<Kind, Item["state"]>> = {
+  contribution: "new",
+  alarm: "open",
+  workflow: "failing",
+  alert: "open",
+  advisory: "open",
+  release: "ready",
+  pictures: "open",
+  reminder: "open",
+  decision: "open",
+};
+
+/**
+ * The states that wait for the end of a job or of a rerun, and the state that ↩️
+ * Bring back gives in their place: an ignored thing takes no answer of the job and
+ * no end of the rerun, so it would wait for nothing. A job that still runs may
+ * still answer, and a draft that comes is shown, since a new contribution takes it.
+ */
+const SETTLED: Partial<Record<string, Item["state"]>> = {
+  ...RUNNING,
+  "workflow:rerunning": "failing",
+};
+
+/** The state that ↩️ Bring back gives an ignored thing: the one that ✖ Ignore closed, settled. */
+export function unignored(item: Item): Item["state"] {
+  const before = item.ignoredFrom ?? OPEN[item.kind];
+  return SETTLED[`${item.kind}:${before}`] ?? before;
+}
+
 /** Whether a thing is done with, so that its record may expire. */
 export function isClosed(item: Item): boolean {
   return CLOSED.has(item.state);
@@ -626,6 +666,31 @@ export class Store {
       cursor = listed.list_complete ? null : listed.cursor;
     } while (cursor !== null);
     return pending;
+  }
+
+  /**
+   * The ids of the things that may still be open, page by page of one list: the
+   * record of a closed thing expires, as put() keeps it, so a record with a time
+   * of expiration is left out without a read of it. Only the record says whether
+   * the thing offers a button.
+   */
+  async unclosed(limit = 1000): Promise<string[]> {
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const listed: KVNamespaceListResult<Marks> = await this.kv.list({
+        prefix: "item:",
+        limit,
+        ...(cursor === null ? {} : { cursor }),
+      });
+      for (const key of listed.keys) {
+        if (key.expiration === undefined) {
+          ids.push(key.name.slice("item:".length));
+        }
+      }
+      cursor = listed.list_complete ? null : listed.cursor;
+    } while (cursor !== null);
+    return ids;
   }
 
   /**

@@ -33,3 +33,4 @@ Copy [the template](0000-template.md) to the next free number and describe the d
 | [0025](0025-the-pager-watches-the-repositories-of-owners-beside-its-maintainer.md) | The pager watches the repositories of owners beside its maintainer | accepted |
 | [0026](0026-a-review-new-commits-and-a-reopen-are-news-of-a-contribution.md) | A review, new commits and a reopen are news of a contribution | accepted |
 | [0027](0027-the-album-of-a-visual-change-shows-one-comparison-per-picture.md) | The album of a visual change shows one comparison per picture, of one frame | accepted |
+| [0028](0028-an-ignored-thing-comes-back-with-a-button.md) | An ignored thing comes back with a button | accepted |

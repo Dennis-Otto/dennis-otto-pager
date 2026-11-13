@@ -1611,7 +1611,7 @@ describe("the pictures of a pull request", () => {
     expect(
       await press(w.context, item, { action: "ignore", id, version: null }),
     ).toEqual({ text: "Ignored.", alert: false });
-    expect(allowed({ ...item, state: "ignored" })).toEqual([]);
+    expect(allowed({ ...item, state: "ignored" })).toEqual(["restore"]);
     expect(await apply(w.context, signal("newer"))).toBe("pictures ignored");
     expect(
       await apply(w.context, {

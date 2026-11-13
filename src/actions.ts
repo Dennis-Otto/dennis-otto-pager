@@ -23,6 +23,7 @@ import {
   type Release,
   type Reminder,
   SECRET_ENTRY,
+  unignored,
   type Workflow,
 } from "./store.ts";
 
@@ -321,6 +322,21 @@ async function choose(
   return done(context.t("answer.chosen", { option }));
 }
 
+/**
+ * Bring an ignored thing back, in the state that ✖ Ignore closed it in, edited in
+ * place: its buttons come back, its topic loses ✅, and its record no longer
+ * expires. A job or a rerun that it waited for is no longer waited for, so it
+ * comes back with the button that starts one (unignored()). What GitHub did while
+ * it was ignored, the pager didn't follow: the next event of the thing shows it.
+ */
+async function restore(context: Context, item: Item): Promise<Reply> {
+  (item as { state: Item["state"] }).state = unignored(item);
+  delete item.ignoredFrom;
+  delete item.jobStarted;
+  await show(context, item);
+  return done(context.t("answer.restored"));
+}
+
 /** Run the action of a pressed button on its thing, if the thing still offers it. */
 export async function press(
   context: Context,
@@ -339,10 +355,14 @@ export async function press(
         return done(context.t("answer.later", { hours }));
       }
       case "ignore":
+        // ↩️ Bring back gives the thing this state again.
+        item.ignoredFrom = item.state;
         (item as Exclude<Item, Reminder>).state = "ignored";
         item.snoozedUntil = null;
         await show(context, item);
         return done(context.t("answer.ignored"));
+      case "restore":
+        return await restore(context, item);
       case "done":
         (item as Reminder).state = "done";
         item.snoozedUntil = null;

@@ -247,7 +247,7 @@ const en = {
     "⏳ GitHub gave no answer in time, and whether your answer was saved is uncertain. The question stays open here: write your answer again, or press an option.",
 
   "chat.help":
-    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here, and so do the words below a photo or a file; the pager reads text only, not the picture, the file or a voice message itself; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.",
+    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here, and so do the words below a photo or a file; the pager reads text only, not the picture, the file or a voice message itself; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.\n\n/status says how the pager is: its schedule, Telegram, GitHub, the control repository and your tokens, each with the step of docs/setup.md that fixes what fails.",
   "chat.noControl":
     "Free text goes to the workflow of {repo}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.",
   "chat.notSent":
@@ -258,6 +258,48 @@ const en = {
     "The pager reads text only: write it as a message, or put your words below the photo or the file.",
   "chat.tooLong":
     "That text has {length} characters; the control repository takes {max} at most. Send a shorter one.",
+
+  "status.title": "🩺 <b>The status of your pager</b>",
+  "status.schedule": "✅ The schedule last ran to its end on {time}.",
+  "status.scheduleLate":
+    "⚠️ The schedule last ran to its end on {time}, more than an hour ago, though it runs every 15 minutes: does the Worker still have its cron trigger, which step 2 of docs/setup.md deploys? Its log in Cloudflare says why a run failed.",
+  "status.scheduleNever":
+    "⚠️ The schedule never ran to its end: it runs every 15 minutes once the Worker is deployed, as step 2 of docs/setup.md says. Its log in Cloudflare says why a run failed.",
+  "status.failure":
+    "⚠️ A run of the schedule failed on {time}, at {what}: {error}. The next run tries again, and the log of the Worker in Cloudflare has the whole error.",
+  "status.telegram": "✅ Telegram takes the bot, and its webhook is set.",
+  "status.telegramRefused":
+    "⚠️ Telegram refuses the bot: {error}. Set TELEGRAM_BOT_TOKEN of the Worker again, as step 3 of docs/setup.md says.",
+  "status.noWebhook":
+    "⚠️ Telegram takes the bot, but no webhook is set, so the bot gets no update: set it, as step 5 of docs/setup.md says.",
+  "status.webhookFailed":
+    "⚠️ The webhook of Telegram failed on {time}: {error}. Updates waiting: {pending}. Step 5 of docs/setup.md sets it again, and the log of the Worker in Cloudflare says why it failed.",
+  "status.github": "✅ GitHub takes the key of the app.",
+  "status.githubRefused":
+    "⚠️ GitHub refuses the app: {error}. Are GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY of the Worker right? Step 4 of docs/setup.md sets them.",
+  "status.control":
+    "✅ The app is installed on {repo}, the control repository.",
+  "status.noControl":
+    "⚠️ The app isn't installed on {repo}, the control repository, so free text and the buttons that start a job reach nothing: install it there, as step 4 of docs/setup.md says.",
+  "status.controlFailed":
+    "⚠️ Whether the app is installed on {repo}, the control repository, is unknown: {error}.",
+  "status.token.claude": "The token of Claude in {repo}",
+  "status.token.user": "GITHUB_USER_TOKEN of the Worker",
+  "status.token.fix": "PAGER_FIX_TOKEN in {repo}",
+  "status.tokenExpires": "✅ {token}: expires in {days}, on {date}.",
+  "status.tokenSoon":
+    "⚠️ {token}: expires in {days}, on {date}. Renew it, as Later on in docs/setup.md says.",
+  "status.tokenExpired":
+    "⚠️ {token}: expired on {date}. Renew it, as Later on in docs/setup.md says.",
+  "status.tokenRefused":
+    "⚠️ {token}: GitHub refuses it since {date}, as it expired or was revoked. Make a new one, as step 3 of docs/setup.md says.",
+  "status.tokenForever": "✅ {token}: GitHub names no day on which it expires.",
+  "status.noUserToken":
+    "ℹ️ GITHUB_USER_TOKEN of the Worker isn't set, so ✅ Send and 🤖 Assistant again say what is missing, and the rest works. Step 3 of docs/setup.md sets it.",
+  "status.userUnchecked":
+    "✅ GITHUB_USER_TOKEN of the Worker is set; the next run of the schedule reads its day from GitHub.",
+  "status.fixUnknown":
+    "ℹ️ PAGER_FIX_TOKEN in {repo}: its day comes with the next run of Health of the control repository, which step 7 of docs/setup.md sets up.",
 
   "usage.one": "1 turn",
   "usage.many": "{turns} turns",
@@ -604,9 +646,54 @@ const de: Catalog = {
     "⏳ GitHub hat nicht rechtzeitig geantwortet, und ob deine Antwort gespeichert ist, ist unklar. Die Frage bleibt hier offen: Schreib deine Antwort noch einmal, oder drück eine Option.",
 
   "chat.help":
-    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet, und so auch die Worte unter einem Foto oder einer Datei; der Pager liest nur Text, nicht das Bild, die Datei oder eine Sprachnachricht selbst; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.",
+    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet, und so auch die Worte unter einem Foto oder einer Datei; der Pager liest nur Text, nicht das Bild, die Datei oder eine Sprachnachricht selbst; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.\n\n/status sagt, wie es dem Pager geht: sein Zeitplan, Telegram, GitHub, das Steuer-Repository und deine Tokens, jeweils mit dem Schritt von docs/setup.md, der behebt, was scheitert.",
   "chat.noControl":
     "Freier Text geht an den Workflow von {repo}, wo die GitHub-App noch nicht installiert ist: Installier sie dort, wie docs/setup.md es beschreibt.",
+
+  "status.title": "🩺 <b>Der Stand deines Pagers</b>",
+  "status.schedule":
+    "✅ Der Zeitplan lief zuletzt am {time} bis zu seinem Ende.",
+  "status.scheduleLate":
+    "⚠️ Der Zeitplan lief zuletzt am {time} bis zu seinem Ende, vor mehr als einer Stunde, obwohl er alle 15 Minuten läuft: Hat der Worker noch seinen Cron-Trigger, den Schritt 2 von docs/setup.md ausrollt? Sein Log in Cloudflare sagt, warum ein Lauf scheiterte.",
+  "status.scheduleNever":
+    "⚠️ Der Zeitplan lief noch nie bis zu seinem Ende: Er läuft alle 15 Minuten, sobald der Worker ausgerollt ist, wie Schritt 2 von docs/setup.md sagt. Sein Log in Cloudflare sagt, warum ein Lauf scheiterte.",
+  "status.failure":
+    "⚠️ Ein Lauf des Zeitplans scheiterte am {time}, bei {what}: {error}. Der nächste Lauf versucht es wieder, und das Log des Workers in Cloudflare hat den ganzen Fehler.",
+  "status.telegram":
+    "✅ Telegram nimmt den Bot an, und sein Webhook ist gesetzt.",
+  "status.telegramRefused":
+    "⚠️ Telegram lehnt den Bot ab: {error}. Setz TELEGRAM_BOT_TOKEN des Workers neu, wie Schritt 3 von docs/setup.md sagt.",
+  "status.noWebhook":
+    "⚠️ Telegram nimmt den Bot an, aber kein Webhook ist gesetzt, also bekommt der Bot keine Updates: Setz ihn, wie Schritt 5 von docs/setup.md sagt.",
+  "status.webhookFailed":
+    "⚠️ Der Webhook von Telegram scheiterte am {time}: {error}. Wartende Updates: {pending}. Schritt 5 von docs/setup.md setzt ihn neu, und das Log des Workers in Cloudflare sagt, warum er scheiterte.",
+  "status.github": "✅ GitHub nimmt den Schlüssel der App an.",
+  "status.githubRefused":
+    "⚠️ GitHub lehnt die App ab: {error}. Stimmen GITHUB_APP_ID und GITHUB_APP_PRIVATE_KEY des Workers? Schritt 4 von docs/setup.md setzt sie.",
+  "status.control":
+    "✅ Die App ist auf {repo} installiert, dem Steuer-Repository.",
+  "status.noControl":
+    "⚠️ Die App ist auf {repo} nicht installiert, dem Steuer-Repository, also erreichen freier Text und die Knöpfe, die einen Job starten, nichts: Installier sie dort, wie Schritt 4 von docs/setup.md sagt.",
+  "status.controlFailed":
+    "⚠️ Ob die App auf {repo} installiert ist, dem Steuer-Repository, ist unklar: {error}.",
+  "status.token.claude": "Claude-Token in {repo}",
+  "status.token.user": "GITHUB_USER_TOKEN des Workers",
+  "status.token.fix": "PAGER_FIX_TOKEN in {repo}",
+  "status.tokenExpires": "✅ {token}: läuft in {days} ab, am {date}.",
+  "status.tokenSoon":
+    "⚠️ {token}: läuft in {days} ab, am {date}. Erneuere es, wie „Später“ in docs/setup.md sagt.",
+  "status.tokenExpired":
+    "⚠️ {token}: ist am {date} abgelaufen. Erneuere es, wie „Später“ in docs/setup.md sagt.",
+  "status.tokenRefused":
+    "⚠️ {token}: GitHub lehnt es seit dem {date} ab, weil es abgelaufen ist oder widerrufen wurde. Erstell ein neues, wie Schritt 3 von docs/setup.md sagt.",
+  "status.tokenForever":
+    "✅ {token}: GitHub nennt keinen Tag, an dem es abläuft.",
+  "status.noUserToken":
+    "ℹ️ GITHUB_USER_TOKEN des Workers ist nicht gesetzt, also sagen ✅ Senden und 🤖 Assistent nochmal, was fehlt, und der Rest geht. Schritt 3 von docs/setup.md setzt es.",
+  "status.userUnchecked":
+    "✅ GITHUB_USER_TOKEN des Workers ist gesetzt; der nächste Lauf des Zeitplans liest seinen Tag bei GitHub.",
+  "status.fixUnknown":
+    "ℹ️ PAGER_FIX_TOKEN in {repo}: Sein Tag kommt mit dem nächsten Lauf von Health des Steuer-Repositorys, den Schritt 7 von docs/setup.md einrichtet.",
 
   "usage.one": "1 Runde",
   "usage.many": "{turns} Runden",

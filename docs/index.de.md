@@ -20,6 +20,9 @@ Unterwegs geht nichts verloren, und ein ruhiger Tag verbirgt keinen Pager, der k
 | 🛠 Fix starten | Schickt, was fehlschlägt, an das Steuer-Repository, das einen Fix vorbereitet |
 | ✅ Bestätigen | Führt die eine Aktion aus, die eine Antwort des Steuer-Repositorys vorschlägt, etwa ein Merge, nach dem du gefragt hast, oder 🔁 Neu starten, wenn ein Fix einen Ausfall von GitHub fand, solange ihre Sache sie noch anbietet |
 | ⏰ Später, ✖ Ignorieren | Bringt die Sache nach vier Stunden zurück oder schließt sie |
+| ↩️ Zurückholen | Öffnet eine ignorierte Sache wieder, wie sie war |
+
+`/open` im Chat listet, was noch auf dich wartet, eine Zeile pro Sache mit Knopf, nach Repository, und `/status` sagt, wie es dem Pager geht.
 
 Der Pager spricht Deutsch oder Englisch, wie `LANGUAGE` in `wrangler.jsonc` sagt: `de` für den eigenen Pager des Maintainers, Englisch, wenn es leer ist. Die Knöpfe, `/help` und jeder andere Text, den er schickt, folgen ihr, und ebenso die Antworten des Steuer-Repositorys und die Versionshinweise eines Release, die das Steuer-Repository übersetzt.
 

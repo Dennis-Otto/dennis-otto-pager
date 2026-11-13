@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_LABEL } from "../src/actions.ts";
 import { allowed, callbackData, headTag, keyboard } from "../src/buttons.ts";
-import type { Alarm, Contribution, Item, Release } from "../src/store.ts";
+import type {
+  Alarm,
+  Contribution,
+  Item,
+  Release,
+  Workflow,
+} from "../src/store.ts";
 import { texts } from "../src/texts.ts";
 import { handleUpdate, MAX_TEXT } from "../src/updates.ts";
 import {
@@ -55,6 +61,31 @@ const release: Release = {
   sha: "abc",
   url: "https://github.com/Dennis-Otto/demo/pull/30",
 };
+
+const workflow: Workflow = {
+  ...base(ID),
+  kind: "workflow",
+  state: "failing",
+  path: ".github/workflows/ci.yml",
+  name: "CI",
+  branch: "main",
+  run: 5,
+  attempt: 1,
+  url: `https://github.com/${REPO}/actions/runs/5`,
+  jobs: [],
+  count: 1,
+  since: START,
+  last: START,
+};
+
+/** Press a button of a thing that is kept already, and return its record after. */
+async function pressAgain(w: World, data: string) {
+  const outcome = await handleUpdate(w.context, {
+    callback_query: { id: "q2", from: { id: CHAT }, data },
+  });
+  const answer = w.net.telegram("answerCallbackQuery").at(-1)?.body;
+  return { outcome, answer, item: await w.context.store.get(ID) };
+}
 
 async function pressing(w: World, item: Item, data: string, from = CHAT) {
   await w.context.store.put(item);
@@ -121,6 +152,110 @@ describe("buttons", () => {
     const done = await pressing(w, reminder, `done:${ID}`);
     expect(done.item?.state).toBe("done");
     expect(done.answer.text).toBe("Done.");
+  });
+
+  it("bring an ignored thing back as it was, with its buttons and its topic", async () => {
+    const w = await world();
+    const name = "🙋 demo#12 It breaks";
+    const draft = contribution({
+      state: "draft",
+      draft: "Thanks!",
+      draftVersion: 2,
+      topic: { thread: 900, name },
+    });
+    const ignored = await pressing(w, draft, `ignore:${ID}`);
+    expect(ignored.item).toMatchObject({
+      state: "ignored",
+      ignoredFrom: "draft",
+    });
+    // Its only button, and a record that expires, as that of every closed thing.
+    expect(
+      w.net.telegram("editMessageText")[0]?.body.reply_markup,
+    ).toMatchObject({
+      inline_keyboard: [
+        [{ text: "↩️ Bring back", callback_data: `restore:${ID}` }],
+      ],
+    });
+    expect(await w.context.store.unclosed()).toEqual([]);
+
+    const back = await pressAgain(w, `restore:${ID}`);
+    expect(back.answer).toMatchObject({
+      text: "Brought back.",
+      show_alert: false,
+    });
+    expect(back.item).toMatchObject({ state: "draft", draft: "Thanks!" });
+    expect(back.item).not.toHaveProperty("ignoredFrom");
+    expect(
+      w.net.telegram("editMessageText")[1]?.body.reply_markup,
+    ).toMatchObject({ inline_keyboard: keyboard(draft, texts("en")) });
+    expect(
+      w.net.telegram("editForumTopic").map((call) => call.body.name),
+    ).toEqual([`✅ ${name}`, name]);
+    expect(await w.context.store.unclosed()).toEqual([ID]);
+    // A second press of the old button does nothing.
+    expect((await pressAgain(w, `restore:${ID}`)).answer).toMatchObject({
+      text: "This button is out of date.",
+      show_alert: true,
+    });
+  });
+
+  it("bring back a thing that waited for a job or a rerun with the button that starts one", async () => {
+    const cases: [Item, Item["state"], string][] = [
+      [contribution({ state: "drafting", jobStarted: START }), "new", "draft"],
+      [{ ...alarm, state: "fixing", jobStarted: START }, "open", "fix"],
+      [{ ...workflow, state: "rerunning" }, "failing", "rerun"],
+    ];
+    for (const [item, state, action] of cases) {
+      const w = await world();
+      await pressing(w, item, `ignore:${ID}`);
+      const { item: back } = await pressAgain(w, `restore:${ID}`);
+      expect(back?.state).toBe(state);
+      expect(back).not.toHaveProperty("jobStarted");
+      expect(allowed(back as Item)).toContain(action);
+      // The schedule waits for no answer of the job any more.
+      expect((await w.context.store.pending(START, START + 1)).waiting).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("bring back a thing ignored before the pager kept how, in its open state", async () => {
+    const w = await world();
+    const advisory: Item = {
+      ...base(ID),
+      kind: "advisory",
+      state: "ignored",
+      ghsa: "GHSA-abcd-efgh-ijkl",
+      url: `https://github.com/${REPO}/security/advisories/GHSA-abcd-efgh-ijkl`,
+      severity: "high",
+      reported: START,
+    };
+    const pictures: Item = {
+      ...base(ID),
+      kind: "pictures",
+      state: "ignored",
+      number: 31,
+      title: "New look",
+      url: `https://github.com/${REPO}/pull/31`,
+      sha: "abc",
+      changed: [],
+      count: 0,
+      shown: 0,
+      check: `https://github.com/${REPO}/actions/runs/9`,
+    };
+    const cases: [Item, Item["state"]][] = [
+      [contribution({ state: "ignored" }), "new"],
+      [{ ...alarm, state: "ignored" }, "open"],
+      [{ ...alarm, kind: "alert", state: "ignored" }, "open"],
+      [{ ...workflow, state: "ignored" }, "failing"],
+      [{ ...release, state: "ignored" }, "ready"],
+      [advisory, "open"],
+      [pictures, "open"],
+    ];
+    for (const [item, state] of cases) {
+      const { item: back } = await pressing(w, item, `restore:${ID}`);
+      expect(back?.state).toBe(state);
+    }
   });
 
   it("refuse a button that the thing doesn't offer any more", async () => {

@@ -484,7 +484,7 @@ describe("a vulnerability report", () => {
     );
   });
 
-  it("takes Later and Ignore, and shows neither its days nor buttons once ignored", async () => {
+  it("takes Later and Ignore, shows neither its days nor buttons but Bring back once ignored, and comes back", async () => {
     const w = await security();
     await apply(w.context, reported);
     const item = await advisory(w);
@@ -496,13 +496,25 @@ describe("a vulnerability report", () => {
     });
     const ignored = await advisory(w);
     expect(ignored.state).toBe("ignored");
-    expect(allowed(ignored)).toEqual([]);
-    expect(keyboard(ignored, texts("en"))).toEqual([]);
+    expect(allowed(ignored)).toEqual(["restore"]);
+    expect(keyboard(ignored, texts("en"))).toEqual([
+      [{ text: "↩️ Bring back", callback_data: `restore:${item.id}` }],
+    ]);
     const edit = w.net.telegram("editMessageText").at(-1)?.body;
     expect(edit.text).toMatch(/· severity: high\n✖ Ignored\.$/);
     // An ignored report keeps no mark for the schedule: its record expires.
     expect((await w.context.store.pending(START + 30 * DAY, 0)).remind).toEqual(
       [],
+    );
+    // ↩️ Bring back opens it again, with its reminder.
+    await press(w.context, ignored, {
+      action: "restore",
+      id: item.id,
+      version: null,
+    });
+    expect((await advisory(w)).state).toBe("open");
+    expect((await w.context.store.pending(START + 30 * DAY, 0)).remind).toEqual(
+      [item.id],
     );
   });
 

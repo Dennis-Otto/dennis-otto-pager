@@ -316,13 +316,14 @@ describe("a workflow that passes", () => {
 });
 
 describe("the buttons of a workflow", () => {
-  it("offer 🔁 Rerun and ✖ Ignore while it fails, and ✖ Ignore while it runs again", async () => {
+  it("offer 🔁 Rerun and ✖ Ignore while it fails, ✖ Ignore while it runs again, and ↩️ Bring back once ignored", async () => {
     const w = await world();
     await apply(w.context, ran(60, 2));
     const item = await thing(w);
     expect(allowed(item)).toEqual(["rerun", "ignore"]);
     expect(allowed({ ...item, state: "rerunning" })).toEqual(["ignore"]);
-    for (const state of ["waiting", "recovered", "ignored"] as const) {
+    expect(allowed({ ...item, state: "ignored" })).toEqual(["restore"]);
+    for (const state of ["waiting", "recovered"] as const) {
       expect(allowed({ ...item, state })).toEqual([]);
     }
   });

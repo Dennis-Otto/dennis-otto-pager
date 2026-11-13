@@ -26,6 +26,7 @@ export const ACTIONS = [
   "send",
   "edit",
   "ignore",
+  "restore",
   "later",
   "done",
   "choose",
@@ -97,6 +98,11 @@ function bundle(item: Alarm | Alert): Action[] {
 
 /** The actions that a thing offers in its current state, in the order of its buttons. */
 export function allowed(item: Item): Action[] {
+  // ↩️ Bring back is all that an ignored thing offers: a press of ✖ Ignore that
+  // slipped, or an issue that turned out to matter, comes back with it.
+  if (item.state === "ignored") {
+    return ["restore"];
+  }
   switch (item.kind) {
     case "contribution":
       // A discussion gets its draft by itself, which it sends, edits or ignores;

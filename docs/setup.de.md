@@ -191,10 +191,19 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 `max_connections=1` lässt Telegram ein Update nach dem anderen schicken, damit ein zweimal gedrückter Knopf nur einmal wirkt. `getWebhookInfo` nennt die Adresse und, nach einer gescheiterten Zustellung, den Fehler.
 
+Damit das Menü von Telegram die Befehle des Pagers anbietet, registrier sie einmal; die Worte sind die Beschreibungen im Menü, in jeder Sprache:
+
+```sh
+curl -s "https://api.telegram.org/bot$TOKEN/setMyCommands" \
+  -H 'Content-Type: application/json' \
+  -d '{"commands":[{"command":"open","description":"Was noch auf mich wartet"},{"command":"status","description":"Wie es dem Pager geht"},{"command":"help","description":"Was der Pager tut"}]}'
+```
+
 ## 6. Ausprobieren
 
 - Schreib dem Bot `/status`: Er antwortet mit einer Zeile für jedes Ding, das der Pager braucht, in diesem Moment gelesen: wann sein Zeitplan zuletzt lief, ob Telegram den Bot und seinen Webhook annimmt, ob GitHub den Schlüssel der App annimmt, ob die App auf deinem Steuer-Repository installiert ist, und den Tag jedes Tokens. Jede Zeile, die scheitert, nennt den Schritt dieser Anleitung, der sie behebt, also weißt du, bevor das Steuer-Repository läuft, dass der Worker seine Geheimnisse hat. Ein neuer Worker hat noch keinen Lauf seines Zeitplans: Er läuft alle 15 Minuten, und die Zeile von `PAGER_FIX_TOKEN` kommt mit Schritt 7.
 - Schreib dem Bot `/help`: Er antwortet mit dem, was er tut.
+- Schreib dem Bot `/open`: Er listet, was noch auf dich wartet, eine Zeile pro Sache mit Knopf, nach Repository; ein neuer Pager sagt, dass nichts wartet.
 - In den Einstellungen der GitHub-App, unter *Advanced*, ist die erste Zustellung ein `ping`, den der Worker mit `pong` beantwortet.
 - Eröffne von einem anderen Konto ein Issue in einem beobachteten Repository: Die Nachricht kommt mit ihren Knöpfen.
 

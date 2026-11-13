@@ -26,6 +26,7 @@ const en = {
   "button.send": "✅ Send",
   "button.edit": "✏️ Edit",
   "button.ignore": "✖ Ignore",
+  "button.restore": "↩️ Bring back",
   "button.later": "⏰ Later",
   "button.done": "✅ Renewed",
   "button.confirm": "✅ Confirm",
@@ -196,6 +197,7 @@ const en = {
   "answer.outdated": "This button is out of date.",
   "answer.later": "Back in {hours} h.",
   "answer.ignored": "Ignored.",
+  "answer.restored": "Brought back.",
   "answer.done": "Done.",
   "answer.chosen": "Saved for your agent: {option}",
   "answer.refused": "GitHub refused: {detail}",
@@ -247,7 +249,7 @@ const en = {
     "⏳ GitHub gave no answer in time, and whether your answer was saved is uncertain. The question stays open here: write your answer again, or press an option.",
 
   "chat.help":
-    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here, and so do the words below a photo or a file; the pager reads text only, not the picture, the file or a voice message itself; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.\n\n/status says how the pager is: its schedule, Telegram, GitHub, the control repository and your tokens, each with the step of docs/setup.md that fixes what fails.",
+    "👋 This is your pager. It writes only when something needs you, one message per thing, each in a topic of its own, and edits that message as the thing changes; a thing that is done gets ✅ in front of its topic.\n\nThe buttons act on GitHub from a fixed list. Any other text goes to the control repository, which answers here, and so do the words below a photo or a file; the pager reads text only, not the picture, the file or a voice message itself; an answer that proposes an action comes with a ✅ Confirm button, and only a press acts. Write in the topic of a thing, or reply to its message, to ask about it; a topic that you open, and General, start a conversation of their own. A text in the topic of an open question of your agent is your answer to it, in your own words.\n\nEach answer, draft and fix of the control repository is a run of Claude with your subscription: it counts against your weekly limit, and its message says how much it took.\n\n/status says how the pager is: its schedule, Telegram, GitHub, the control repository and your tokens, each with the step of docs/setup.md that fixes what fails. /open lists what still waits for you: each thing that offers a button, by repository, with when ⏰ Later brings it back.\n\n✖ Ignore closes a thing at once; ↩️ Bring back, its only button then, opens it again as it was.",
   "chat.noControl":
     "Free text goes to the workflow of {repo}, where the GitHub App isn't installed yet: install it there, as docs/setup.md says.",
   "chat.notSent":
@@ -258,6 +260,11 @@ const en = {
     "The pager reads text only: write it as a message, or put your words below the photo or the file.",
   "chat.tooLong":
     "That text has {length} characters; the control repository takes {max} at most. Send a shorter one.",
+
+  "open.title": "📋 <b>What waits for you: {count}</b>",
+  "open.none": "✅ Nothing waits for you: no thing offers a button.",
+  "open.later": "{thing} · ⏰ back on {time}",
+  "open.more": "… and {count} more, for which this message has no room.",
 
   "status.title": "🩺 <b>The status of your pager</b>",
   "status.version": "✅ The pager runs version {version}.",
@@ -423,6 +430,7 @@ const de: Catalog = {
   "button.send": "✅ Senden",
   "button.edit": "✏️ Bearbeiten",
   "button.ignore": "✖ Ignorieren",
+  "button.restore": "↩️ Zurückholen",
   "button.later": "⏰ Später",
   "button.done": "✅ Erneuert",
   "button.confirm": "✅ Bestätigen",
@@ -604,6 +612,7 @@ const de: Catalog = {
   "answer.outdated": "Der Knopf ist veraltet.",
   "answer.later": "Zurück in {hours} Std.",
   "answer.ignored": "Ignoriert.",
+  "answer.restored": "Zurückgeholt.",
   "answer.done": "Erledigt.",
   "answer.chosen": "Für deinen Agenten gespeichert: {option}",
   "answer.refused": "GitHub lehnt ab: {detail}",
@@ -655,9 +664,15 @@ const de: Catalog = {
     "⏳ GitHub hat nicht rechtzeitig geantwortet, und ob deine Antwort gespeichert ist, ist unklar. Die Frage bleibt hier offen: Schreib deine Antwort noch einmal, oder drück eine Option.",
 
   "chat.help":
-    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet, und so auch die Worte unter einem Foto oder einer Datei; der Pager liest nur Text, nicht das Bild, die Datei oder eine Sprachnachricht selbst; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.\n\n/status sagt, wie es dem Pager geht: sein Zeitplan, Telegram, GitHub, das Steuer-Repository und deine Tokens, jeweils mit dem Schritt von docs/setup.md, der behebt, was scheitert.",
+    "👋 Das ist dein Pager. Er schreibt nur, wenn etwas dich braucht, eine Nachricht pro Sache, jede in einem eigenen Thema, und ändert diese Nachricht, wenn sich die Sache ändert; eine erledigte Sache bekommt ✅ vor ihr Thema.\n\nDie Knöpfe handeln auf GitHub, aus einer festen Liste. Jeder andere Text geht ans Steuer-Repository, das hier antwortet, und so auch die Worte unter einem Foto oder einer Datei; der Pager liest nur Text, nicht das Bild, die Datei oder eine Sprachnachricht selbst; eine Antwort, die eine Aktion vorschlägt, kommt mit einem Knopf ✅ Bestätigen, und erst dein Druck darauf handelt. Schreib im Thema einer Sache, oder antworte auf ihre Nachricht, um nach ihr zu fragen; ein Thema, das du selbst öffnest, und General beginnen ein eigenes Gespräch. Ein Text im Thema einer offenen Frage deines Agenten ist deine Antwort darauf, in deinen eigenen Worten.\n\nJede Antwort, jeder Entwurf und jeder Fix des Steuer-Repositorys ist ein Lauf von Claude mit deinem Abo: Er zählt auf dein Wochenlimit, und seine Nachricht sagt, wie viel er genommen hat.\n\n/status sagt, wie es dem Pager geht: sein Zeitplan, Telegram, GitHub, das Steuer-Repository und deine Tokens, jeweils mit dem Schritt von docs/setup.md, der behebt, was scheitert. /open listet, was noch auf dich wartet: jede Sache, die einen Knopf bietet, nach Repository, mit dem Zeitpunkt, zu dem ⏰ Später sie zurückbringt.\n\n✖ Ignorieren schließt eine Sache sofort; ↩️ Zurückholen, dann ihr einziger Knopf, öffnet sie wieder, wie sie war.",
   "chat.noControl":
     "Freier Text geht an den Workflow von {repo}, wo die GitHub-App noch nicht installiert ist: Installier sie dort, wie docs/setup.md es beschreibt.",
+
+  "open.title": "📋 <b>Was auf dich wartet: {count}</b>",
+  "open.none": "✅ Nichts wartet auf dich: Keine Sache bietet einen Knopf.",
+  "open.later": "{thing} · ⏰ zurück am {time}",
+  "open.more":
+    "… und {count} weitere, für die diese Nachricht keinen Platz hat.",
 
   "status.title": "🩺 <b>Der Stand deines Pagers</b>",
   "status.version": "✅ Der Pager läuft in Version {version}.",

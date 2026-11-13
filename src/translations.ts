@@ -5,9 +5,11 @@
  * as Features, it words itself from its catalog. The words of the items come from
  * the control repository, whose Claude translates them, and the pager trusts that
  * answer no further than any other: a translated line that lost a reference, such
- * as #791, or a name of code, such as anchore/syft or v1.56.0, keeps its English,
+ * as #791, or a name of code, such as anchore/syft or v1.56.0, or that adds a
+ * link, such as a URL or an @name that Telegram links by itself, keeps its English,
  * and the scope in front of an item, such as "deps: ", never goes to translation,
- * so the message never links less or names something else than the notes say.
+ * so the message never links less or more, or names something else, than the
+ * notes say.
  */
 import {
   MAX_NOTE_LINE,
@@ -166,10 +168,36 @@ function names(text: string): string[] {
 }
 
 /**
+ * The links of a line: a URL such as https://example.com/a, and each word that
+ * Telegram links by itself, without the marks around it: a host such as
+ * example.com/a, a mention such as @a_bot, a command such as /start, and an
+ * address of e-mail. German abbreviations such as z.B. or d.h. are none. The same
+ * as links() of pager/notes.mjs in the template of the control repository.
+ */
+export function links(text: string): string[] {
+  const urls = text.match(/\bhttps?:\/\/[^\s<>"'`]+/gi) ?? [];
+  const words = text
+    .split(/\s+/)
+    .map((word) =>
+      word.replace(/^["'(«„“`]+/, "").replace(/["'),.:;!?»“”`]+$/, ""),
+    )
+    .filter(
+      (word) =>
+        !word.includes("://") &&
+        /^[@/]\w|\w@\w|\w\.[a-z]{2,}(?:\/|$)/i.test(word),
+    );
+  return [...urls, ...words];
+}
+
+/**
  * The lines of a translation that the message shows, one for each line that the
  * notes translate: each as the control repository sent it, folded and trimmed,
- * when it says something, fits MAX_TRANSLATED_LINE and keeps every reference and
- * every name of code of its English line, and that English line otherwise. Null
+ * when it says something, fits MAX_TRANSLATED_LINE, keeps every reference and
+ * every name of code of its English line and adds no link that the English line
+ * doesn't have, and that English line otherwise. The check of the control
+ * repository is the same, but the pager doesn't rely on it: a copy of the template
+ * may be older or changed. The lines carry no code span, which the notes lose as
+ * the message shows them (content.ts), so none is to keep. Null
  * when the answer doesn't fit the notes: another number of lines, or more than
  * MAX_TRANSLATED characters in all.
  */
@@ -187,7 +215,8 @@ export function checked(
       words !== "" &&
       words.length <= MAX_TRANSLATED_LINE &&
       references(words) === references(line) &&
-      names(line).every((name) => words.includes(name));
+      names(line).every((name) => words.includes(name)) &&
+      links(words).every((link) => line.includes(link));
     return keeps ? words : line;
   });
   const scopes = bodies(notes).map((text) => split(text).scope.length);

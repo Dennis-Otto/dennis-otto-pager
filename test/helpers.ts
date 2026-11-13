@@ -5,6 +5,7 @@
 import { env } from "cloudflare:test";
 
 import { makeContext } from "../src/context.ts";
+import type { Deadlines } from "../src/deadlines.ts";
 import { forget } from "../src/github.ts";
 import type { Context } from "../src/pager.ts";
 import type { Apart } from "../src/schedule.ts";
@@ -39,6 +40,16 @@ export interface Call {
 
 type Handler = (call: Call) => Response | undefined;
 
+/**
+ * An answer that never comes: it ends only when the signal of its call does, as
+ * at its deadline, with the reason of that signal, as fetch() ends.
+ */
+export function never(signal: AbortSignal | null | undefined): Promise<never> {
+  return new Promise((_, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason));
+  });
+}
+
 export function json(value: unknown, status = 200): Response {
   return Response.json(value, { status });
 }
@@ -70,6 +81,7 @@ function recorded(body: RequestInit["body"]): any {
 export class Net {
   calls: Call[] = [];
   private handlers: Handler[] = [];
+  private stalls: ((call: Call) => boolean)[] = [];
   private nextMessage = 100;
 
   /**
@@ -91,6 +103,14 @@ export class Net {
     return this;
   }
 
+  /** Never answer the calls whose method and address match, until their deadline ends them. */
+  hang(method: string, pattern: string): this {
+    this.stalls.push(
+      (call) => call.method === method && call.url.endsWith(pattern),
+    );
+    return this;
+  }
+
   fetch: Fetch = async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
     const call: Call = {
@@ -100,6 +120,9 @@ export class Net {
       headers: Object.fromEntries(new Headers(init?.headers).entries()),
     };
     this.calls.push(call);
+    if (this.stalls.some((stalls) => stalls(call))) {
+      return never(init?.signal);
+    }
     for (const handler of this.handlers) {
       const answer = handler(call);
       if (answer !== undefined) {
@@ -221,7 +244,10 @@ export interface World {
 }
 
 /** A fresh world: an empty KV, no cached token, the network and the clock. */
-export async function world(overrides: Partial<Settings> = {}): Promise<World> {
+export async function world(
+  overrides: Partial<Settings> = {},
+  deadlines?: Deadlines,
+): Promise<World> {
   forget();
   const listed = await env.PAGER.list();
   await Promise.all(listed.keys.map((each) => env.PAGER.delete(each.name)));
@@ -236,6 +262,9 @@ export async function world(overrides: Partial<Settings> = {}): Promise<World> {
     async (milliseconds) => {
       sleeps.push(milliseconds);
     },
+    undefined,
+    undefined,
+    deadlines,
   );
   return { net, context, clock, sleeps };
 }

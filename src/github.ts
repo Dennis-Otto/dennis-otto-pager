@@ -5,6 +5,7 @@
  * only the permissions of its call, and lives in memory for less than its hour.
  */
 import { base64, base64url, utf8 } from "./crypto.ts";
+import { DEADLINES, inTime, NO_ANSWER } from "./deadlines.ts";
 import type { Payload } from "./rules.ts";
 import type { Discussion } from "./store.ts";
 import type { Fetch } from "./telegram.ts";
@@ -38,6 +39,23 @@ export class UserTokenRefused extends GitHubError {
   constructor(detail: string) {
     super(401, detail);
   }
+}
+
+/**
+ * A call to GitHub, or to the storage of its artifacts, that ran past its deadline:
+ * an error of the API like any refusal, with the status of a gateway that waited
+ * in vain, so that a webhook answers 500 and comes again and a button answers.
+ */
+export class NoAnswer extends GitHubError {
+  constructor() {
+    super(504, NO_ANSWER);
+    this.message = `GitHub gave ${NO_ANSWER}`;
+  }
+}
+
+/** The work of a call to GitHub, whose end at its deadline is a NoAnswer. */
+function answered<T>(work: Promise<T>): Promise<T> {
+  return inTime(work, () => new NoAnswer());
 }
 
 /** What GitHub says of a call that it refused: its message, or the start of its text. */
@@ -277,6 +295,8 @@ export class GitHub {
   private readonly userToken: string | null;
   private readonly fetch: Fetch;
   private readonly now: () => number;
+  /** The deadline of the download of an artifact, in milliseconds. */
+  private readonly download: number;
 
   constructor(
     appId: string,
@@ -284,12 +304,14 @@ export class GitHub {
     userToken: string | null,
     fetcher: Fetch,
     now: () => number,
+    download = DEADLINES.download,
   ) {
     this.appId = appId;
     this.appKey = appKey;
     this.userToken = userToken;
     this.fetch = fetcher;
     this.now = now;
+    this.download = download;
   }
 
   private async call(
@@ -313,14 +335,17 @@ export class GitHub {
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
-    return this.fetch(`${API}${path}`, init);
+    return answered(this.fetch(`${API}${path}`, init));
   }
 
   private async json<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      throw new GitHubError(response.status, await detailOf(response));
+      throw new GitHubError(
+        response.status,
+        await answered(detailOf(response)),
+      );
     }
-    return response.json<T>();
+    return answered(response.json<T>());
   }
 
   /**
@@ -585,14 +610,18 @@ export class GitHub {
       }
       throw new GitHubError(answer.status, "no address of the artifact");
     }
-    const file = await this.fetch(location, {
-      method: "GET",
-      headers: { "user-agent": AGENT },
-    });
+    // Its own deadline, longer than a call's, which ends the reading too.
+    const file = await answered(
+      this.fetch(location, {
+        method: "GET",
+        headers: { "user-agent": AGENT },
+        signal: AbortSignal.timeout(this.download),
+      }),
+    );
     if (!file.ok) {
       throw new GitHubError(file.status, "the storage of the artifact refused");
     }
-    return readCapped(file, max);
+    return answered(readCapped(file, max));
   }
 
   /** Run the failed jobs of a run again, and the jobs that need them, as a new attempt. */

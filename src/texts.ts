@@ -199,6 +199,8 @@ const en = {
   "answer.done": "Done.",
   "answer.chosen": "Saved for your agent: {option}",
   "answer.refused": "GitHub refused: {detail}",
+  "answer.noAnswer":
+    "⏳ GitHub gave no answer in time, and whether it acted is uncertain: look at the thing on GitHub, then press again.",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN isn't set, so nothing can act in your name: set it, as docs/setup.md says.",
   "answer.userTokenRefused":
@@ -552,6 +554,8 @@ const de: Catalog = {
   "answer.done": "Erledigt.",
   "answer.chosen": "Für deinen Agenten gespeichert: {option}",
   "answer.refused": "GitHub lehnt ab: {detail}",
+  "answer.noAnswer":
+    "⏳ GitHub hat nicht rechtzeitig geantwortet, und ob es gehandelt hat, ist unklar: Sieh dir die Sache auf GitHub an, dann drück noch einmal.",
   "answer.noUserToken":
     "GITHUB_USER_TOKEN ist nicht gesetzt, also kann nichts in deinem Namen handeln: Setz ihn, wie docs/setup.md es beschreibt.",
   "answer.userTokenRefused":

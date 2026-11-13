@@ -277,6 +277,20 @@ describe("a question of an agent", () => {
     });
   });
 
+  it("answers a press that GitHub gives no answer to in time, which may have saved it", async () => {
+    const w = await world({}, { api: 20, download: 20 });
+    withoutBranch(withControl(w.net)).hang("PUT", FILE);
+    await send(w, QUESTION);
+    await press(w, `choose:${await idOf()}:0`);
+    expect(answered(w)).toEqual([
+      {
+        text: "⏳ GitHub gave no answer in time, and whether it acted is uncertain: look at the thing on GitHub, then press again.",
+        alert: true,
+      },
+    ]);
+    expect(w.net.telegram("editMessageText")).toHaveLength(0);
+  });
+
   it("stays open when GitHub refuses the answer, so that a press saves it again", async () => {
     const w = await world();
     withoutBranch(withControl(w.net)).on("PUT", FILE, () =>

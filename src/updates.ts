@@ -70,6 +70,16 @@ export interface Update {
 /** The longest draft that a message shows whole, so "Send" posts what it showed. */
 export const MAX_DRAFT = 3000;
 
+/*
+ * MAX_TEXT and MAX_REPLY keep the contract of the control repository: they are
+ * `text` and `reply` of `MAX` in pager/core.mjs of repo-pager-control-template,
+ * whose job refuses a longer text without an answer, so a change of one side
+ * changes the other.
+ */
+
+/** The longest free text that the control repository takes. */
+export const MAX_TEXT = 4000;
+
 /** The most of the message that a free text answers which goes along with it. */
 export const MAX_REPLY = 1000;
 
@@ -240,6 +250,16 @@ async function freeText(
   progress: Progress,
 ): Promise<string> {
   const thread = threadOf(message);
+  // The control repository would refuse a longer text in a run that fails without
+  // an answer, so the text would show 👀 for an hour and then 😢 without a reason:
+  // the pager says so at once and sends nothing, as for a draft that is too long.
+  if (text.length > MAX_TEXT) {
+    await context.telegram.say(
+      context.t("chat.tooLong", { length: text.length, max: MAX_TEXT }),
+      thread,
+    );
+    return "free text that is too long";
+  }
   const repo = context.settings.controlRepository;
   try {
     const installation = await context.github.installation(repo);

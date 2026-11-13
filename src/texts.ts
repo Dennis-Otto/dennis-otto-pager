@@ -173,6 +173,8 @@ const en = {
   "answer.merging": "Merging.",
   "answer.fixing":
     "Sent to the control repository: Claude looks for a fix, from your weekly limit.",
+  "answer.nothingToFix":
+    "Nothing here for Claude to fix: no entry links to a page of its repository.",
   "answer.rerun":
     "The failed jobs run again: a pass takes the entry out, a failure says so.",
   "answer.rerunWorkflow":
@@ -247,6 +249,8 @@ const en = {
     "😢 The pager failed on this text, and whether it acted on it is uncertain: look whether it did, then write it again.",
   "chat.textOnly":
     "The pager reads text only: write it as a message, or put your words below the photo or the file.",
+  "chat.tooLong":
+    "That text has {length} characters; the control repository takes {max} at most. Send a shorter one.",
 
   "usage.one": "1 turn",
   "usage.many": "{turns} turns",
@@ -508,6 +512,8 @@ const de: Catalog = {
     "😢 Der Pager ist an diesem Text gescheitert, und ob er danach gehandelt hat, ist unklar: Sieh nach, ob er es tat, dann schreib ihn noch einmal.",
   "chat.textOnly":
     "Der Pager liest nur Text: Schreib es als Nachricht, oder setz deine Worte unter das Foto oder die Datei.",
+  "chat.tooLong":
+    "Der Text hat {length} Zeichen; das Steuer-Repository nimmt höchstens {max}. Schick einen kürzeren.",
   "answer.releaseMoved":
     "Das Release hat sich seit dieser Nachricht geändert: Nimm seine neueste Nachricht.",
   "answer.releaseChanged":
@@ -516,6 +522,8 @@ const de: Catalog = {
   "answer.merging": "Wird gemergt.",
   "answer.fixing":
     "Ans Steuer-Repository geschickt: Claude sucht einen Fix, von deinem Wochenlimit.",
+  "answer.nothingToFix":
+    "Hier gibt es für Claude nichts zu beheben: Kein Eintrag verlinkt eine Seite seines Repositorys.",
   "answer.rerun":
     "Die gescheiterten Jobs laufen erneut: Ein Erfolg nimmt den Eintrag heraus, ein Fehlschlag sagt es.",
   "answer.rerunWorkflow":

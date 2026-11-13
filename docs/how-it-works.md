@@ -120,7 +120,7 @@ GitHub mails the actor of each run that fails, and the pager's agents act as the
 - **Green again:** a rerun of the run that failed that passes, or a newer run in which no job that failed ran without passing, turns it ✅. A newer run that skipped such a job, as *After the checks* runs one job per event, ends nothing, and a job that it doesn't list any more is gone from the workflow. The next failure opens a new message in its topic, which notifies.
 - **🔁 Rerun** runs the failed jobs of the newest run that failed again; **✖ Ignore** keeps the workflow quiet until a run of it passes.
 - **A rerun that is cancelled,** by hand or by the concurrency group of its workflow, ends without a result: the message, edited in place, fails again with 🔁 Rerun and the note *⏹ The rerun was cancelled.* Any other cancelled run means nothing, as before.
-- **What it costs:** a failure reads the jobs of its attempt once, with a token for `actions: read`, and writes its thing once; a pass reads the jobs of its run only while its workflow fails, and writes only when it ends the thing. The app needs no new permission and no new event: it has `workflow_run` and *Actions* already.
+- **What it costs:** a failure reads the jobs of its attempt once, with a token for `actions: read`, and writes its thing once; a pass reads the jobs of its run only while its workflow fails, and writes only when it ends the thing; a cancelled run reads its thing once and writes only when it ends a rerun of 🔁 Rerun. The app needs no new permission and no new event: it has `workflow_run` and *Actions* already.
 
 ## A discussion
 

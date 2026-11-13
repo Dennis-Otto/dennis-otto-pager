@@ -164,7 +164,8 @@ async function rerun(context: Context, item: Alarm): Promise<Reply> {
 /**
  * Run the failed jobs of the newest run that a workflow knows again, after the
  * same look at the run as for an alarm. The message says that they run, until the
- * run fails again, which edits it, or passes, which turns it ✅.
+ * run fails again, which edits it, passes, which turns it ✅, or is cancelled,
+ * which brings its buttons back with a note.
  */
 async function rerunWorkflow(context: Context, item: Workflow): Promise<Reply> {
   const run = await context.github.workflowRun(
@@ -180,6 +181,7 @@ async function rerunWorkflow(context: Context, item: Workflow): Promise<Reply> {
   }
   await context.github.rerunFailedJobs(item.installation, item.repo, item.run);
   item.state = "rerunning";
+  item.note = null;
   await acted(context, item);
   return done(context.t("answer.rerunWorkflow"));
 }

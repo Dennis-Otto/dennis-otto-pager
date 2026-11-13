@@ -200,7 +200,10 @@ export interface Job {
  */
 export interface Workflow extends Base {
   kind: "workflow";
-  /** waiting: failed, not shown yet; rerunning: 🔁 Rerun ran its failed jobs again. */
+  /**
+   * waiting: failed, not shown yet; rerunning: 🔁 Rerun ran its failed jobs again,
+   * until that run fails, passes or is cancelled.
+   */
   state: "waiting" | "failing" | "rerunning" | "recovered" | "ignored";
   /** The file of the workflow, such as .github/workflows/docs.yml, which keys the thing. */
   path: string;

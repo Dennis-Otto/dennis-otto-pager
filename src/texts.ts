@@ -215,6 +215,7 @@ const en = {
   "note.newCommits": "🔁 New commits by {author}.",
   "note.reopened": "🔓 Reopened by {author}.",
   "note.readyForReview": "👀 Ready for review, says {author}.",
+  "note.rerunCancelled": "⏹ The rerun was cancelled.",
   "note.albumFailed": "Telegram refused the pictures: {detail}",
   "note.noAnswer":
     "⌛ No answer from the control repository within the hour: its run in its Actions tab says why.",
@@ -552,6 +553,7 @@ const de: Catalog = {
   "note.newCommits": "🔁 Neue Commits von {author}.",
   "note.reopened": "🔓 Wieder geöffnet von {author}.",
   "note.readyForReview": "👀 Bereit zum Review, sagt {author}.",
+  "note.rerunCancelled": "⏹ Der erneute Lauf wurde abgebrochen.",
   "note.albumFailed": "Telegram hat die Bilder abgelehnt: {detail}",
   "note.noAnswer":
     "⌛ Keine Antwort vom Steuer-Repository binnen einer Stunde: Sein Lauf im Actions-Tab sagt, warum.",

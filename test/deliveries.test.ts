@@ -27,7 +27,13 @@ import { FAILED, type Failure, health, RAN } from "../src/health.ts";
 import { apply, QUIET } from "../src/pager.ts";
 import type { Signal } from "../src/rules.ts";
 import { ANSWER_WITHIN, runSchedule } from "../src/schedule.ts";
-import { type Alarm, type Item, itemId, keys } from "../src/store.ts";
+import {
+  type Alarm,
+  type Item,
+  itemId,
+  keys,
+  type Workflow,
+} from "../src/store.ts";
 import {
   base,
   DELIVERIES,
@@ -1285,7 +1291,11 @@ describe("each signal applied twice", () => {
     reported: START,
   };
   const release: Signal = { ...at, type: "release-check", numbers: [30] };
-  const workflow = (run: number, attempt: number, failed: boolean): Signal => ({
+  const workflow = (
+    run: number,
+    attempt: number,
+    failed: boolean,
+  ): Extract<Signal, { type: "workflow" }> => ({
     ...at,
     type: "workflow",
     path: ".github/workflows/docs.yml",
@@ -1391,6 +1401,11 @@ describe("each signal applied twice", () => {
       workflow(61, 1, true),
     ],
     ["workflow: a pass", [workflow(60, 2, true)], workflow(61, 1, false)],
+    [
+      "workflow: a cancelled run",
+      [workflow(60, 2, true)],
+      { ...workflow(60, 3, false), cancelled: true },
+    ],
     [
       "health",
       [],
@@ -1547,6 +1562,23 @@ describe("each signal applied twice", () => {
       ).toEqual([]);
     });
   }
+
+  it("leaves the same state: workflow: a rerun of 🔁 Rerun that was cancelled", async () => {
+    const w = await served();
+    await apply(w.context, workflow(60, 2, true));
+    const id = await itemId(keys.workflow(REPO, ".github/workflows/docs.yml"));
+    const known = (await w.context.store.get(id)) as Workflow;
+    await w.context.store.put({ ...known, state: "rerunning" });
+    const signal: Signal = { ...workflow(60, 3, false), cancelled: true };
+    expect(await apply(w.context, signal)).toBe("workflow rerun cancelled");
+    const state = await everything();
+    const calls = w.net.calls.length;
+    const put = vi.spyOn(w.context.store, "put");
+    expect(await apply(w.context, signal)).toBe("workflow run cancelled");
+    expect(await everything()).toEqual(state);
+    expect(put).not.toHaveBeenCalled();
+    expect(w.net.calls).toHaveLength(calls);
+  });
 
   const joining: [string, Signal, Signal, string][] = [
     ["failing", failing("bot:1"), failing("bot:2"), "alarm"],

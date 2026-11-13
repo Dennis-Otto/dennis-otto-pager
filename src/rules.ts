@@ -782,7 +782,14 @@ function contribution(
 function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
   const pull = payload.pull_request;
   const number = pull?.number ?? 0;
-  if ((pull?.head?.ref ?? "").startsWith(RELEASE_BRANCH)) {
+  // A release pull request comes from a branch of release-please of the repository
+  // itself. A fork may name its branch like that, and one that runs release-please
+  // gets such a branch by itself, but what it holds is someone else's code: its
+  // pull request is a contribution like any other, which pages when it opens.
+  if (
+    (pull?.head?.ref ?? "").startsWith(RELEASE_BRANCH) &&
+    pull?.head?.repo?.full_name === at.repo
+  ) {
     if (payload.action === "synchronize") {
       return {
         signal: {
@@ -797,12 +804,8 @@ function pullRequest(payload: Payload, at: Where, maintainer: string): Outcome {
       return { signal: { ...at, type: "release-merged", number } };
     }
     // A new title or new notes, such as notes changed by hand before the merge:
-    // the pager reads the pull request again, as when its checks finish. Only for
-    // a branch of the repository itself: a fork may name its branch like that.
+    // the pager reads the pull request again, as when its checks finish.
     if (payload.action === "edited") {
-      if (pull?.head?.repo?.full_name !== at.repo) {
-        return { ignored: "a release pull request of a fork" };
-      }
       return { signal: { ...at, type: "release-check", numbers: [number] } };
     }
     return { ignored: `a release pull request ${payload.action}` };

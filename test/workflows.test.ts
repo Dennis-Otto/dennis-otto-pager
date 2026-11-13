@@ -748,7 +748,7 @@ describe("the message and the topic of a workflow", () => {
     ).toEqual(["✅ 🔴 Docs in demo"]);
   });
 
-  it("give a text in its topic the run and the logs of the jobs that failed", async () => {
+  it("give a text in its topic the run, the logs of the jobs that failed and the file by which a proposal names it", async () => {
     const w = await world();
     jobs(w, 60, 2, [["build", "failure"]]);
     await apply(w.context, ran(60, 2));
@@ -756,6 +756,7 @@ describe("the message and the topic of a workflow", () => {
     expect(told).toMatchObject({
       kind: "workflow",
       state: "failing",
+      path: PATH,
       links: [`${RUNS}/60/attempts/2`, `${RUNS}/60/job/1`],
     });
     expect(told.text).toContain("Docs fails on main");

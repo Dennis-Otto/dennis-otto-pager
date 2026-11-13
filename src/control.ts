@@ -47,14 +47,19 @@ export const WINDOW = 300;
 /** The thing that a proposal acts on, named as the control repository knows it. */
 export type Target =
   | { kind: "contribution"; repo: string; number: number }
+  | { kind: "workflow"; repo: string; path: string }
   | { kind: "alarm" | "alert" | "release"; repo: string };
 
-const ALL: readonly Target["kind"][] = [
+/** The kinds of thing that ⏰ Later puts aside; a failing workflow has no Later. */
+const LATER: readonly Target["kind"][] = [
   "contribution",
   "alarm",
   "alert",
   "release",
 ];
+
+/** The longest file of a workflow that a proposal names, in characters. */
+export const MAX_PATH = 500;
 
 /**
  * The actions that a proposal may carry, and the kinds of thing each acts on.
@@ -66,9 +71,9 @@ export const PROPOSABLE: Partial<Record<Labeled, readonly Target["kind"][]>> = {
   assistant: ["contribution"],
   draft: ["contribution"],
   fix: ["alarm", "alert"],
-  rerun: ["alarm"],
-  later: ALL,
-  ignore: ALL,
+  rerun: ["alarm", "workflow"],
+  later: LATER,
+  ignore: [...LATER, "workflow"],
 };
 
 /**
@@ -110,13 +115,27 @@ function targetOf(action: unknown, value: unknown): Target | null {
   ) {
     return null;
   }
+  // A contribution takes its number, a workflow its file, and every other kind
+  // of thing neither, as one of a repository.
   const number = target?.number;
-  if (kind !== "contribution") {
-    return number === undefined ? { kind, repo } : null;
+  const path = target?.path;
+  switch (kind) {
+    case "contribution":
+      return path === undefined &&
+        Number.isSafeInteger(number) &&
+        (number as number) > 0
+        ? { kind, repo, number: number as number }
+        : null;
+    case "workflow":
+      return number === undefined &&
+        typeof path === "string" &&
+        path !== "" &&
+        path.length <= MAX_PATH
+        ? { kind, repo, path }
+        : null;
+    default:
+      return number === undefined && path === undefined ? { kind, repo } : null;
   }
-  return Number.isSafeInteger(number) && (number as number) > 0
-    ? { kind, repo, number: number as number }
-    : null;
 }
 
 /** The id of a question: letters, digits, dots, dashes and underscores, as a file name. */
@@ -344,9 +363,14 @@ export async function signed(
 
 /** The key of the thing that a proposal names, as the store keeps it. */
 function keyOf(target: Target): string {
-  return target.kind === "contribution"
-    ? keys.contribution(target.repo, target.number)
-    : keys[target.kind](target.repo);
+  switch (target.kind) {
+    case "contribution":
+      return keys.contribution(target.repo, target.number);
+    case "workflow":
+      return keys.workflow(target.repo, target.path);
+    default:
+      return keys[target.kind](target.repo);
+  }
 }
 
 /** A link to the thing on GitHub, named as the maintainer knows it. */
@@ -357,6 +381,12 @@ function whereIs(item: Item, t: Texts): string {
       return link(`${item.repo}#${item.number}`, item.url);
     case "alarm":
       return link(item.repo, `https://github.com/${item.repo}/actions`);
+    case "workflow":
+      // The run that failed last, whose failed jobs 🔁 Rerun runs again.
+      return link(
+        t("proposal.workflow", { name: item.name, repo: item.repo }),
+        item.url,
+      );
     default:
       return link(
         t("proposal.security", { repo: item.repo }),

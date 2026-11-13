@@ -408,6 +408,11 @@ export interface About {
   /** The version of a release. */
   version?: string;
   /**
+   * The file of a failing workflow, such as .github/workflows/docs.yml, by which
+   * a proposal names it.
+   */
+  path?: string;
+  /**
    * Where GitHub shows it: the issue, the pull request, the discussion or the
    * comment that its reply answers, the pull request of pictures, or the pages
    * of a bundle and each entry.
@@ -423,7 +428,7 @@ export interface About {
 /** What a text in the topic of a thing tells the control repository about the thing. */
 export function about(item: Item, now: number, t: Texts): About {
   const links: string[] = [];
-  const named: Pick<About, "number" | "version"> = {};
+  const named: Pick<About, "number" | "version" | "path"> = {};
   switch (item.kind) {
     case "contribution":
     case "pictures":
@@ -452,6 +457,7 @@ export function about(item: Item, now: number, t: Texts): About {
     case "workflow":
       // The run that failed last, and the log of each job that failed in it.
       links.push(item.url, ...item.jobs.map((job) => job.url));
+      named.path = item.path;
       break;
     default:
       break;

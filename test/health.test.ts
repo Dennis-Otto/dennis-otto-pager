@@ -10,6 +10,7 @@ import { hmacHex } from "../src/crypto.ts";
 import { type Health, health, MAX_ERROR, RAN } from "../src/health.ts";
 import { runSchedule } from "../src/schedule.ts";
 import { TOKENS, type Tokens } from "../src/tokens.ts";
+import { VERSION } from "../src/version.ts";
 import { appKey, json, START, type World, world } from "./helpers.ts";
 
 const APP = { slug: "repo-pager", owner: { login: "Dennis-Otto" } };
@@ -65,6 +66,8 @@ describe("the health of the pager", () => {
     w.clock.now = START;
     const answer = await healthOf(w);
     expect(answer).toEqual({
+      version: VERSION,
+      release: null,
       schedule: "2026-11-04T07:45:00.000Z",
       failure: null,
       telegram: {
@@ -109,6 +112,8 @@ describe("the health of the pager", () => {
         json({ message: "A JSON web token could not be decoded" }, 401),
       );
     expect(await healthOf(w)).toEqual({
+      version: VERSION,
+      release: null,
       schedule: null,
       failure: null,
       telegram: { ok: false, error: "Telegram getMe: Unauthorized" },

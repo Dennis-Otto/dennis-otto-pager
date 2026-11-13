@@ -151,7 +151,7 @@ export interface Payload {
     most_recent_instance?: { ref?: string; location?: { path?: string } };
   };
   ref?: string;
-  release?: { tag_name?: string; prerelease?: boolean };
+  release?: { tag_name?: string; prerelease?: boolean; published_at?: string };
   /**
    * The security advisory of a repository_advisory event: a private vulnerability
    * report or a published advisory. Its summary and description are under embargo
@@ -335,7 +335,12 @@ export type Signal = Where &
     | { type: "release-check"; numbers: number[] }
     | { type: "release-updated"; number: number; sha: string }
     | { type: "release-merged"; number: number }
-    | { type: "release-published"; tag: string }
+    | {
+        type: "release-published";
+        tag: string;
+        /** When GitHub published it, in milliseconds since 1970, if GitHub says so. */
+        published?: number;
+      }
     | {
         type: "pictures";
         number: number;
@@ -1396,11 +1401,13 @@ function release(payload: Payload, at: Where): Outcome {
   if (payload.action !== "published" || published?.prerelease === true) {
     return { ignored: `a release ${payload.action}` };
   }
+  const time = timeOf(published?.published_at);
   return {
     signal: {
       ...at,
       type: "release-published",
       tag: published?.tag_name ?? "",
+      ...(time === null ? {} : { published: time }),
     },
   };
 }

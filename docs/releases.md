@@ -72,6 +72,8 @@ Then fix the cause in a pull request; the next release deploys it.
 
 ## When a build fails
 
+The pager notices a release that didn't go live itself: once the event of a release of its own repository came, its schedule compares the release with the version that runs, and after 30 minutes without it, it says so in a message of its own, once. Its own repository is the one that `repository.url` in `package.json` names, and the app of the pager must be installed there: a copy names its own repository there, or it never hears of its releases, and `release` in its health stays `null`, which reads as up to date. `/status` shows the version that runs, and the health that the control repository asks for each day names it with the release that it waits for ([The health of the pager](how-it-works.md#the-health-of-the-pager)). The log of the build in the dashboard of Cloudflare says why; the causes are these:
+
 - **The name doesn't match:** Workers Builds builds only the Worker whose name `wrangler.jsonc` names. Change the name in `wrangler.jsonc` back to that of the Worker: a Worker of a new name would be a new Worker, without the secrets and the state of the old one.
 - **No build after the repository was renamed or moved:** the dashboard lists no build of the merges since. Open *Workers & Pages*, the Worker, *Settings* and *Builds*, disconnect the repository and connect it again under its new name, with the settings of step 3; the version that runs keeps serving meanwhile.
 - **Another Node:** the build takes the Node of `.nvmrc`; if its log shows another one, set the build variable `NODE_VERSION` to the version of `.nvmrc` under *Settings* and *Builds*.

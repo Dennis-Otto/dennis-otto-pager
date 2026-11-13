@@ -4,12 +4,14 @@
  * its maintainer, so a quiet day looks the same whether all is well or the pager
  * is dead. The answer says when the schedule last ran to its end and what last
  * failed in it, whether Telegram takes the token of the bot and delivers the updates of its webhook, whether
- * GitHub takes the key of the app, and when the tokens of the maintainer expire.
+ * GitHub takes the key of the app, when the tokens of the maintainer expire, and
+ * which version runs and which release of the pager it waits for.
  * It names no secret and nothing that an issue says, and changes nothing.
  */
 import { describe } from "./context.ts";
 import type { Context } from "./pager.ts";
 import { type Token, type TokenState, watchedTokens } from "./tokens.ts";
+import { awaited, VERSION } from "./version.ts";
 
 /** The key of the time of the schedule's last run in the storage of the Durable Object. */
 export const RAN = "schedule";
@@ -43,6 +45,14 @@ interface WebhookInfo {
 
 /** The answer to {"type": "health"}. */
 export interface Health {
+  /** The version of the pager that runs, such as 1.2.3. */
+  version: string;
+  /**
+   * The release of the pager's own repository that the Worker doesn't run yet,
+   * with when GitHub published it, in ISO 8601, or null when it runs the latest
+   * release that it heard of (src/version.ts).
+   */
+  release: { version: string; at: string } | null;
   /** When the schedule last ran to its end, in ISO 8601, or null when it never did. */
   schedule: string | null;
   /**
@@ -113,7 +123,16 @@ async function github(context: Context): Promise<Health["github"]> {
 /** The health of the pager, as the control repository asks for it. */
 export async function health(context: Context): Promise<Health> {
   const ran = await context.local.get<number>(RAN);
+  const released = await awaited(context);
   return {
+    version: VERSION,
+    release:
+      released === null
+        ? null
+        : {
+            version: released.version,
+            at: new Date(released.at).toISOString(),
+          },
     schedule: ran === undefined ? null : new Date(ran).toISOString(),
     failure: (await context.local.get<Failure>(FAILED)) ?? null,
     telegram: await telegram(context),

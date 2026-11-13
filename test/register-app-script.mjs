@@ -218,11 +218,11 @@ describe("scripts/register-app.mjs", () => {
         text,
         /Stored: GITHUB_APP_ID\. Missing: GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET\./,
       );
-      assert.ok(
-        text.includes(
+      assert.deepEqual(
+        text.split(/\s+/).filter((word) => word.endsWith("/advanced")),
+        [
           "https://github.com/organizations/octo-org/settings/apps/repo-pager-of-octocat/advanced",
-        ),
-        text,
+        ],
       );
     }
     assert.match(

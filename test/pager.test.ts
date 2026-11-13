@@ -381,6 +381,17 @@ describe("discussions", () => {
     expect(w.net.calls).toHaveLength(calls);
   });
 
+  it("come without a draft when GitHub gives its request no answer in time, which may have started it", async () => {
+    const w = await world({}, { api: 20, download: 20 });
+    withControl(w.net).hang("POST", "/repos/Dennis-Otto/control/dispatches");
+    expect(await apply(w.context, opened)).toBe(
+      "discussion shown, without a draft",
+    );
+    expect((await thing(w)).note).toBe(
+      "⏳ GitHub gave no answer in time, and whether it acted is uncertain: look at the thing on GitHub, then press again.",
+    );
+  });
+
   it("come without a draft, and say why, when the control repository can't take it", async () => {
     const w = await world();
     expect(await apply(w.context, opened)).toBe(

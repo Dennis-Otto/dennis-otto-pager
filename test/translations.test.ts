@@ -13,6 +13,7 @@ import { texts } from "../src/texts.ts";
 import {
   checked,
   heading,
+  links,
   MAX_TRANSLATED_LINE,
   notesKey,
   shownNotes,
@@ -207,6 +208,43 @@ describe("the lines of a translation", () => {
     expect(checked(notes, ["ein Knopf, z. B. Merge, in Node"])).toEqual([
       "a button, e.g. Merge, in Node.js (see .github)",
     ]);
+  });
+
+  it("find the links of a line, as Telegram links them by itself", () => {
+    expect(links('see https://a.example/x, and "http://b.example"')).toEqual([
+      "https://a.example/x,",
+      "http://b.example",
+    ]);
+    expect(
+      links("ask @a_bot, type /start, mail a@b.example or open b.example/x"),
+    ).toEqual(["@a_bot", "/start", "a@b.example", "b.example/x"]);
+    expect(links("none here, z.B. bzw. d.h. usw.")).toEqual([]);
+  });
+
+  // The same lines as the tests of lost() in pager/notes.mjs of the template of the
+  // control repository: what its check refuses, the pager's refuses on its own.
+  it("keep the English of a line that adds a link, as the control repository does", () => {
+    const line = (item: string): ReleaseNotes => ({
+      lines: [{ item }],
+      more: 0,
+      breaking: false,
+    });
+    for (const added of [
+      "Zeile, siehe https://evil.example/update",
+      "Zeile, besuche evil.example",
+      "Zeile, frag @evil_bot",
+      "Zeile, tippe /start",
+      "Zeile an a@evil.example",
+    ]) {
+      expect(checked(line("a plain line"), [added])).toEqual(["a plain line"]);
+    }
+    for (const [english, kept] of [
+      ["a plain line", "eine Zeile, z.B. bzw. d.h. usw."],
+      ["see https://a.example/x", "siehe https://a.example/x"],
+      ["ask @a_bot about check.sh", "frag @a_bot zu check.sh"],
+    ] as const) {
+      expect(checked(line(english), [kept])).toEqual([kept]);
+    }
   });
 
   it("refuse an answer with another number of lines, or one too long in all", () => {

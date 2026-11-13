@@ -8,6 +8,8 @@
  * topic of its own, which the pager opens, renames and, when it stays empty, deletes.
  */
 
+import { inTime, NO_ANSWER, timedOut } from "./deadlines.ts";
+
 export type Fetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -167,13 +169,24 @@ export class Telegram {
     init: RequestInit,
     again = true,
   ): Promise<unknown> {
-    const response = await this.fetch(
-      `https://api.telegram.org/bot${this.token}/${method}`,
-      { method: "POST", ...init },
+    // A call that ends at its deadline, before or while its answer comes, is
+    // Telegram's error like any refusal.
+    const late = () => new TelegramError(method, NO_ANSWER);
+    const response = await inTime(
+      this.fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: "POST",
+        ...init,
+      }),
+      late,
     );
     const answer: Answer = await response
       .json<Answer>()
-      .catch(() => ({ description: `HTTP ${response.status}` }));
+      .catch((error: unknown) => {
+        if (timedOut(error)) {
+          throw late();
+        }
+        return { description: `HTTP ${response.status}` };
+      });
     const after = answer.parameters?.retry_after;
     if (
       again &&

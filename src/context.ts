@@ -3,8 +3,9 @@
  * state, the two APIs and the texts of its language, which the tests make with a
  * simulated network and clock, and the storage of the Durable Object. It counts
  * the calls to the network, which the free plan of Workers allows 50 of per
- * request.
+ * request, and gives each its deadline.
  */
+import { DEADLINES, type Deadlines } from "./deadlines.ts";
 import { GitHub, GitHubError } from "./github.ts";
 import type { Context } from "./pager.ts";
 import type { PagerEnv, Settings } from "./settings.ts";
@@ -48,11 +49,16 @@ export function makeContext(
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
   exclusive: Context["exclusive"] = (work) => work(),
   local: Local = new Memory(),
+  deadlines: Deadlines = DEADLINES,
 ): Context {
   let subrequests = 0;
+  // Each call ends at its deadline: the download of an artifact brings its own.
   const counted: Fetch = (input, init) => {
     subrequests += 1;
-    return fetcher(input, init);
+    return fetcher(input, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(deadlines.api),
+    });
   };
   return {
     settings,
@@ -64,6 +70,7 @@ export function makeContext(
       settings.userToken,
       counted,
       now,
+      deadlines.download,
     ),
     t: texts(settings.language),
     now,

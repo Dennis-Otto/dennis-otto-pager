@@ -6,7 +6,12 @@
 import { allowed, headTag, type Press } from "./buttons.ts";
 import { cut } from "./content.ts";
 import { describe } from "./context.ts";
-import { GitHubError, NoUserToken, UserTokenRefused } from "./github.ts";
+import {
+  GitHubError,
+  NoAnswer,
+  NoUserToken,
+  UserTokenRefused,
+} from "./github.ts";
 import { askForDraft, type Context, show, toControl } from "./pager.ts";
 import { PASSED, releaseBlocker } from "./rules.ts";
 import {
@@ -368,6 +373,10 @@ export async function press(
     }
     if (error instanceof UserTokenRefused) {
       return refused(context.t("answer.userTokenRefused"));
+    }
+    // A call that ran past its deadline may have acted all the same.
+    if (error instanceof NoAnswer) {
+      return refused(context.t("answer.noAnswer"));
     }
     if (error instanceof GitHubError) {
       return refused(context.t("answer.refused", { detail: error.detail }));
